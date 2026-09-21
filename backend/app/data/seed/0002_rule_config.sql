@@ -1,0 +1,294 @@
+-- =============================================================================
+-- 规则参数初值
+--
+-- 这些是 docs/03-valuation-rules.md 与 docs/04-index-rules.md 的机读版本。
+-- 页面提供「查看 / 修改 / 恢复默认」入口，每次变更写入 rule_config_version，
+-- 并记入 run_manifest.rule_config_version，保证「同一输入可复现同一结果」。
+--
+-- industry = '' 表示全局默认；填具体行业（steel / energy）则只覆盖该行业。
+-- 新增行业只需加一组行，**不需要改代码**。
+-- =============================================================================
+
+-- ------------------------------------------------- 周期正常化（能源钢铁核心口径）
+INSERT INTO rule_config
+  (key, value, value_type, industry, label_cn, description, unit, default_value, min_value, max_value)
+VALUES
+('normalization.preferred_years', '8', 'integer', '',
+ '主窗口年数',
+ '主正常化窗口的完整财务年度数。窗口锚定在最新完整年度上滚动，不人为挑选区间。',
+ '年', '8', '8', '8'),
+
+('normalization.fallback_years', '10', 'integer', '',
+ '回退窗口年数',
+ '主窗口可比年度不足时扩展到此年数重试。',
+ '年', '10', '10', '10'),
+
+('normalization.min_comparable_years', '7', 'integer', '',
+ '主窗口最少可比年度',
+ '8 年窗口内至少保留 7 个可比年度（即最多剔除 1 个）。不足则自动切换至 10 年窗口。',
+ '年', '7', '5', '8'),
+
+('normalization.min_comparable_years_fallback', '8', 'integer', '',
+ '回退窗口最少可比年度',
+ '10 年窗口内至少保留 8 个可比年度。仍不足则返回 NORMALIZATION_INSUFFICIENT_DATA。',
+ '年', '8', '6', '10'),
+
+('normalization.high_phase_quantile', '0.75', 'percent', '',
+ '高盈利阶段判定分位',
+ '窗口内 EBIT margin 达到该分位以上，视为覆盖到高盈利阶段。',
+ '分位', '0.75', '0.5', '0.95'),
+
+('normalization.low_phase_quantile', '0.25', 'percent', '',
+ '低盈利阶段判定分位',
+ '窗口内 EBIT margin 低于该分位，视为覆盖到低盈利阶段。',
+ '分位', '0.25', '0.05', '0.5'),
+
+('normalization.ebit_formula', '利润总额 + 利息费用 − 利息收入', 'enum', '',
+ 'Reported EBIT 公式',
+ '主 DCF 的默认口径。历史轻解析阶段即按此式计算。',
+ '', '利润总额 + 利息费用 − 利息收入', '', ''),
+
+('normalization.ebit_crosscheck_formula', '营业利润 + 财务费用', 'enum', '',
+ 'Cross-check EBIT 公式',
+ '当两份年报数据齐备时用于交叉核对。两法差异超过容差时进入 needs_review。',
+ '', '营业利润 + 财务费用', '', ''),
+
+('normalization.ebit_crosscheck_tolerance', '0.05', 'percent', '',
+ 'EBIT 两法差异容差',
+ '两种算法差异超过该比例时进入人工复核。',
+ '比例', '0.05', '0.01', '0.20'),
+
+('normalization.default_ebit_variant', 'reported', 'enum', '',
+ 'DCF 默认 EBIT 口径',
+ '会计同学批准调整之前一律使用 reported；批准后才切到 adjusted。',
+ '', 'reported', '', ''),
+
+('normalization.impairment_policy', 'case_by_case', 'enum', '',
+ '资产减值处理',
+ '不机械剔除。反映产能过剩、资产竞争力下降或长期盈利恶化的减值不加回；有充分证据证明是一次性、非重复且不代表持续经营能力下降的，可以加回。',
+ '', 'case_by_case', '', ''),
+
+('normalization.impairment_addback_requires_evidence', '1', 'bool', '',
+ '减值加回需证据',
+ '置 1 时，任何减值加回都必须通过 ebit_adjustment 留下理由与来源页码，并经会计复核。',
+ '', '1', '0', '1'),
+
+('normalization.core_metric', 'ebit_margin', 'enum', '',
+ '正常化核心指标',
+ '收入加权周期中位 EBIT margin。这是 DCF 的唯一起点。',
+ '', 'ebit_margin', '', ''),
+
+('normalization.weighting', 'revenue_weighted', 'enum', '',
+ '加权方式',
+ '按各年营业收入加权，而非简单算术平均——避免小年度的异常利润率被过度放大。',
+ '', 'revenue_weighted', '', ''),
+
+('normalization.require_full_cycle', '1', 'bool', '',
+ '必须通过周期覆盖校验',
+ '置 1 时，未同时覆盖高盈利与低盈利阶段即判定 incomplete_cycle，禁止正常化。',
+ '', '1', '0', '1'),
+
+('normalization.allow_forced', '0', 'bool', '',
+ '允许强行正常化',
+ '固定为 0。数据不足时系统必须拒绝计算，不得退回未经校验的假设值。',
+ '', '0', '0', '0'),
+
+('normalization.require_accounting_review', '1', 'bool', '',
+ '可比年度须经会计复核',
+ '置 1 时，剔除不可比年度必须先由会计同学确认，系统不自动判定。',
+ '', '1', '0', '1'),
+
+-- ---- 交叉验证各项的口径（一律不影响 DCF）----
+('normalization.crosscheck_metrics',
+ '["ton_steel_gross_margin","ebitda_margin","capacity_utilization","roic"]',
+ 'enum', '',
+ '交叉验证指标',
+ '仅作参考，不参与核心计算。用于回答「EBIT margin 中枢这个结论稳不稳」。',
+ '',
+ '["ton_steel_gross_margin","ebitda_margin","capacity_utilization","roic"]', '', ''),
+
+('normalization.crosscheck_agreement_tolerance', '0.20', 'percent', '',
+ '交叉验证一致容差',
+ '交叉验证指标推算的中枢与核心 EBIT margin 中枢相差超过该比例时，标记为需要人工复核。',
+ '比例', '0.20', '0.05', '0.50'),
+
+('crosscheck.ton_steel_gross_margin.denominator', 'sales_volume', 'enum', '',
+ '吨钢毛利分母',
+ '用销售量。若只能得到「售价 − 原材料成本」，必须命名为吨钢原料差价，不得称为吨钢毛利。',
+ '', 'sales_volume', '', ''),
+
+('crosscheck.capacity_utilization.denominator', 'output', 'enum', '',
+ '产能利用率分母',
+ '用产量（与吨钢毛利相反）。一体化钢企用粗钢，轧钢企业用钢材，两者不得混用。',
+ '', 'output', '', ''),
+
+('crosscheck.capacity_utilization.capacity_basis', 'effective', 'enum', '',
+ '产能口径',
+ '采用公司披露的有效产能利用率，不以设计产能作为默认口径。',
+ '', 'effective', '', ''),
+
+('crosscheck.roic.capital_basis', 'average', 'enum', '',
+ 'ROIC 投入资本口径',
+ '取期初期末平均值，不用单一时点值。',
+ '', 'average', '', ''),
+
+('crosscheck.roic.goodwill', 'included', 'enum', '',
+ 'ROIC 商誉处理',
+ '主口径保留商誉，因为商誉是企业实际投入资本的一部分；扣商誉口径只作敏感性分析，两者不得混用。',
+ '', 'included', '', ''),
+
+-- ------------------------------------------------- 估值
+('valuation.terminal_growth_max', '0.02', 'percent', '',
+ '终值增长率上限',
+ '周期行业不得给高永续增速，上限取长期通胀水平。',
+ '比例', '0.02', '0.00', '0.03'),
+
+('valuation.wacc_min', '0.06', 'percent', '',
+ 'WACC 下限',
+ '防止压力情景下 WACC 被推到不切实际的水平。',
+ '比例', '0.06', '0.03', '0.15'),
+
+('valuation.require_exit_multiple_check', '1', 'bool', '',
+ '强制退出倍数校验',
+ '永续增长法与退出倍数法结果须并列展示；两法对不齐时必须说明原因。',
+ '', '1', '0', '1'),
+
+-- ------------------------------------------------- 会计校验
+('check.balance_tolerance', '0.005', 'percent', '',
+ '三表勾稽相对容差',
+ '资产 = 负债 + 所有者权益 等勾稽项的允许相对偏差。超出则优先怀疑解析错误，把相关事实降级为 needs_review。',
+ '比例', '0.005', '0.001', '0.02'),
+
+('check.cash_conversion_warn', '1.0', 'percent', '',
+ '现金转化率预警线',
+ '经营活动现金流 / 净利润 低于该值时提示关注回款质量。',
+ '倍', '1.0', '0.5', '2.0'),
+
+('check.receivable_growth_gap_warn', '0.20', 'percent', '',
+ '应收账款增速差预警线',
+ '应收账款增速 − 收入增速 超过该值时提示收入质量风险。',
+ '比例', '0.20', '0.10', '0.50');
+
+-- ------------------------------------------------- 非经常性损益分类处理（方案选择第 9 条）
+-- split = 需逐年判断是一次性还是持续性；case_by_case = 不机械剔除，逐笔判断
+INSERT INTO rule_config
+  (key, value, value_type, industry, label_cn, description, unit, default_value, min_value, max_value)
+VALUES
+('nonrecurring.gov_subsidy', 'split', 'enum', '', '政府补助',
+ '一次性补助剔除；持续性经营补贴可保留。钢铁企业此项金额常较大，须逐年判断。', '', 'split', '', ''),
+('nonrecurring.asset_disposal', 'exclude', 'enum', '', '资产处置收益/损失',
+ '非日常处置剔除。', '', 'exclude', '', ''),
+('nonrecurring.investment_income', 'split', 'enum', '', '投资收益',
+ '非主营投资收益剔除；与主营业务高度相关且持续发生的联营/合营收益可保留，但需单独标记。', '', 'split', '', ''),
+('nonrecurring.fair_value_change', 'exclude', 'enum', '', '公允价值变动',
+ '非主营金融资产收益通常剔除。', '', 'exclude', '', ''),
+('nonrecurring.hedging', 'keep', 'enum', '', '套期保值',
+ '为原材料或产品风险管理且持续发生的保留；投机性或一次性交易剔除。', '', 'keep', '', ''),
+('nonrecurring.impairment', 'case_by_case', 'enum', '', '资产减值',
+ '不机械剔除。反映产能过剩、资产竞争力下降或长期盈利恶化的不加回；有充分证据证明一次性、非重复且不代表持续经营能力下降的，可以加回。', '', 'case_by_case', '', ''),
+('nonrecurring.restructuring', 'case_by_case', 'enum', '', '重组费用',
+ '一次性且不反映持续经营能力的可加回。', '', 'case_by_case', '', ''),
+('nonrecurring.related_party', 'manual_review', 'enum', '', '关联交易影响',
+ '若存在非市场化定价，进入人工复核。', '', 'manual_review', '', ''),
+('nonrecurring.require_audit_trail', '1', 'bool', '', '调整必须留痕',
+ '所有调整必须保留：原始项目、调整金额、调整方向、调整理由、来源页码、复核状态。', '', '1', '0', '1');
+
+-- ------------------------------------------------- 叙事一致性诊断指数
+-- I = 50 + 20·H + 20·C + 5·R − 10·P − 15·Q   裁剪到 [0,100]
+INSERT INTO rule_config
+  (key, value, value_type, industry, label_cn, description, unit, default_value, min_value, max_value)
+VALUES
+('index.base_score', '50', 'integer', '', '指数基准分', '诊断指数公式的常数项。', '分', '50', '0', '100'),
+('index.weight_history', '20', 'integer', '', '历史兑现度权重 H', '上一年度 MD&A 前瞻性表述与下一年度实际结果的匹配程度。', '分', '20', '0', '50'),
+('index.weight_current', '20', 'integer', '', '当前一致性权重 C', '本期 MD&A 主张与当期财务事实的匹配程度。', '分', '20', '0', '50'),
+('index.weight_risk_shift', '5', 'integer', '', '风险披露变化权重 R', '风险词、不确定性模态词、风险段落长度与位置的变化。', '分', '5', '0', '20'),
+('index.penalty_template', '10', 'integer', '', '模板化惩罚权重 P', '文本高度模板化、缺少可验证指标时的扣分。', '分', '10', '0', '30'),
+('index.penalty_quality_conflict', '15', 'integer', '', '财务质量冲突权重 Q', '勾稽异常与利润-现金流背离等冲突信号。', '分', '15', '0', '30'),
+
+('index.grade_high_min', '70', 'integer', '', '高级别下限', '分值 ≥ 该值为「一致性较高」。', '分', '70', '50', '95'),
+('index.grade_low_max', '45', 'integer', '', '低级别上限', '分值 < 该值为「一致性较低」。', '分', '45', '10', '60'),
+
+('index.min_coverage', '0.60', 'percent', '',
+ '最低置信度加权覆盖率',
+ '低于该值时不出分，grade=insufficient，只展示证据表与人工复核入口。',
+ '比例', '0.60', '0.30', '0.90'),
+
+('index.min_observations', '5', 'integer', '',
+ '最少有效观测数',
+ '进入分母的观测（supported + conflicted）少于该值时不出分。',
+ '条', '5', '1', '20'),
+
+('index.deviation_threshold', '0.20', 'percent', '',
+ '数值目标的明显不一致阈值',
+ '★ 仅适用于 MD&A 明确提出数值目标的情况。「需求增长」「回款改善」这类方向性表述不套用该阈值，改用下面的方向判断规则。',
+ '比例', '0.20', '0.05', '0.50'),
+
+-- ---- 方向判断规则（方案选择第 10 条）----
+('index.direction.opposite_verdict', 'conflicted', 'enum', '',
+ '方向相反时的判定',
+ '实际方向与主张相反，直接标记为冲突，不再做幅度判断。',
+ '', 'conflicted', '', ''),
+
+('index.direction.weak_verdict', 'partial', 'enum', '',
+ '方向一致但幅度偏弱时的判定',
+ '标记为「部分支持」，与「完全兑现」区分开，避免把只兑现一半和全部兑现混为一谈。',
+ '', 'partial', '', ''),
+
+('index.direction.weak_ratio', '0.5', 'percent', '',
+ '部分支持的幅度分界',
+ '实际幅度低于主张目标幅度（或无目标时取历史同类主张中位幅度）的该比例时，判为部分支持。',
+ '比例', '0.5', '0.2', '0.8'),
+
+('index.direction.incomparable_verdict', 'incomparable', 'enum', '',
+ '数据不可比时的判定',
+ '标记为不可判断，既不计入分母也不扣分。',
+ '', 'incomparable', '', ''),
+
+('index.weight.supported', '1.0', 'percent', '', '支持观测的计分权重',
+ '各状态在指数分子中的权重。', '倍', '1.0', '0.5', '1.5'),
+('index.weight.partial', '0.5', 'percent', '', '部分支持观测的计分权重',
+ '部分支持按半权计入。', '倍', '0.5', '0.0', '1.0'),
+('index.weight.conflicted', '-1.0', 'percent', '', '冲突观测的计分权重',
+ '冲突为负权重。', '倍', '-1.0', '-1.5', '-0.5'),
+
+('index.grade_is_display_only', '1', 'bool', '',
+ '分级仅作展示',
+ '固定为 1。70/45 的分级线只用于展示，**不得宣称具有普遍预测意义**，页面须明示这一点。',
+ '', '1', '0', '1'),
+
+-- ------------------------------------------------- 传导至估值情景
+-- 指数 → 情景权重与参数调整。纯函数产出，绝不产出目标价。
+('mapping.high.weights', '[0.60,0.25,0.15]', 'enum', '',
+ '一致性较高时的情景权重',
+ '顺序为 基准/乐观/压力。一致性较高且财务质量稳定 → 保持基准并提高其权重。',
+ '', '[0.60,0.25,0.15]', '', ''),
+
+('mapping.high.delta', '{"revenue_growth":"historical_median","wacc":0,"terminal_growth":0}', 'enum', '',
+ '一致性较高时的参数调整',
+ '增长取历史中位数，WACC 与终值增长率不变。',
+ '', '{"revenue_growth":"historical_median","wacc":0,"terminal_growth":0}', '', ''),
+
+('mapping.medium.weights', '[0.50,0.20,0.30]', 'enum', '',
+ '部分冲突时的情景权重',
+ '存在方向冲突或回款证据不足 → 提高压力情景权重。',
+ '', '[0.50,0.20,0.30]', '', ''),
+
+('mapping.medium.delta', '{"revenue_growth":"historical_p25","wacc":0.005,"terminal_growth":0}', 'enum', '',
+ '部分冲突时的参数调整',
+ '收入增速取历史下四分位，WACC 上调 0.5 个百分点。',
+ '', '{"revenue_growth":"historical_p25","wacc":0.005,"terminal_growth":0}', '', ''),
+
+('mapping.low.weights', '[0.35,0.15,0.50]', 'enum', '',
+ '一致性低时的情景权重',
+ '历史兑现度低且风险披露上升 → 扩大估值区间。',
+ '', '[0.35,0.15,0.50]', '', ''),
+
+('mapping.low.delta', '{"revenue_growth":"historical_p25_x0.9","wacc":0.010,"terminal_growth":-0.005}', 'enum', '',
+ '一致性低时的参数调整',
+ '增速取下四分位再打九折，WACC 上调 1 个百分点，终值增长率下调 0.5 个百分点。',
+ '', '{"revenue_growth":"historical_p25_x0.9","wacc":0.010,"terminal_growth":-0.005}', '', ''),
+
+('mapping.insufficient.delta', '{}', 'enum', '',
+ '证据不足时不做传导',
+ 'grade=insufficient 或不可比占多数时，**不自动改变任何估值参数**，只增加人工复核提示。',
+ '', '{}', '', '');

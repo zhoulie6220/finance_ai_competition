@@ -1,0 +1,4534 @@
+/* 本文件由 backend/scripts/export_schemas.py 自动生成，请勿手改。
+ *
+ * 数据契约的唯一定义源在 backend/app/schemas/（Pydantic v2），
+ * 人类可读版本见 docs/01-data-contract.md。
+ * 契约变更后请重新运行：
+ *     cd backend && python scripts/export_schemas.py
+ */
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "投研工作台数据契约",
+  "description": "由 backend/app/schemas/ 生成",
+  "$defs": {
+    "FactStatus": {
+      "enum": [
+        "validated",
+        "needs_review",
+        "not_found",
+        "rejected"
+      ],
+      "title": "FactStatus",
+      "type": "string"
+    },
+    "IncomparableReason": {
+      "description": "不可直接比较的原因。标记后不进指数扣分，但从主中枢中排除。",
+      "enum": [
+        "mna",
+        "restructuring",
+        "asset_injection",
+        "scope_change",
+        "restatement",
+        "policy_change",
+        "industry_cycle",
+        "other"
+      ],
+      "title": "IncomparableReason",
+      "type": "string"
+    },
+    "PeriodKind": {
+      "description": "数值本身的性质，不是它出现在哪份报告里。\n\n刻意不含 'prior'：FY2023 的数字无论在 2023 年报的「本期」栏还是 2024 年报的\n「上期」栏，都是同一笔事实，period='2023' + kind='current'。多一个 kind 会让\n同一笔事实存成两行，聚合时重复计算。",
+      "enum": [
+        "current",
+        "instant",
+        "opening",
+        "average"
+      ],
+      "title": "PeriodKind",
+      "type": "string"
+    },
+    "Scope": {
+      "description": "会计口径。默认合并口径；母公司口径只在用户明确选择时展示。",
+      "enum": [
+        "consolidated",
+        "parent"
+      ],
+      "title": "Scope",
+      "type": "string"
+    },
+    "FinancialFact": {
+      "description": "一条已验证或待复核的财务事实。\n\n十个契约字段：metric / value / unit / period / scope / source_file /\nsource_page / source_text / confidence / status。",
+      "properties": {
+        "fact_id": {
+          "title": "Fact Id",
+          "type": "string"
+        },
+        "project_id": {
+          "title": "Project Id",
+          "type": "string"
+        },
+        "company_id": {
+          "title": "Company Id",
+          "type": "string"
+        },
+        "is_primary": {
+          "title": "Is Primary",
+          "type": "boolean"
+        },
+        "metric": {
+          "description": "契约名；数据库列是 metric_key",
+          "title": "Metric",
+          "type": "string"
+        },
+        "value": {
+          "anyOf": [
+            {},
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "契约名；数据库列是 value_millions。单位统一为百万元。缺失时为 None，**绝不为 0**",
+          "title": "Value"
+        },
+        "unit": {
+          "default": "百万元",
+          "title": "Unit",
+          "type": "string"
+        },
+        "period": {
+          "description": "'2024' / '2024H1' / '2024-12-31'",
+          "title": "Period",
+          "type": "string"
+        },
+        "scope": {
+          "$ref": "#/$defs/Scope"
+        },
+        "source_file": {
+          "title": "Source File",
+          "type": "string"
+        },
+        "source_page": {
+          "title": "Source Page",
+          "type": "integer"
+        },
+        "source_text": {
+          "title": "Source Text",
+          "type": "string"
+        },
+        "confidence": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Confidence",
+          "type": "number"
+        },
+        "status": {
+          "$ref": "#/$defs/FactStatus"
+        },
+        "period_kind": {
+          "$ref": "#/$defs/PeriodKind"
+        },
+        "period_start": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Period Start"
+        },
+        "period_end": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Period End"
+        },
+        "value_raw": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Value Raw"
+        },
+        "raw_unit": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Raw Unit"
+        },
+        "unit_factor": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Unit Factor"
+        },
+        "source_file_id": {
+          "title": "Source File Id",
+          "type": "string"
+        },
+        "source_printed_page": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "页脚印刷页码；与 PDF 物理页序常不一致，必须分开存",
+          "title": "Source Printed Page"
+        },
+        "source_table": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Table"
+        },
+        "source_row_label": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "原始行名，保留原始标签",
+          "title": "Source Row Label"
+        },
+        "bbox": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Bbox"
+        },
+        "extractor": {
+          "description": "'rule:v3' / 'llm:deepseek-chat@<prompt_hash>' / 'human:<uid>'",
+          "title": "Extractor",
+          "type": "string"
+        },
+        "restated": {
+          "default": false,
+          "title": "Restated",
+          "type": "boolean"
+        },
+        "restatement_note": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Restatement Note"
+        },
+        "comparable": {
+          "default": true,
+          "title": "Comparable",
+          "type": "boolean"
+        },
+        "incomparable_reason": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/IncomparableReason"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "created_at": {
+          "title": "Created At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "fact_id",
+        "project_id",
+        "company_id",
+        "is_primary",
+        "metric",
+        "period",
+        "scope",
+        "source_file",
+        "source_page",
+        "source_text",
+        "confidence",
+        "status",
+        "period_kind",
+        "source_file_id",
+        "extractor",
+        "created_at"
+      ],
+      "title": "FinancialFact",
+      "type": "object"
+    },
+    "ObservationResolution": {
+      "description": "同一次取值的多个观测，裁决结果。",
+      "enum": [
+        "pending",
+        "adopted",
+        "rejected"
+      ],
+      "title": "ObservationResolution",
+      "type": "string"
+    },
+    "SourceLocation": {
+      "description": "同一数字在年报中的位置。位置不同可信度不同，交叉校验时按此加权。",
+      "enum": [
+        "main_statement",
+        "indicator_table",
+        "notes",
+        "mdna_text",
+        "other"
+      ],
+      "title": "SourceLocation",
+      "type": "string"
+    },
+    "FactObservation": {
+      "description": "同一笔事实在年报里的一次出现。\n\n同一个数字往往同时出现在主要指标表、三张主表、附注和正文里，精度还可能不同。\n每次出现各记一条观测，交叉校验后把被采纳的那条标为 adopted 并回填 fact_id，\n其余必须写明未采纳理由。",
+      "properties": {
+        "observation_id": {
+          "title": "Observation Id",
+          "type": "string"
+        },
+        "project_id": {
+          "title": "Project Id",
+          "type": "string"
+        },
+        "company_id": {
+          "title": "Company Id",
+          "type": "string"
+        },
+        "metric": {
+          "title": "Metric",
+          "type": "string"
+        },
+        "period": {
+          "title": "Period",
+          "type": "string"
+        },
+        "period_kind": {
+          "$ref": "#/$defs/PeriodKind"
+        },
+        "scope": {
+          "$ref": "#/$defs/Scope"
+        },
+        "value_raw": {
+          "description": "原样文本，如 '12,345,678,901.23'",
+          "title": "Value Raw",
+          "type": "string"
+        },
+        "raw_unit": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Raw Unit"
+        },
+        "value": {
+          "anyOf": [
+            {},
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Value"
+        },
+        "source_file_id": {
+          "title": "Source File Id",
+          "type": "string"
+        },
+        "source_page": {
+          "title": "Source Page",
+          "type": "integer"
+        },
+        "source_table": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Table"
+        },
+        "source_location": {
+          "$ref": "#/$defs/SourceLocation"
+        },
+        "source_text": {
+          "title": "Source Text",
+          "type": "string"
+        },
+        "bbox": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Bbox"
+        },
+        "confidence": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Confidence",
+          "type": "number"
+        },
+        "extractor": {
+          "title": "Extractor",
+          "type": "string"
+        },
+        "created_at": {
+          "title": "Created At",
+          "type": "string"
+        },
+        "resolution": {
+          "$ref": "#/$defs/ObservationResolution",
+          "default": "pending"
+        },
+        "resolved_fact_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Resolved Fact Id"
+        },
+        "rejection_note": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Rejection Note"
+        }
+      },
+      "required": [
+        "observation_id",
+        "project_id",
+        "company_id",
+        "metric",
+        "period",
+        "period_kind",
+        "scope",
+        "value_raw",
+        "source_file_id",
+        "source_page",
+        "source_location",
+        "source_text",
+        "confidence",
+        "extractor",
+        "created_at"
+      ],
+      "title": "FactObservation",
+      "type": "object"
+    },
+    "FactCorrection": {
+      "description": "人工修正。只追加增量，旧行保留，绝不原地覆盖。",
+      "properties": {
+        "correction_id": {
+          "title": "Correction Id",
+          "type": "string"
+        },
+        "fact_id": {
+          "title": "Fact Id",
+          "type": "string"
+        },
+        "field": {
+          "title": "Field",
+          "type": "string"
+        },
+        "old_value": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Old Value"
+        },
+        "new_value": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "New Value"
+        },
+        "reason": {
+          "title": "Reason",
+          "type": "string"
+        },
+        "operator": {
+          "title": "Operator",
+          "type": "string"
+        },
+        "created_at": {
+          "title": "Created At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "correction_id",
+        "fact_id",
+        "field",
+        "reason",
+        "operator",
+        "created_at"
+      ],
+      "title": "FactCorrection",
+      "type": "object"
+    },
+    "Severity": {
+      "enum": [
+        "info",
+        "warn",
+        "error"
+      ],
+      "title": "Severity",
+      "type": "string"
+    },
+    "CheckResult": {
+      "description": "一条勾稽/校验规则的执行结果。\n\n每条都带公式与输入 fact_id 列表，构成「结论 → 计算 → 字段 → 页码 → 原文」的证据链。",
+      "properties": {
+        "check_id": {
+          "title": "Check Id",
+          "type": "string"
+        },
+        "project_id": {
+          "title": "Project Id",
+          "type": "string"
+        },
+        "period": {
+          "title": "Period",
+          "type": "string"
+        },
+        "scope": {
+          "$ref": "#/$defs/Scope"
+        },
+        "rule_key": {
+          "description": "如 'bs_equation' / 'ni_to_cfo_bridge' / 'cash_rollforward'",
+          "title": "Rule Key",
+          "type": "string"
+        },
+        "severity": {
+          "$ref": "#/$defs/Severity"
+        },
+        "status": {
+          "title": "Status",
+          "type": "string"
+        },
+        "lhs": {
+          "anyOf": [
+            {},
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Lhs"
+        },
+        "rhs": {
+          "anyOf": [
+            {},
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Rhs"
+        },
+        "diff": {
+          "anyOf": [
+            {},
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Diff"
+        },
+        "tolerance": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Tolerance"
+        },
+        "formula": {
+          "title": "Formula",
+          "type": "string"
+        },
+        "input_facts": {
+          "description": "参与计算的 fact_id",
+          "items": {
+            "type": "string"
+          },
+          "title": "Input Facts",
+          "type": "array"
+        },
+        "message": {
+          "description": "中文可读说明，页面直接展示",
+          "title": "Message",
+          "type": "string"
+        },
+        "suggestion": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Suggestion"
+        },
+        "created_at": {
+          "title": "Created At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "check_id",
+        "project_id",
+        "period",
+        "scope",
+        "rule_key",
+        "severity",
+        "status",
+        "formula",
+        "message",
+        "created_at"
+      ],
+      "title": "CheckResult",
+      "type": "object"
+    },
+    "ExampleSource": {
+      "description": "字段字典里例句的来源。\n\n`synthetic_example` 是带【数值】占位符的标准句，只供解析器回归测试用，\n**不得**在界面或报告里当作年报原文展示。",
+      "enum": [
+        "annual_report",
+        "synthetic_example"
+      ],
+      "title": "ExampleSource",
+      "type": "string"
+    },
+    "SignConvention": {
+      "enum": [
+        "positive_is_good",
+        "negative_is_good",
+        "neutral"
+      ],
+      "title": "SignConvention",
+      "type": "string"
+    },
+    "Statement": {
+      "enum": [
+        "balance",
+        "income",
+        "cashflow",
+        "indicator",
+        "industry",
+        "disclosure"
+      ],
+      "title": "Statement",
+      "type": "string"
+    },
+    "UnitKind": {
+      "enum": [
+        "currency",
+        "percent",
+        "shares",
+        "days",
+        "ton",
+        "quantity",
+        "text"
+      ],
+      "title": "UnitKind",
+      "type": "string"
+    },
+    "ValueType": {
+      "enum": [
+        "stock",
+        "flow",
+        "ratio",
+        "text"
+      ],
+      "title": "ValueType",
+      "type": "string"
+    },
+    "MetricDefinition": {
+      "description": "字段字典的一条。aliases / exclusion_terms 由会计同学维护。",
+      "properties": {
+        "metric_key": {
+          "description": "机器可读的指标键，如 'revenue'",
+          "title": "Metric Key",
+          "type": "string"
+        },
+        "label_cn": {
+          "title": "Label Cn",
+          "type": "string"
+        },
+        "aliases": {
+          "description": "年报表格里的原始行名",
+          "items": {
+            "type": "string"
+          },
+          "title": "Aliases",
+          "type": "array"
+        },
+        "exclusion_terms": {
+          "description": "行名**精确等于**这些词时不得映射到本指标，用于挡住「营业成本率 → 营业成本」这类同数量纲的误映射",
+          "items": {
+            "type": "string"
+          },
+          "title": "Exclusion Terms",
+          "type": "array"
+        },
+        "statement": {
+          "$ref": "#/$defs/Statement"
+        },
+        "value_type": {
+          "$ref": "#/$defs/ValueType"
+        },
+        "unit_kind": {
+          "$ref": "#/$defs/UnitKind"
+        },
+        "sign_convention": {
+          "$ref": "#/$defs/SignConvention"
+        },
+        "is_nonrecurring": {
+          "default": false,
+          "title": "Is Nonrecurring",
+          "type": "boolean"
+        },
+        "is_derived": {
+          "default": false,
+          "title": "Is Derived",
+          "type": "boolean"
+        },
+        "industry": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Industry"
+        },
+        "parent_key": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "「其中：」层级的父指标",
+          "title": "Parent Key"
+        },
+        "example_sentence": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Example Sentence"
+        },
+        "example_source": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ExampleSource"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "例句来源。synthetic_example 表示仍是占位符标准句，不得当作真实证据"
+        },
+        "scope_note": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Scope Note"
+        }
+      },
+      "required": [
+        "metric_key",
+        "label_cn",
+        "statement",
+        "value_type",
+        "unit_kind",
+        "sign_convention"
+      ],
+      "title": "MetricDefinition",
+      "type": "object"
+    },
+    "MdnaSectionKind": {
+      "enum": [
+        "mdna",
+        "risk_disclosure",
+        "business_review",
+        "outlook",
+        "other"
+      ],
+      "title": "MdnaSectionKind",
+      "type": "string"
+    },
+    "MdnaSection": {
+      "description": "MD&A 章节切分结果。",
+      "properties": {
+        "section_id": {
+          "title": "Section Id",
+          "type": "string"
+        },
+        "file_id": {
+          "title": "File Id",
+          "type": "string"
+        },
+        "heading": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Heading"
+        },
+        "kind": {
+          "$ref": "#/$defs/MdnaSectionKind"
+        },
+        "page_from": {
+          "title": "Page From",
+          "type": "integer"
+        },
+        "page_to": {
+          "title": "Page To",
+          "type": "integer"
+        },
+        "text": {
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "section_id",
+        "file_id",
+        "kind",
+        "page_from",
+        "page_to",
+        "text"
+      ],
+      "title": "MdnaSection",
+      "type": "object"
+    },
+    "ClaimDirection": {
+      "enum": [
+        "up",
+        "down",
+        "improve",
+        "deteriorate",
+        "flat",
+        "unknown"
+      ],
+      "title": "ClaimDirection",
+      "type": "string"
+    },
+    "ClaimType": {
+      "description": "MD&A 主张的主题。对应大框架里的四类叙事信号。",
+      "enum": [
+        "demand",
+        "order",
+        "capacity",
+        "collection",
+        "product_mix",
+        "cost",
+        "risk",
+        "macro",
+        "other"
+      ],
+      "title": "ClaimType",
+      "type": "string"
+    },
+    "Claim": {
+      "description": "一条管理层主张。\n\n`claim_text` 必须是**原句，不得改写**——证据链的终点就是这句话在年报里的位置。",
+      "properties": {
+        "claim_id": {
+          "title": "Claim Id",
+          "type": "string"
+        },
+        "project_id": {
+          "title": "Project Id",
+          "type": "string"
+        },
+        "section_id": {
+          "title": "Section Id",
+          "type": "string"
+        },
+        "claim_text": {
+          "description": "原句，不改写",
+          "title": "Claim Text",
+          "type": "string"
+        },
+        "subject": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Subject"
+        },
+        "action": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Action"
+        },
+        "object": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Object"
+        },
+        "period_expr": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "原文期间表述，如「2024 年」",
+          "title": "Period Expr"
+        },
+        "period_norm": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "归一化期间",
+          "title": "Period Norm"
+        },
+        "direction": {
+          "$ref": "#/$defs/ClaimDirection",
+          "default": "unknown"
+        },
+        "magnitude_text": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "如「20% 以上」",
+          "title": "Magnitude Text"
+        },
+        "magnitude_value": {
+          "anyOf": [
+            {},
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Magnitude Value"
+        },
+        "magnitude_unit": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Magnitude Unit"
+        },
+        "claim_type": {
+          "$ref": "#/$defs/ClaimType"
+        },
+        "verifiable": {
+          "description": "无法识别期间/对象时为 False",
+          "title": "Verifiable",
+          "type": "boolean"
+        },
+        "background_only": {
+          "default": false,
+          "description": "为 True 时仅作背景展示，不进入一致性评分",
+          "title": "Background Only",
+          "type": "boolean"
+        },
+        "confidence": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Confidence",
+          "type": "number"
+        },
+        "source_file_id": {
+          "title": "Source File Id",
+          "type": "string"
+        },
+        "source_page": {
+          "title": "Source Page",
+          "type": "integer"
+        },
+        "source_text": {
+          "title": "Source Text",
+          "type": "string"
+        },
+        "bbox": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Bbox"
+        },
+        "extractor": {
+          "title": "Extractor",
+          "type": "string"
+        },
+        "prompt_version": {
+          "title": "Prompt Version",
+          "type": "string"
+        },
+        "llm_call_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "抽取这条主张的那次模型调用，可回溯用的 prompt 原文",
+          "title": "Llm Call Id"
+        },
+        "status": {
+          "$ref": "#/$defs/FactStatus"
+        },
+        "created_at": {
+          "title": "Created At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "claim_id",
+        "project_id",
+        "section_id",
+        "claim_text",
+        "claim_type",
+        "verifiable",
+        "confidence",
+        "source_file_id",
+        "source_page",
+        "source_text",
+        "extractor",
+        "prompt_version",
+        "status",
+        "created_at"
+      ],
+      "title": "Claim",
+      "type": "object"
+    },
+    "ClaimIndicator": {
+      "description": "一条主张对应的候选指标。一条主张可以有多个候选。",
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "claim_id": {
+          "title": "Claim Id",
+          "type": "string"
+        },
+        "metric_key": {
+          "title": "Metric Key",
+          "type": "string"
+        },
+        "role": {
+          "description": "'primary' 或 'supporting'",
+          "title": "Role",
+          "type": "string"
+        },
+        "match_confidence": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Match Confidence",
+          "type": "number"
+        },
+        "matched_by": {
+          "description": "'rule:alias' / 'llm:<prompt>' / 'human:<uid>'，规则优先",
+          "title": "Matched By",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "claim_id",
+        "metric_key",
+        "role",
+        "match_confidence",
+        "matched_by"
+      ],
+      "title": "ClaimIndicator",
+      "type": "object"
+    },
+    "MatchVerdict": {
+      "description": "主张—事实匹配的四态 + 部分支持。\n\n`partial` 用于「方向一致但幅度明显偏弱」，避免把只兑现一半与完全兑现混为一谈。",
+      "enum": [
+        "supported",
+        "partial",
+        "conflicted",
+        "incomparable",
+        "missing"
+      ],
+      "title": "MatchVerdict",
+      "type": "string"
+    },
+    "ClaimMatch": {
+      "description": "主张 × 指标 × 期间 三元组——诊断指数的基本观测单位。",
+      "properties": {
+        "match_id": {
+          "title": "Match Id",
+          "type": "string"
+        },
+        "claim_id": {
+          "title": "Claim Id",
+          "type": "string"
+        },
+        "metric_key": {
+          "title": "Metric Key",
+          "type": "string"
+        },
+        "fact_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Fact Id"
+        },
+        "claim_period": {
+          "title": "Claim Period",
+          "type": "string"
+        },
+        "fact_period": {
+          "title": "Fact Period",
+          "type": "string"
+        },
+        "direction_claim": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ClaimDirection"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "direction_actual": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ClaimDirection"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "direction_consistent": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Direction Consistent"
+        },
+        "magnitude_target": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Magnitude Target"
+        },
+        "magnitude_actual": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Magnitude Actual"
+        },
+        "relative_deviation": {
+          "anyOf": [
+            {},
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Relative Deviation"
+        },
+        "verdict": {
+          "$ref": "#/$defs/MatchVerdict"
+        },
+        "reason": {
+          "description": "中文理由，页面直接展示",
+          "title": "Reason",
+          "type": "string"
+        },
+        "confidence": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Confidence",
+          "type": "number"
+        },
+        "formula": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Formula"
+        },
+        "inputs": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "参与计算的 fact_id 与取值，保证可复算",
+          "title": "Inputs"
+        },
+        "reviewer": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reviewer"
+        },
+        "reviewed_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reviewed At"
+        },
+        "created_at": {
+          "title": "Created At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "match_id",
+        "claim_id",
+        "metric_key",
+        "claim_period",
+        "fact_period",
+        "verdict",
+        "reason",
+        "confidence",
+        "created_at"
+      ],
+      "title": "ClaimMatch",
+      "type": "object"
+    },
+    "DiagnosisComponent": {
+      "description": "指数的构成项。页面据此展示「这个分是怎么来的」。",
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "run_id": {
+          "title": "Run Id",
+          "type": "string"
+        },
+        "component": {
+          "description": "history / current / risk_shift / template_penalty / quality_conflict",
+          "title": "Component",
+          "type": "string"
+        },
+        "raw_value": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Raw Value"
+        },
+        "weight": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Weight"
+        },
+        "contribution": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Contribution"
+        },
+        "formula": {
+          "title": "Formula",
+          "type": "string"
+        },
+        "evidence_refs": {
+          "additionalProperties": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "description": "触发本项的 claim_ids / fact_ids / check_ids / match_ids",
+          "title": "Evidence Refs",
+          "type": "object"
+        },
+        "explanation": {
+          "description": "中文说明，模板生成而非 LLM 生成",
+          "title": "Explanation",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "run_id",
+        "component",
+        "formula",
+        "explanation"
+      ],
+      "title": "DiagnosisComponent",
+      "type": "object"
+    },
+    "IndexGrade": {
+      "enum": [
+        "high",
+        "medium",
+        "low",
+        "insufficient"
+      ],
+      "title": "IndexGrade",
+      "type": "string"
+    },
+    "DiagnosisRun": {
+      "description": "一次诊断指数计算的结果。",
+      "properties": {
+        "run_id": {
+          "title": "Run Id",
+          "type": "string"
+        },
+        "project_id": {
+          "title": "Project Id",
+          "type": "string"
+        },
+        "task_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Task Id"
+        },
+        "rule_config_version": {
+          "description": "引用规则版本 → 同输入可复现同结果",
+          "title": "Rule Config Version",
+          "type": "integer"
+        },
+        "observation_count": {
+          "title": "Observation Count",
+          "type": "integer"
+        },
+        "comparable_count": {
+          "description": "进入分母的有效观测 = supported + partial + conflicted",
+          "title": "Comparable Count",
+          "type": "integer"
+        },
+        "incomparable_count": {
+          "default": 0,
+          "description": "不扣分",
+          "title": "Incomparable Count",
+          "type": "integer"
+        },
+        "missing_count": {
+          "default": 0,
+          "description": "不推断失败，转人工复核",
+          "title": "Missing Count",
+          "type": "integer"
+        },
+        "partial_count": {
+          "default": 0,
+          "description": "方向一致但幅度偏弱",
+          "title": "Partial Count",
+          "type": "integer"
+        },
+        "coverage": {
+          "anyOf": [
+            {},
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "置信度加权覆盖率 = Σconf(有效观测) / Σconf(全部可验证主张)",
+          "title": "Coverage"
+        },
+        "score": {
+          "anyOf": [
+            {},
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "0–100；证据不足时为 None",
+          "title": "Score"
+        },
+        "grade": {
+          "$ref": "#/$defs/IndexGrade"
+        },
+        "confidence": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Confidence"
+        },
+        "insufficient_reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Insufficient Reason"
+        },
+        "conclusion_boundary": {
+          "description": "审慎表述模板。禁止输出「管理层叙事虚假」等超出证据范围的结论",
+          "title": "Conclusion Boundary",
+          "type": "string"
+        },
+        "components": {
+          "items": {
+            "$ref": "#/$defs/DiagnosisComponent"
+          },
+          "title": "Components",
+          "type": "array"
+        },
+        "created_at": {
+          "title": "Created At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "run_id",
+        "project_id",
+        "rule_config_version",
+        "observation_count",
+        "comparable_count",
+        "grade",
+        "conclusion_boundary",
+        "created_at"
+      ],
+      "title": "DiagnosisRun",
+      "type": "object"
+    },
+    "RuleConfigItem": {
+      "description": "一条规则参数。页面提供查看 / 修改 / 恢复默认。",
+      "properties": {
+        "key": {
+          "title": "Key",
+          "type": "string"
+        },
+        "industry": {
+          "default": "",
+          "description": "空串表示全局默认；填具体行业则只覆盖该行业",
+          "title": "Industry",
+          "type": "string"
+        },
+        "value": {
+          "title": "Value",
+          "type": "string"
+        },
+        "value_type": {
+          "title": "Value Type",
+          "type": "string"
+        },
+        "label_cn": {
+          "title": "Label Cn",
+          "type": "string"
+        },
+        "description": {
+          "title": "Description",
+          "type": "string"
+        },
+        "unit": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Unit"
+        },
+        "default_value": {
+          "description": "「恢复默认」的依据",
+          "title": "Default Value",
+          "type": "string"
+        },
+        "min_value": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Min Value"
+        },
+        "max_value": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Value"
+        }
+      },
+      "required": [
+        "key",
+        "value",
+        "value_type",
+        "label_cn",
+        "description",
+        "default_value"
+      ],
+      "title": "RuleConfigItem",
+      "type": "object"
+    },
+    "ScenarioDelta": {
+      "description": "诊断指数向估值情景的透明传导结果。\n\n**纯函数的产物，绝不产出目标价。** 每次传导都要能回答\n「原参数是什么、新参数是什么、由哪条证据触发、适用范围到哪」。",
+      "properties": {
+        "scenario": {
+          "description": "base / bull / bear",
+          "title": "Scenario",
+          "type": "string"
+        },
+        "weight": {
+          "description": "情景权重，由映射规则给出而非手填",
+          "title": "Weight"
+        },
+        "revenue_growth_ref": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "如 'historical_p25'，指向 rule_config 里的取数规则",
+          "title": "Revenue Growth Ref"
+        },
+        "wacc_delta": {
+          "anyOf": [
+            {},
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Wacc Delta"
+        },
+        "terminal_growth_delta": {
+          "anyOf": [
+            {},
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Terminal Growth Delta"
+        },
+        "trigger_refs": {
+          "description": "触发本次调整的 diagnosis_component.id",
+          "items": {
+            "type": "string"
+          },
+          "title": "Trigger Refs",
+          "type": "array"
+        },
+        "applied": {
+          "default": true,
+          "description": "grade=insufficient 或不可比占多数时为 False——不自动改变任何参数",
+          "title": "Applied",
+          "type": "boolean"
+        },
+        "note": {
+          "description": "用户可见的中文提示",
+          "title": "Note",
+          "type": "string"
+        }
+      },
+      "required": [
+        "scenario",
+        "weight",
+        "note"
+      ],
+      "title": "ScenarioDelta",
+      "type": "object"
+    },
+    "EbitVariant": {
+      "description": "Reported 为 DCF 默认；Adjusted 需会计逐笔批准后才可切换。",
+      "enum": [
+        "reported",
+        "adjusted"
+      ],
+      "title": "EbitVariant",
+      "type": "string"
+    },
+    "NormalizationStatus": {
+      "enum": [
+        "normalized",
+        "extended_normalized",
+        "NORMALIZATION_INSUFFICIENT_DATA",
+        "incomplete_cycle"
+      ],
+      "title": "NormalizationStatus",
+      "type": "string"
+    },
+    "NormalizationYear": {
+      "description": "窗口内一年的明细。三种 EBIT 并存，禁止只留一个。",
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "normalization_id": {
+          "title": "Normalization Id",
+          "type": "string"
+        },
+        "year": {
+          "title": "Year",
+          "type": "string"
+        },
+        "revenue": {
+          "anyOf": [
+            {},
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Revenue"
+        },
+        "total_profit": {
+          "anyOf": [
+            {},
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Total Profit"
+        },
+        "interest_expense": {
+          "anyOf": [
+            {},
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Interest Expense"
+        },
+        "interest_income": {
+          "anyOf": [
+            {},
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Interest Income"
+        },
+        "operating_profit": {
+          "anyOf": [
+            {},
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "交叉核对用",
+          "title": "Operating Profit"
+        },
+        "financial_expense": {
+          "anyOf": [
+            {},
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "交叉核对用",
+          "title": "Financial Expense"
+        },
+        "reported_ebit": {
+          "anyOf": [
+            {},
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reported Ebit"
+        },
+        "crosscheck_ebit": {
+          "anyOf": [
+            {},
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Crosscheck Ebit"
+        },
+        "adjusted_ebit": {
+          "anyOf": [
+            {},
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Adjusted Ebit"
+        },
+        "crosscheck_deviation": {
+          "anyOf": [
+            {},
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Crosscheck Deviation"
+        },
+        "adjustment_delta": {
+          "anyOf": [
+            {},
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Adjustment Delta"
+        },
+        "adjustment_approved": {
+          "default": false,
+          "description": "会计是否已批准；未批准时主 DCF 只能用 reported",
+          "title": "Adjustment Approved",
+          "type": "boolean"
+        },
+        "ebit_margin": {
+          "anyOf": [
+            {},
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Ebit Margin"
+        },
+        "ebit_variant_used": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/EbitVariant"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "revenue_weight": {
+          "anyOf": [
+            {},
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Revenue Weight"
+        },
+        "phase": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "high / normal / low",
+          "title": "Phase"
+        },
+        "is_median_year": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Is Median Year"
+        },
+        "comparable": {
+          "default": true,
+          "title": "Comparable",
+          "type": "boolean"
+        },
+        "incomparable_reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Incomparable Reason"
+        },
+        "reviewed_by_accounting": {
+          "default": false,
+          "title": "Reviewed By Accounting",
+          "type": "boolean"
+        },
+        "included_in_median": {
+          "default": true,
+          "title": "Included In Median",
+          "type": "boolean"
+        },
+        "revenue_fact_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Revenue Fact Id"
+        },
+        "ebit_fact_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Ebit Fact Id"
+        },
+        "note": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Note"
+        }
+      },
+      "required": [
+        "id",
+        "normalization_id",
+        "year"
+      ],
+      "title": "NormalizationYear",
+      "type": "object"
+    },
+    "WindowMode": {
+      "enum": [
+        "primary_8y",
+        "fallback_10y"
+      ],
+      "title": "WindowMode",
+      "type": "string"
+    },
+    "NormalizationRun": {
+      "description": "一次周期正常化运行。",
+      "properties": {
+        "normalization_id": {
+          "title": "Normalization Id",
+          "type": "string"
+        },
+        "project_id": {
+          "title": "Project Id",
+          "type": "string"
+        },
+        "task_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Task Id"
+        },
+        "window_mode": {
+          "$ref": "#/$defs/WindowMode"
+        },
+        "preferred_years": {
+          "default": 8,
+          "title": "Preferred Years",
+          "type": "integer"
+        },
+        "fallback_years": {
+          "default": 10,
+          "title": "Fallback Years",
+          "type": "integer"
+        },
+        "min_comparable_years": {
+          "title": "Min Comparable Years",
+          "type": "integer"
+        },
+        "anchor_year": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "最新完整年度，窗口据此滚动",
+          "title": "Anchor Year"
+        },
+        "window_start": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Window Start"
+        },
+        "window_end": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Window End"
+        },
+        "years_available": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Years Available"
+        },
+        "comparable_years": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Comparable Years"
+        },
+        "covers_high_phase": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Covers High Phase"
+        },
+        "covers_low_phase": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Covers Low Phase"
+        },
+        "coverage_passed": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Coverage Passed"
+        },
+        "high_threshold": {
+          "anyOf": [
+            {},
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "High Threshold"
+        },
+        "low_threshold": {
+          "anyOf": [
+            {},
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Low Threshold"
+        },
+        "coverage_detail": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Coverage Detail"
+        },
+        "ebit_variant": {
+          "$ref": "#/$defs/EbitVariant",
+          "default": "reported"
+        },
+        "ebit_formula": {
+          "title": "Ebit Formula",
+          "type": "string"
+        },
+        "crosscheck_formula": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Crosscheck Formula"
+        },
+        "crosscheck_max_deviation": {
+          "anyOf": [
+            {},
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Crosscheck Max Deviation"
+        },
+        "crosscheck_needs_review": {
+          "default": false,
+          "title": "Crosscheck Needs Review",
+          "type": "boolean"
+        },
+        "core_metric": {
+          "default": "ebit_margin",
+          "title": "Core Metric",
+          "type": "string"
+        },
+        "weighting": {
+          "default": "revenue_weighted",
+          "title": "Weighting",
+          "type": "string"
+        },
+        "ebit_margin_mid": {
+          "anyOf": [
+            {},
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "收入加权的周期中位 EBIT margin。这是 DCF 的唯一起点",
+          "title": "Ebit Margin Mid"
+        },
+        "ebit_margin_p25": {
+          "anyOf": [
+            {},
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Ebit Margin P25"
+        },
+        "ebit_margin_p75": {
+          "anyOf": [
+            {},
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Ebit Margin P75"
+        },
+        "status": {
+          "$ref": "#/$defs/NormalizationStatus"
+        },
+        "insufficient_reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Insufficient Reason"
+        },
+        "method_version": {
+          "title": "Method Version",
+          "type": "string"
+        },
+        "rule_config_version": {
+          "title": "Rule Config Version",
+          "type": "integer"
+        },
+        "years": {
+          "items": {
+            "$ref": "#/$defs/NormalizationYear"
+          },
+          "title": "Years",
+          "type": "array"
+        },
+        "created_at": {
+          "title": "Created At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "normalization_id",
+        "project_id",
+        "window_mode",
+        "min_comparable_years",
+        "ebit_formula",
+        "status",
+        "method_version",
+        "rule_config_version",
+        "created_at"
+      ],
+      "title": "NormalizationRun",
+      "type": "object"
+    },
+    "AdjustmentCategory": {
+      "enum": [
+        "gov_subsidy",
+        "asset_disposal",
+        "investment_income",
+        "fair_value_change",
+        "hedging",
+        "impairment",
+        "restructuring",
+        "related_party",
+        "other"
+      ],
+      "title": "AdjustmentCategory",
+      "type": "string"
+    },
+    "AdjustmentDirection": {
+      "enum": [
+        "add_back",
+        "deduct"
+      ],
+      "title": "AdjustmentDirection",
+      "type": "string"
+    },
+    "AdjustmentReviewStatus": {
+      "enum": [
+        "pending",
+        "approved",
+        "rejected"
+      ],
+      "title": "AdjustmentReviewStatus",
+      "type": "string"
+    },
+    "EbitAdjustment": {
+      "description": "一笔 EBIT 调整。每一笔都必须留下完整审计痕迹。",
+      "properties": {
+        "adjustment_id": {
+          "title": "Adjustment Id",
+          "type": "string"
+        },
+        "normalization_year_id": {
+          "title": "Normalization Year Id",
+          "type": "string"
+        },
+        "item": {
+          "description": "原始项目名称，原样保留年报里的写法",
+          "title": "Item",
+          "type": "string"
+        },
+        "category": {
+          "$ref": "#/$defs/AdjustmentCategory"
+        },
+        "amount": {
+          "description": "调整金额（正数）",
+          "title": "Amount"
+        },
+        "direction": {
+          "$ref": "#/$defs/AdjustmentDirection"
+        },
+        "reason": {
+          "description": "调整理由，必须可读",
+          "title": "Reason",
+          "type": "string"
+        },
+        "source_file": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source File"
+        },
+        "source_page": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Page"
+        },
+        "review_status": {
+          "$ref": "#/$defs/AdjustmentReviewStatus",
+          "default": "pending"
+        },
+        "reviewer": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reviewer"
+        },
+        "reviewed_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reviewed At"
+        },
+        "created_at": {
+          "title": "Created At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "adjustment_id",
+        "normalization_year_id",
+        "item",
+        "category",
+        "amount",
+        "direction",
+        "reason",
+        "created_at"
+      ],
+      "title": "EbitAdjustment",
+      "type": "object"
+    },
+    "NormalizationCrosscheck": {
+      "description": "交叉验证项：吨钢毛利 / EBITDA margin / 产能利用率 / ROIC。\n\n**一律不影响 DCF。** 核心中枢只能来自 NormalizationRun.ebit_margin_mid。",
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "normalization_id": {
+          "title": "Normalization Id",
+          "type": "string"
+        },
+        "metric_key": {
+          "title": "Metric Key",
+          "type": "string"
+        },
+        "variant": {
+          "default": "primary",
+          "description": "同一指标的多套口径分开存，禁止混用",
+          "title": "Variant",
+          "type": "string"
+        },
+        "mid_cycle_value": {
+          "anyOf": [
+            {},
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Mid Cycle Value"
+        },
+        "unit": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Unit"
+        },
+        "basis": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "原样记录数据来源口径",
+          "title": "Basis"
+        },
+        "data_source": {
+          "description": "company_disclosed / self_calculated / external",
+          "title": "Data Source",
+          "type": "string"
+        },
+        "agrees_with_core": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Agrees With Core"
+        },
+        "deviation_note": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Deviation Note"
+        },
+        "affects_dcf": {
+          "default": false,
+          "description": "固定为 False",
+          "title": "Affects Dcf",
+          "type": "boolean"
+        },
+        "evidence_refs": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Evidence Refs"
+        },
+        "created_at": {
+          "title": "Created At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "normalization_id",
+        "metric_key",
+        "data_source",
+        "created_at"
+      ],
+      "title": "NormalizationCrosscheck",
+      "type": "object"
+    },
+    "PeerRole": {
+      "description": "可比公司的角色。\n\n`chain_reference`（产业链上游参照）**不得进入估值可比集**——\n煤价是钢企的成本项，两者周期驱动因素相反，混进中位数会让它失去意义。",
+      "enum": [
+        "valuation_peer",
+        "chain_reference"
+      ],
+      "title": "PeerRole",
+      "type": "string"
+    },
+    "Profitability": {
+      "enum": [
+        "profitable",
+        "loss"
+      ],
+      "title": "Profitability",
+      "type": "string"
+    },
+    "ComparableCompany": {
+      "description": "可比公司。\n\n煤价是钢企的成本项，两者周期驱动因素相反。把煤企当作钢企的估值可比公司，\n中位数会失去意义——所以产业链上游公司只能以 chain_reference 身份出现。",
+      "properties": {
+        "comparable_id": {
+          "title": "Comparable Id",
+          "type": "string"
+        },
+        "project_id": {
+          "title": "Project Id",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "stock_code": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Stock Code"
+        },
+        "industry": {
+          "title": "Industry",
+          "type": "string"
+        },
+        "sub_industry": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Sub Industry"
+        },
+        "business_similarity": {
+          "title": "Business Similarity",
+          "type": "string"
+        },
+        "scale_note": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Scale Note"
+        },
+        "growth_note": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Growth Note"
+        },
+        "profitability": {
+          "$ref": "#/$defs/Profitability"
+        },
+        "data_date": {
+          "title": "Data Date",
+          "type": "string"
+        },
+        "selection_reason": {
+          "description": "选择理由必须记录",
+          "title": "Selection Reason",
+          "type": "string"
+        },
+        "peer_role": {
+          "$ref": "#/$defs/PeerRole",
+          "default": "valuation_peer"
+        },
+        "pe": {
+          "anyOf": [
+            {},
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Pe"
+        },
+        "ev_ebitda": {
+          "anyOf": [
+            {},
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Ev Ebitda"
+        },
+        "pb": {
+          "anyOf": [
+            {},
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Pb"
+        },
+        "source": {
+          "title": "Source",
+          "type": "string"
+        },
+        "excluded": {
+          "default": false,
+          "title": "Excluded",
+          "type": "boolean"
+        },
+        "exclude_reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Exclude Reason"
+        }
+      },
+      "required": [
+        "comparable_id",
+        "project_id",
+        "name",
+        "industry",
+        "business_similarity",
+        "profitability",
+        "data_date",
+        "selection_reason",
+        "source"
+      ],
+      "title": "ComparableCompany",
+      "type": "object"
+    },
+    "CyclePosition": {
+      "description": "当前处于周期什么位置。必须显式标注，不能假装周期不存在。",
+      "enum": [
+        "peak",
+        "above_mid",
+        "mid",
+        "below_mid",
+        "trough",
+        "unknown"
+      ],
+      "title": "CyclePosition",
+      "type": "string"
+    },
+    "ParamSourceType": {
+      "description": "估值参数的来源。禁止模型凭记忆填入。",
+      "enum": [
+        "historical_fact",
+        "user_input",
+        "comparable_stat",
+        "model_assumption"
+      ],
+      "title": "ParamSourceType",
+      "type": "string"
+    },
+    "ValuationParam": {
+      "description": "一个估值参数。**每个参数都必须标记来源**，禁止模型凭记忆填入。",
+      "properties": {
+        "param_id": {
+          "title": "Param Id",
+          "type": "string"
+        },
+        "scenario_id": {
+          "title": "Scenario Id",
+          "type": "string"
+        },
+        "year": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Year"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "value": {
+          "title": "Value",
+          "type": "string"
+        },
+        "source_type": {
+          "$ref": "#/$defs/ParamSourceType"
+        },
+        "source_ref": {
+          "description": "fact_id / comparable_id / 'user:<uid>' / 'assumption:<key>'",
+          "title": "Source Ref",
+          "type": "string"
+        }
+      },
+      "required": [
+        "param_id",
+        "scenario_id",
+        "name",
+        "value",
+        "source_type",
+        "source_ref"
+      ],
+      "title": "ValuationParam",
+      "type": "object"
+    },
+    "ValuationScenario": {
+      "description": "一个估值情景。输出永远是区间，不是单一目标价。",
+      "properties": {
+        "scenario_id": {
+          "title": "Scenario Id",
+          "type": "string"
+        },
+        "run_id": {
+          "title": "Run Id",
+          "type": "string"
+        },
+        "scenario": {
+          "description": "base / bull / bear",
+          "title": "Scenario",
+          "type": "string"
+        },
+        "weight": {
+          "description": "由诊断指数的映射规则给出，非手填",
+          "title": "Weight"
+        },
+        "enterprise_value": {
+          "anyOf": [
+            {},
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Enterprise Value"
+        },
+        "equity_value": {
+          "anyOf": [
+            {},
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Equity Value"
+        },
+        "value_per_share": {
+          "anyOf": [
+            {},
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Value Per Share"
+        },
+        "param_delta": {
+          "additionalProperties": true,
+          "title": "Param Delta",
+          "type": "object"
+        },
+        "trigger_refs": {
+          "description": "引用 diagnosis_component.id，构成「原参数—新参数—触发证据」",
+          "items": {
+            "type": "string"
+          },
+          "title": "Trigger Refs",
+          "type": "array"
+        },
+        "params": {
+          "items": {
+            "$ref": "#/$defs/ValuationParam"
+          },
+          "title": "Params",
+          "type": "array"
+        },
+        "created_at": {
+          "title": "Created At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "scenario_id",
+        "run_id",
+        "scenario",
+        "weight",
+        "created_at"
+      ],
+      "title": "ValuationScenario",
+      "type": "object"
+    },
+    "ValuationRun": {
+      "description": "一次估值运行。",
+      "properties": {
+        "run_id": {
+          "title": "Run Id",
+          "type": "string"
+        },
+        "project_id": {
+          "title": "Project Id",
+          "type": "string"
+        },
+        "task_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Task Id"
+        },
+        "diagnosis_run_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "指数→情景的传导来源",
+          "title": "Diagnosis Run Id"
+        },
+        "model": {
+          "default": "dcf_fcff",
+          "title": "Model",
+          "type": "string"
+        },
+        "currency": {
+          "default": "CNY",
+          "title": "Currency",
+          "type": "string"
+        },
+        "forecast_years": {
+          "title": "Forecast Years",
+          "type": "integer"
+        },
+        "base_year": {
+          "title": "Base Year",
+          "type": "string"
+        },
+        "tax_rate": {
+          "title": "Tax Rate"
+        },
+        "net_debt": {
+          "title": "Net Debt"
+        },
+        "net_debt_source": {
+          "title": "Net Debt Source",
+          "type": "string"
+        },
+        "non_operating_assets": {
+          "anyOf": [
+            {},
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Non Operating Assets"
+        },
+        "minority_interest": {
+          "anyOf": [
+            {},
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Minority Interest"
+        },
+        "lease_liability": {
+          "anyOf": [
+            {},
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Lease Liability"
+        },
+        "diluted_shares": {
+          "description": "EV → 股权价值必需",
+          "title": "Diluted Shares",
+          "type": "string"
+        },
+        "diluted_shares_source": {
+          "title": "Diluted Shares Source",
+          "type": "string"
+        },
+        "terminal_method": {
+          "default": "gordon",
+          "title": "Terminal Method",
+          "type": "string"
+        },
+        "cycle_position": {
+          "$ref": "#/$defs/CyclePosition",
+          "default": "unknown",
+          "description": "必须显式标注当前处于周期什么位置，不能假装周期不存在"
+        },
+        "cycle_position_basis": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Cycle Position Basis"
+        },
+        "normalized_basis_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "周期行业必填，且被引用那次运行必须是已正常化状态；否则 DCF 必须拒绝计算",
+          "title": "Normalized Basis Id"
+        },
+        "ebit_basis": {
+          "$ref": "#/$defs/EbitVariant",
+          "default": "reported",
+          "description": "默认 reported；只有会计逐笔批准后才允许切到 adjusted"
+        },
+        "exit_multiple_check": {
+          "anyOf": [
+            {},
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Exit Multiple Check"
+        },
+        "implied_exit_multiple": {
+          "anyOf": [
+            {},
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Implied Exit Multiple"
+        },
+        "scenarios": {
+          "items": {
+            "$ref": "#/$defs/ValuationScenario"
+          },
+          "title": "Scenarios",
+          "type": "array"
+        },
+        "rule_config_version": {
+          "title": "Rule Config Version",
+          "type": "integer"
+        },
+        "created_at": {
+          "title": "Created At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "run_id",
+        "project_id",
+        "forecast_years",
+        "base_year",
+        "tax_rate",
+        "net_debt",
+        "net_debt_source",
+        "diluted_shares",
+        "diluted_shares_source",
+        "rule_config_version",
+        "created_at"
+      ],
+      "title": "ValuationRun",
+      "type": "object"
+    },
+    "StepStatus": {
+      "enum": [
+        "pending",
+        "running",
+        "succeeded",
+        "failed",
+        "skipped",
+        "retrying"
+      ],
+      "title": "StepStatus",
+      "type": "string"
+    },
+    "TaskStatus": {
+      "enum": [
+        "pending",
+        "planned",
+        "running",
+        "waiting_confirm",
+        "succeeded",
+        "failed",
+        "cancelled"
+      ],
+      "title": "TaskStatus",
+      "type": "string"
+    },
+    "TaskStep": {
+      "description": "任务计划中的一步。",
+      "properties": {
+        "step_id": {
+          "title": "Step Id",
+          "type": "string"
+        },
+        "task_id": {
+          "title": "Task Id",
+          "type": "string"
+        },
+        "seq": {
+          "title": "Seq",
+          "type": "integer"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "skill_key": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Skill Key"
+        },
+        "tool_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Tool Name"
+        },
+        "status": {
+          "$ref": "#/$defs/StepStatus"
+        },
+        "depends_on": {
+          "description": "依赖的 step_id，供前端画时间线",
+          "items": {
+            "type": "string"
+          },
+          "title": "Depends On",
+          "type": "array"
+        },
+        "input_ref": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Input Ref"
+        },
+        "output_ref": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Output Ref"
+        },
+        "error": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Error"
+        },
+        "retry_of": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Retry Of"
+        },
+        "started_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Started At"
+        },
+        "finished_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Finished At"
+        }
+      },
+      "required": [
+        "step_id",
+        "task_id",
+        "seq",
+        "name",
+        "status"
+      ],
+      "title": "TaskStep",
+      "type": "object"
+    },
+    "Task": {
+      "description": "一次编排任务。\n\nAgent 必须**先生成计划再执行**（plan 非空且 plan_confirmed），不允许边想边做——\n否则「执行过程可追溯」无从谈起。",
+      "properties": {
+        "task_id": {
+          "title": "Task Id",
+          "type": "string"
+        },
+        "project_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Project Id"
+        },
+        "user_input": {
+          "description": "用户原话",
+          "title": "User Input",
+          "type": "string"
+        },
+        "intent": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Intent"
+        },
+        "skill_key": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Skill Key"
+        },
+        "plan": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "步骤 + 依赖 + 工具 + 是否含 LLM",
+          "title": "Plan"
+        },
+        "plan_confirmed": {
+          "default": false,
+          "title": "Plan Confirmed",
+          "type": "boolean"
+        },
+        "status": {
+          "$ref": "#/$defs/TaskStatus"
+        },
+        "llm_plan_call_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Llm Plan Call Id"
+        },
+        "error": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Error"
+        },
+        "manifest_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Manifest Id"
+        },
+        "steps": {
+          "items": {
+            "$ref": "#/$defs/TaskStep"
+          },
+          "title": "Steps",
+          "type": "array"
+        },
+        "created_at": {
+          "title": "Created At",
+          "type": "string"
+        },
+        "started_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Started At"
+        },
+        "finished_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Finished At"
+        }
+      },
+      "required": [
+        "task_id",
+        "user_input",
+        "status",
+        "created_at"
+      ],
+      "title": "Task",
+      "type": "object"
+    },
+    "ToolTransport": {
+      "enum": [
+        "rest",
+        "sse",
+        "mcp",
+        "cli",
+        "internal",
+        "skill"
+      ],
+      "title": "ToolTransport",
+      "type": "string"
+    },
+    "ToolCall": {
+      "description": "一次工具调用。",
+      "properties": {
+        "call_id": {
+          "title": "Call Id",
+          "type": "string"
+        },
+        "task_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Task Id"
+        },
+        "step_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Step Id"
+        },
+        "tool_name": {
+          "title": "Tool Name",
+          "type": "string"
+        },
+        "tool_version": {
+          "title": "Tool Version",
+          "type": "string"
+        },
+        "transport": {
+          "$ref": "#/$defs/ToolTransport"
+        },
+        "deterministic": {
+          "description": "True=纯计算由程序完成；False=含 LLM。前端据此区分「程序算的」与「模型理解的」，评审也能一眼看出边界",
+          "title": "Deterministic",
+          "type": "boolean"
+        },
+        "args": {
+          "additionalProperties": true,
+          "description": "入参（已脱敏）",
+          "title": "Args",
+          "type": "object"
+        },
+        "result_summary": {
+          "title": "Result Summary",
+          "type": "string"
+        },
+        "result_hash": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Result Hash"
+        },
+        "status": {
+          "title": "Status",
+          "type": "string"
+        },
+        "duration_ms": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Duration Ms"
+        },
+        "error": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Error"
+        },
+        "created_at": {
+          "title": "Created At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "call_id",
+        "tool_name",
+        "tool_version",
+        "transport",
+        "deterministic",
+        "result_summary",
+        "status",
+        "created_at"
+      ],
+      "title": "ToolCall",
+      "type": "object"
+    },
+    "LlmCall": {
+      "description": "一次模型调用。\n\n`output` 保存原始输出，配合 prompt_hash + input_hash 可以离线回放——\n现场断网时走预录响应，**界面必须显著标注「离线回放模式」**。",
+      "properties": {
+        "call_id": {
+          "title": "Call Id",
+          "type": "string"
+        },
+        "task_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Task Id"
+        },
+        "step_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Step Id"
+        },
+        "purpose": {
+          "description": "intent / plan / claim_extract / memo_text",
+          "title": "Purpose",
+          "type": "string"
+        },
+        "model": {
+          "title": "Model",
+          "type": "string"
+        },
+        "model_version": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Model Version"
+        },
+        "prompt_key": {
+          "title": "Prompt Key",
+          "type": "string"
+        },
+        "prompt_version": {
+          "title": "Prompt Version",
+          "type": "string"
+        },
+        "prompt_hash": {
+          "title": "Prompt Hash",
+          "type": "string"
+        },
+        "params": {
+          "additionalProperties": true,
+          "description": "temperature/seed 等，**不含密钥**",
+          "title": "Params",
+          "type": "object"
+        },
+        "input_hash": {
+          "title": "Input Hash",
+          "type": "string"
+        },
+        "input_digest": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Input Digest"
+        },
+        "output": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Output"
+        },
+        "tokens_in": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Tokens In"
+        },
+        "tokens_out": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Tokens Out"
+        },
+        "latency_ms": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Latency Ms"
+        },
+        "cached": {
+          "default": false,
+          "title": "Cached",
+          "type": "boolean"
+        },
+        "cassette_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "离线回放的来源",
+          "title": "Cassette Id"
+        },
+        "status": {
+          "title": "Status",
+          "type": "string"
+        },
+        "error": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Error"
+        },
+        "created_at": {
+          "title": "Created At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "call_id",
+        "purpose",
+        "model",
+        "prompt_key",
+        "prompt_version",
+        "prompt_hash",
+        "input_hash",
+        "status",
+        "created_at"
+      ],
+      "title": "LlmCall",
+      "type": "object"
+    },
+    "FileAccessLog": {
+      "description": "一次文件访问。「完整记录文件访问」的落点。",
+      "properties": {
+        "id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Id"
+        },
+        "ts": {
+          "title": "Ts",
+          "type": "string"
+        },
+        "actor": {
+          "description": "'user:<uid>' / 'tool:<name>' / 'mcp:<server>'",
+          "title": "Actor",
+          "type": "string"
+        },
+        "file_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "File Id"
+        },
+        "rel_path": {
+          "description": "相对 DATA_ROOT 的路径；绝对路径不入库",
+          "title": "Rel Path",
+          "type": "string"
+        },
+        "action": {
+          "description": "read / open / preview / export / deny",
+          "title": "Action",
+          "type": "string"
+        },
+        "page_no": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Page No"
+        },
+        "task_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Task Id"
+        },
+        "tool_call_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Tool Call Id"
+        },
+        "sha256_verified": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Sha256 Verified"
+        },
+        "allowed": {
+          "title": "Allowed",
+          "type": "boolean"
+        },
+        "deny_reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Deny Reason"
+        }
+      },
+      "required": [
+        "ts",
+        "actor",
+        "rel_path",
+        "action",
+        "allowed"
+      ],
+      "title": "FileAccessLog",
+      "type": "object"
+    },
+    "RunManifest": {
+      "description": "复现一次的完整凭据。\n\n「同一份输入和配置可以重新生成同一计算结果」不是靠承诺，是靠这张表：\n代码版本 + 依赖锁哈希 + 输入文件 sha256 + 模型名版本 + prompt 注册表哈希 +\n规则版本 + 随机种子，缺一不可。",
+      "properties": {
+        "manifest_id": {
+          "title": "Manifest Id",
+          "type": "string"
+        },
+        "project_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Project Id"
+        },
+        "task_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Task Id"
+        },
+        "code_version": {
+          "title": "Code Version",
+          "type": "string"
+        },
+        "code_dirty": {
+          "description": "工作区有未提交改动时为 True，提示结果可能不可复现",
+          "title": "Code Dirty",
+          "type": "boolean"
+        },
+        "python_version": {
+          "title": "Python Version",
+          "type": "string"
+        },
+        "deps_lock_hash": {
+          "title": "Deps Lock Hash",
+          "type": "string"
+        },
+        "sample_pack_version": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Sample Pack Version"
+        },
+        "model_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Model Name"
+        },
+        "model_version": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Model Version"
+        },
+        "prompt_registry_hash": {
+          "title": "Prompt Registry Hash",
+          "type": "string"
+        },
+        "rule_config_version": {
+          "title": "Rule Config Version",
+          "type": "integer"
+        },
+        "random_seed": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Random Seed"
+        },
+        "input_file_hashes": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "{file_id: sha256}",
+          "title": "Input File Hashes",
+          "type": "object"
+        },
+        "output_hash": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Output Hash"
+        },
+        "offline_replay": {
+          "default": false,
+          "title": "Offline Replay",
+          "type": "boolean"
+        },
+        "created_at": {
+          "title": "Created At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "manifest_id",
+        "code_version",
+        "code_dirty",
+        "python_version",
+        "deps_lock_hash",
+        "prompt_registry_hash",
+        "rule_config_version",
+        "created_at"
+      ],
+      "title": "RunManifest",
+      "type": "object"
+    },
+    "LogLevel": {
+      "enum": [
+        "DEBUG",
+        "INFO",
+        "WARNING",
+        "ERROR",
+        "CRITICAL"
+      ],
+      "title": "LogLevel",
+      "type": "string"
+    },
+    "AppLog": {
+      "description": "结构化应用日志。\n\n主存数据库而非文件：`.gitignore` 忽略了 `logs`，写文件的日志不会随项目导出，\n也无法在页面上按 task_id 查询。",
+      "properties": {
+        "id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Id"
+        },
+        "ts": {
+          "title": "Ts",
+          "type": "string"
+        },
+        "level": {
+          "$ref": "#/$defs/LogLevel"
+        },
+        "logger": {
+          "title": "Logger",
+          "type": "string"
+        },
+        "event": {
+          "title": "Event",
+          "type": "string"
+        },
+        "request_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Request Id"
+        },
+        "task_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Task Id"
+        },
+        "step_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Step Id"
+        },
+        "message": {
+          "title": "Message",
+          "type": "string"
+        },
+        "payload": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Payload"
+        },
+        "duration_ms": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Duration Ms"
+        }
+      },
+      "required": [
+        "ts",
+        "level",
+        "logger",
+        "event",
+        "message"
+      ],
+      "title": "AppLog",
+      "type": "object"
+    },
+    "TaskEvent": {
+      "description": "SSE 事件。前端按 seq 游标重连，断线时带 Last-Event-ID 续传，保证时间线不丢帧。",
+      "properties": {
+        "seq": {
+          "title": "Seq",
+          "type": "integer"
+        },
+        "ts": {
+          "title": "Ts",
+          "type": "string"
+        },
+        "task_id": {
+          "title": "Task Id",
+          "type": "string"
+        },
+        "step_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Step Id"
+        },
+        "type": {
+          "description": "plan.created / step.started / step.succeeded / step.failed / tool.called / tool.result / llm.called / llm.result / progress / warning / evidence.attached / review.required / task.completed / heartbeat",
+          "title": "Type",
+          "type": "string"
+        },
+        "payload": {
+          "additionalProperties": true,
+          "title": "Payload",
+          "type": "object"
+        }
+      },
+      "required": [
+        "seq",
+        "ts",
+        "task_id",
+        "type"
+      ],
+      "title": "TaskEvent",
+      "type": "object"
+    },
+    "EvidenceKind": {
+      "enum": [
+        "fact",
+        "claim",
+        "match",
+        "check",
+        "calc",
+        "llm",
+        "page",
+        "citation",
+        "peer",
+        "benchmark"
+      ],
+      "title": "EvidenceKind",
+      "type": "string"
+    },
+    "Evidence": {
+      "description": "一条证据指针。\n\n`ref_table` + `ref_id` 指向系统里任何一个可被引用的对象（事实、主张、匹配、\n校验、计算、页面……），`file_id` + `page_no` + `quote` 指向它在年报里的出处。",
+      "properties": {
+        "evidence_id": {
+          "title": "Evidence Id",
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/$defs/EvidenceKind"
+        },
+        "ref_table": {
+          "title": "Ref Table",
+          "type": "string"
+        },
+        "ref_id": {
+          "title": "Ref Id",
+          "type": "string"
+        },
+        "file_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "File Id"
+        },
+        "page_no": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Page No"
+        },
+        "bbox": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Bbox"
+        },
+        "quote": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Quote"
+        },
+        "label_cn": {
+          "description": "给用户看的出处描述，如「2024年报 p.86 合并现金流量表」",
+          "title": "Label Cn",
+          "type": "string"
+        },
+        "created_at": {
+          "title": "Created At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "evidence_id",
+        "kind",
+        "ref_table",
+        "ref_id",
+        "label_cn",
+        "created_at"
+      ],
+      "title": "Evidence",
+      "type": "object"
+    },
+    "ReportCitation": {
+      "description": "报告正文里的一个引用锚点。\n\n`number_ref` 记录被引用的数字，用于校验「正文写的数」与「证据里的数」是否一致——\n这是防止模型在组织文字时悄悄改数的最后一道检查。",
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "report_id": {
+          "title": "Report Id",
+          "type": "string"
+        },
+        "anchor": {
+          "description": "正文中的锚点，如 '[E12]'",
+          "title": "Anchor",
+          "type": "string"
+        },
+        "number_ref": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Number Ref"
+        },
+        "evidence_id": {
+          "title": "Evidence Id",
+          "type": "string"
+        },
+        "rendered_text": {
+          "title": "Rendered Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "report_id",
+        "anchor",
+        "evidence_id",
+        "rendered_text"
+      ],
+      "title": "ReportCitation",
+      "type": "object"
+    },
+    "ReportKind": {
+      "enum": [
+        "memo",
+        "audit",
+        "analysis"
+      ],
+      "title": "ReportKind",
+      "type": "string"
+    },
+    "Report": {
+      "description": "一份生成的报告（备忘录 / 纠错清单 / 分析）。\n\n备忘录使用固定九段模板，**不让模型自由发挥结构**——结构一自由，风险与证伪\n条件这类「不写也没人发现」的段落就会消失。",
+      "properties": {
+        "report_id": {
+          "title": "Report Id",
+          "type": "string"
+        },
+        "project_id": {
+          "title": "Project Id",
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/$defs/ReportKind"
+        },
+        "template_key": {
+          "title": "Template Key",
+          "type": "string"
+        },
+        "template_version": {
+          "title": "Template Version",
+          "type": "string"
+        },
+        "version": {
+          "title": "Version",
+          "type": "integer"
+        },
+        "payload_md": {
+          "title": "Payload Md",
+          "type": "string"
+        },
+        "payload_json": {
+          "additionalProperties": true,
+          "title": "Payload Json",
+          "type": "object"
+        },
+        "manifest_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Manifest Id"
+        },
+        "citations": {
+          "items": {
+            "$ref": "#/$defs/ReportCitation"
+          },
+          "title": "Citations",
+          "type": "array"
+        },
+        "created_at": {
+          "title": "Created At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "report_id",
+        "project_id",
+        "kind",
+        "template_key",
+        "template_version",
+        "version",
+        "payload_md",
+        "created_at"
+      ],
+      "title": "Report",
+      "type": "object"
+    },
+    "AuditFindingStatus": {
+      "enum": [
+        "confirmed",
+        "needs_review",
+        "ignored"
+      ],
+      "title": "AuditFindingStatus",
+      "type": "string"
+    },
+    "AuditIssueType": {
+      "enum": [
+        "number",
+        "unit",
+        "period",
+        "scope",
+        "multiple",
+        "citation",
+        "opinion_mixed"
+      ],
+      "title": "AuditIssueType",
+      "type": "string"
+    },
+    "AuditFinding": {
+      "description": "研究报告纠错的一条发现。",
+      "properties": {
+        "finding_id": {
+          "title": "Finding Id",
+          "type": "string"
+        },
+        "report_id": {
+          "title": "Report Id",
+          "type": "string"
+        },
+        "original_text": {
+          "title": "Original Text",
+          "type": "string"
+        },
+        "issue_type": {
+          "$ref": "#/$defs/AuditIssueType"
+        },
+        "expected_value": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Expected Value"
+        },
+        "evidence_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Evidence Id"
+        },
+        "severity": {
+          "$ref": "#/$defs/Severity"
+        },
+        "fix_suggestion": {
+          "title": "Fix Suggestion",
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/$defs/AuditFindingStatus",
+          "default": "needs_review"
+        },
+        "created_at": {
+          "title": "Created At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "finding_id",
+        "report_id",
+        "original_text",
+        "issue_type",
+        "severity",
+        "fix_suggestion",
+        "created_at"
+      ],
+      "title": "AuditFinding",
+      "type": "object"
+    }
+  }
+}

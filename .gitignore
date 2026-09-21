@@ -1,4 +1,8 @@
-# Logs
+# ---- Node / 前端 ----
+node_modules
+dist
+dist-ssr
+*.local
 logs
 *.log
 npm-debug.log*
@@ -7,12 +11,32 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
-node_modules
-dist
-dist-ssr
-*.local
+# ---- Python / 后端 ----
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
 
-# Editor directories and files
+# 运行期产物：SQLite 库、上传文件、页面截图、导出件
+backend/var/
+*.db
+*.db-wal
+*.db-shm
+
+# 密钥与本地配置（.env.example 需入库，.env 不入库）
+.env
+.env.local
+!.env.example
+
+# 样例年报 PDF 体积较大（每家约 5–20MB，9 份可达上百 MB），不入库。
+# 提取后的结构化产物与黄金标注集需入库，见 backend/app/data/。
+backend/app/data/samples/raw/
+
+# ---- 编辑器 ----
 .vscode/*
 !.vscode/extensions.json
 .idea
