@@ -133,3 +133,57 @@ def test_matching_is_exact_not_substring() -> None:
     assert index.match("应收票据及应收账款").metric_key == "notes_and_ar"
     assert index.match("其他应收款").metric_key is None      # 字典里没有，不硬塞
     assert index.match("货币资金合计").metric_key is None     # 不是「货币资金」
+
+
+# ---------------------------------------------------------------- 证据原文
+
+
+def _line(*cells: tuple[str, float]) -> "LogicalLine":
+    """按「每个单元格从某个 x 开始、字宽 5pt」造一个逻辑行。
+
+    ⚠ 传进来的必须是 `Char`，不能是裸的三元组——`display_text` 读的是 `char.c`，
+    传元组会得到 `'tuple' object has no attribute 'c'`，
+    而这个报错出现在 `LogicalLine` 内部，看着像是实现坏了。
+    """
+    from app.parsing.reader import Char, LogicalLine
+
+    chars: list[Char] = []
+    for text, left in cells:
+        for i, ch in enumerate(text):
+            x0 = left + i * 5.0
+            chars.append(Char(c=ch, x0=x0, x1=x0 + 5.0, y0=100.0))
+    return LogicalLine(y=100.0, chars=tuple(chars))
+
+
+class TestDisplayText:
+    """`display_text`：证据面板里显示的「年报原文」。
+
+    它和 `full_text` 的差别只有一个——**单元格之间补空格**。看着像排版小事，
+    但 `source_text` 就是「点任意结论回到年报原文」里的那句原文：
+    数字全对而糊成一串时，评审的第一反应是解析坏了。
+    """
+
+    def test_cells_are_separated_but_numbers_are_not(self):
+        """列与列之间补空格；数字内部不补——`1,234.56` 拆成 `1, 234.56` 就毁了。"""
+        line = _line(("营业收入", 50.0), ("1,234.56", 400.0))
+
+        assert line.full_text == "营业收入1,234.56"        # 粘成一片
+        assert line.display_text == "营业收入  1,234.56"   # 分得开，数字仍完整
+
+    def test_wrapped_segment_is_not_reordered(self):
+        """⚠ 折行段不能被按 x0 重排插回第一段中间。
+
+        折行段的 x 回到左边（与行名同栏）。一旦按 x0 全局排序，第二段的字会
+        **插进第一段数字的中间**，拼出一个年报上根本没有的句子——
+        而它看起来完全正常，没有任何地方会报错。
+        """
+        # 顺序与 merge_wrapped 的输出一致：第一段整体在前，折行段接在后面
+        line = _line(("以公允价值计量", 50.0), ("1234", 400.0), ("的金融资产", 50.0))
+
+        assert line.display_text == "以公允价值计量  1234的金融资产"
+        assert line.display_text.index("1234") < line.display_text.index("的金融资产")
+
+    def test_empty_line(self):
+        from app.parsing.reader import LogicalLine
+
+        assert LogicalLine(y=0.0, chars=()).display_text == ""

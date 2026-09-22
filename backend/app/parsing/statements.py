@@ -522,7 +522,11 @@ def _parse_rows(
             label=label, note_ref=note_cell.text if note_cell else None,
             values=tuple(values), dashes=tuple(dashes),
             page_no=page_of.get(id(ln), page_no + 1),
-            source_text=ln.full_text,
+            # ⚠ 用 display_text 而不是 full_text：这一列会落进
+            #   `financial_fact.source_text`，最后显示在证据面板里当「年报原文」。
+            #   full_text 把单元格粘成一片（`其中：营业收入51322,115,...`），
+            #   数值全对，但读起来像解析坏了。
+            source_text=ln.display_text,
         ))
     return out
 

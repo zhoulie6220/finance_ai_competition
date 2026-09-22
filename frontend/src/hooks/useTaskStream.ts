@@ -47,6 +47,27 @@ interface Payload {
   ref?: string
   duration_ms?: number
   deterministic?: boolean
+  /** 步骤的结构化产出。只有 step.succeeded 带它。 */
+  value?: unknown
+}
+
+/**
+ * 一步的结构化产出。
+ *
+ * `summary` 是给人看的一句话，`value` 才是**能点开的东西**——公式、入参、
+ * 逐年数据点、以及每个点的年报出处。
+ *
+ * 这两者必须分清：只拿 `summary` 去渲染，界面上就只剩一句
+ * 「营业收入 2014–2024：187,414 → 322,116 百万元」，用户没有任何办法核对它。
+ * 而「点任意结论回到计算过程」正是这个系统区别于「AI 财报摘要工具」的地方。
+ */
+export interface StepResult {
+  seq: number
+  stepId: string | null
+  name: string
+  summary: string
+  /** 工具返回的形状：`{ result, formula, inputs }`，或 Skill 自己的对象 */
+  value: Record<string, unknown> | null
 }
 
 function asPayload(e: TaskEvent): Payload {
@@ -100,6 +121,8 @@ function toItem(e: TaskEvent): TimelineItem | null {
 export interface TaskStream {
   events: TaskEvent[]
   timeline: TimelineItem[]
+  /** 各步骤的结构化产出，按 seq 升序。结果面板渲染的就是它。 */
+  results: StepResult[]
   /** 'idle' | 'streaming' | 'done' | 'error' */
   phase: 'idle' | 'streaming' | 'done' | 'error'
   /** 连接状态：断线时页面要能显示「重连中」，而不是假装一切正常 */
@@ -112,6 +135,7 @@ export interface TaskStream {
 export function useTaskStream(): TaskStream {
   const [events, setEvents] = useState<TaskEvent[]>([])
   const [timeline, setTimeline] = useState<TimelineItem[]>([])
+  const [results, setResults] = useState<StepResult[]>([])
   const [phase, setPhase] = useState<TaskStream['phase']>('idle')
   const [connected, setConnected] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -131,6 +155,7 @@ export function useTaskStream(): TaskStream {
     close()
     setEvents([])
     setTimeline([])
+    setResults([])
     setPhase('idle')
     setError(null)
   }, [close])
@@ -140,6 +165,7 @@ export function useTaskStream(): TaskStream {
       close()
       setEvents([])
       setTimeline([])
+      setResults([])
       setError(null)
       setPhase('streaming')
 
@@ -166,6 +192,27 @@ export function useTaskStream(): TaskStream {
         const item = toItem(parsed)
         if (item) setTimeline((prev) => [...prev, item])
 
+        if (parsed.type === 'step.succeeded') {
+          const p = asPayload(parsed)
+          const seq = p.seq
+          if (typeof seq === 'number') {
+            // 按 seq 覆盖而不是追加。EventSource 重连时服务端会补发历史，
+            // 同一步骤会到两次；追加的话结果面板会出现两份同样的表格，
+            // 而且数字完全一样，看不出哪个是多余的。
+            setResults((prev) => {
+              const next = prev.filter((r) => r.seq !== seq)
+              next.push({
+                seq,
+                stepId: parsed.step_id ?? null,
+                name: p.name ?? `步骤 ${seq}`,
+                summary: p.summary ?? '',
+                value: (p.value ?? null) as Record<string, unknown> | null,
+              })
+              return next.sort((a, b) => a.seq - b.seq)
+            })
+          }
+        }
+
         // `type` 在契约里是 string（线上就是字符串），所以这里要按值比，
         // 不能指望 TS 帮忙收窄——真正决定「是不是终态」的是后端的白名单。
         if (isTaskEnding(parsed.type)) {
@@ -186,5 +233,5 @@ export function useTaskStream(): TaskStream {
     [close],
   )
 
-  return { events, timeline, phase, connected, error, subscribe, reset }
+  return { events, timeline, results, phase, connected, error, subscribe, reset }
 }

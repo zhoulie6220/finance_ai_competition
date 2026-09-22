@@ -56,24 +56,67 @@ def _fmt(value: Decimal | str) -> str:
     return f"{d:,.0f}"
 
 
+#: 一个事实点要带出去的出处字段。**改这里就等于改证据链的形状**，
+#: 所以集中放一处，而不是在五六个 dict 字面量里各抄一遍。
+_SRC_KEYS = ("fact_id", "source_file", "source_page", "source_table", "source_text")
+
+
+def _src(point: dict[str, Any] | None) -> dict[str, Any]:
+    """从一个事实点里摘出出处，供证据面板显示。"""
+    if not point:
+        return {}
+    return {k: point.get(k) for k in _SRC_KEYS}
+
+
 def _read_series(
     con, project_id: str, metric_key: str
-) -> tuple[list[dict[str, str]], str, str]:
-    """取一个指标的逐年序列。返回 (点列, 中文名, 单位)。"""
+) -> tuple[list[dict[str, Any]], str, str]:
+    """取一个指标的逐年序列。返回 (点列, 中文名, 单位)。
+
+    ⚠ **每个点都带上出处**（文件 / 页码 / 原文 / fact_id）。这不是装饰：
+    本系统的卖点是「点任意结论回到年报原文」，而序列是页面上最常被点的东西。
+    不带出处的话，界面只能显示一个数字，评审没法核对它与年报是否一致——
+    那和「一个看起来很真的假数字」没有区别。
+
+    ⚠ 同一 (指标, 期间) 有多条时，**取非重述的那条**，且写成显式子查询而不是
+    `GROUP BY period` 配裸列。裸列的取舍由查询计划决定，SQLite 不保证是哪一条；
+    出处一旦被展示出来，「随便挑一条」就从看不见变成了看得见的错。
+    """
     rows = con.execute(
-        "SELECT f.period, f.value_millions, f.unit, d.label_cn"
+        "SELECT f.period, f.value_millions, f.unit, d.label_cn,"
+        "       f.fact_id, f.source_file, f.source_page, f.source_table,"
+        "       f.source_text, f.restated, f.restatement_note"
         " FROM v_fact_verified f"
         " JOIN metric_definition d ON d.metric_key = f.metric_key"
         " WHERE f.project_id=? AND f.metric_key=?"
         "   AND f.period_kind='current'"      # 时点余额不参与同比
         "   AND f.period_start IS NULL"       # 只取年度数，排除半年报
-        " GROUP BY f.period"                  # 同一期间多来源时取一条
+        "   AND f.fact_id = ("
+        "       SELECT f2.fact_id FROM v_fact_verified f2"
+        "        WHERE f2.project_id=f.project_id AND f2.metric_key=f.metric_key"
+        "          AND f2.period=f.period AND f2.period_kind='current'"
+        "          AND f2.period_start IS NULL"
+        "        ORDER BY f2.restated ASC, f2.created_at DESC LIMIT 1)"
         " ORDER BY f.period",
         (project_id, metric_key),
     ).fetchall()
     label = rows[0]["label_cn"] if rows else metric_key
     unit = rows[0]["unit"] if rows else "百万元"
-    return [{"period": r["period"], "value": r["value_millions"]} for r in rows], label, unit
+    return [
+        {
+            "period": r["period"],
+            "value": r["value_millions"],
+            # 出处。`source_text` 是年报那一行的原文，证据面板直接显示它。
+            "fact_id": r["fact_id"],
+            "source_file": r["source_file"],
+            "source_page": r["source_page"],
+            "source_table": r["source_table"],
+            "source_text": r["source_text"],
+            "restated": bool(r["restated"]),
+            "restatement_note": r["restatement_note"],
+        }
+        for r in rows
+    ], label, unit
 
 
 def _with_yoy(points: list[dict[str, str]]) -> list[dict[str, Any]]:
@@ -237,7 +280,7 @@ def facts_margin(ctx: StepContext, project_id: str | None = None) -> ToolOutcome
 
     gross, g_label, _ = _read_series(con, pid, "gross_profit")
     rev, _, _ = _read_series(con, pid, "revenue")
-    rev_by_year = {p["period"]: p["value"] for p in rev}
+    rev_by_year = {p["period"]: p for p in rev}
 
     # ⚠ `gross_profit` 在字段字典里标了 `is_derived=1` —— **年报里没有这一行**，
     #   它是「营业收入 − 营业成本」。直接去库里找它，会一个年度都找不到，
@@ -246,11 +289,13 @@ def facts_margin(ctx: StepContext, project_id: str | None = None) -> ToolOutcome
     derived = not gross
     if derived:
         cost, _, _ = _read_series(con, pid, "operating_cost")
-        cost_by_year = {p["period"]: p["value"] for p in cost}
+        cost_by_year = {p["period"]: p for p in cost}
         gross = [
             {
                 "period": p["period"],
-                "value": str(Decimal(p["value"]) - Decimal(cost_by_year[p["period"]])),
+                "value": str(
+                    Decimal(p["value"]) - Decimal(cost_by_year[p["period"]]["value"])
+                ),
             }
             for p in rev if p["period"] in cost_by_year
         ]
@@ -258,11 +303,28 @@ def facts_margin(ctx: StepContext, project_id: str | None = None) -> ToolOutcome
 
     points: list[dict[str, Any]] = []
     for p in gross:
-        r = gross_margin(Decimal(p["value"]), (
-            Decimal(rev_by_year[p["period"]]) if p["period"] in rev_by_year else None
-        ))
+        year = p["period"]
+        rev_p = rev_by_year.get(year)
+        r = gross_margin(
+            Decimal(p["value"]), Decimal(rev_p["value"]) if rev_p else None
+        )
+        # 出处。派生毛利自己没有那一行原文，它的出处是**被减数**与**减数**两行——
+        # 两个都要留着：只留一个的话，用户点开看到的是半个算式，
+        # 「营业收入 − 营业成本 = 毛利」这个等式在界面上无法自证。
+        sources: list[dict[str, Any]] = []
+        if derived:
+            if rev_p:
+                sources.append({"role": "被减数 · 营业收入", **_src(rev_p)})
+            cost_p = cost_by_year.get(year)
+            if cost_p:
+                sources.append({"role": "减数 · 营业成本", **_src(cost_p)})
+        else:
+            sources.append({"role": "分子 · 毛利", **_src(p)})
+            if rev_p:
+                sources.append({"role": "分母 · 营业收入", **_src(rev_p)})
+
         points.append({
-            "period": p["period"],
+            "period": year,
             "margin": str(r.value) if r.ok else None,
             "note": None if r.ok else r.refused,
             "formula": (
@@ -271,6 +333,12 @@ def facts_margin(ctx: StepContext, project_id: str | None = None) -> ToolOutcome
             ),
             "inputs": r.inputs,
             "gross_is_derived": derived,
+            # 派生的毛利没有单一出处（直读的才有），这里置 None，
+            # 真正的出处全在 sources 里——前端不该把它当成「缺出处」。
+            "source_file": None,
+            "source_page": None,
+            "source_text": None,
+            "sources": sources,
         })
 
     usable = [p for p in points if p["margin"]]

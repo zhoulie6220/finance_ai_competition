@@ -1,57 +1,84 @@
 /**
- * 工作台第一页：任务时间线。
+ * 工作台第一页：任务时间线 + 结果面板。
  *
  * 这是「假数据真链路」里那条**真链路**的界面：输入一句话 → 后端拆成步骤 →
- * 时间线逐条亮起 → 出结构化结果。数据全部来自 REST + SSE，
- * **这个文件里没有一行业务计算**——同比、比率、估值都由后端 `app/engine/`
- * 算好返回。浏览器里算的东西没法审计，而「可复算、可追溯」是比赛的硬要求。
+ * 时间线逐条亮起 → 右侧出结构化结果 → 点任意数字回到年报原文。
+ * 数据全部来自 REST + SSE，**这个文件里没有一行业务计算**——同比、比率、估值
+ * 都由后端 `app/engine/` 算好返回。浏览器里算的东西没法审计，
+ * 而「可复算、可追溯」是比赛的硬要求。
  *
  * 这一页是给丙的样板：另外 7 个页面照这个结构铺开即可，
  * SSE 订阅的部分已经收在 `hooks/useTaskStream.ts` 里，不用重写。
  */
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import './App.css'
 import { ApiError, api } from './api/client'
+import { EvidenceDrawer, type EvidenceTarget } from './components/EvidenceDrawer'
+import { ResultPanel } from './components/ResultPanel'
 import { useTaskStream } from './hooks/useTaskStream'
-import type { ProjectView, TaskResponse } from './types/contract'
+import type { ProjectView } from './types/contract'
 
-/** 演示用的快捷入口。②依赖 seed_demo 灌的演示数据。 */
 const PRESETS = [
-  { label: '跑一次系统自检', text: '跑一次系统自检' },
   { label: '看财务事实趋势', text: '看一下这家公司的财务事实趋势' },
+  { label: '跑一次系统自检', text: '跑一次系统自检' },
 ]
 
-const STATUS_CN: Record<string, string> = {
-  pending: '待执行',
-  planned: '已规划',
-  running: '执行中',
-  waiting_confirm: '等待确认',
-  succeeded: '已完成',
-  failed: '失败',
-  cancelled: '已取消',
+/** 演示数据的项目名带这个前缀（`scripts/seed_demo.py` 灌的）。 */
+const DEMO_MARK = '演示数据'
+
+function isDemo(p: ProjectView): boolean {
+  return p.name.includes(DEMO_MARK)
+}
+
+/**
+ * 默认选中哪个项目。
+ *
+ * 规则：**真实年报优先，其次年度多的优先**。
+ *
+ * 实测库里同时躺着宝钢十年（真实）、两家对比公司各三年（真实）、
+ * 和一份演示数据。默认停在演示数据上是最糟的：用户第一眼看到的数字
+ * 是脚本合成的，而他以为在看年报。年度多的优先则让默认落在主公司上——
+ * 主公司正是解析得最深、覆盖最全的那一个。
+ *
+ * ⚠ 刻意**不按 project_id 排序**：写成 `p-600019` 这种硬编码，
+ * 换一家案例公司时就要连前端一起改，而且改漏了不报错，只是默认选错项目。
+ */
+function pickDefault(projects: ProjectView[]): string {
+  const real = projects.filter((p) => !isDemo(p))
+  const pool = real.length ? real : projects
+  const best = [...pool].sort(
+    (a, b) => (b.fiscal_years?.length ?? 0) - (a.fiscal_years?.length ?? 0),
+  )[0]
+  return best?.project_id ?? ''
 }
 
 function App() {
   const [input, setInput] = useState('看一下这家公司的财务事实趋势')
   const [projects, setProjects] = useState<ProjectView[]>([])
   const [projectId, setProjectId] = useState<string>('')
-  const [result, setResult] = useState<TaskResponse | null>(null)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
+  const [evidence, setEvidence] = useState<EvidenceTarget | null>(null)
 
-  const { timeline, phase, connected, error, subscribe, reset } = useTaskStream()
+  const { timeline, results, phase, connected, error, subscribe, reset } = useTaskStream()
 
   useEffect(() => {
     api
       .listProjects()
       .then((d) => {
         setProjects(d.projects)
-        // 只有一个项目时直接选中：这一步没有歧义，让用户再点一次是白费一道手续
-        if (d.projects.length === 1) setProjectId(d.projects[0].project_id)
+        // 已经选过就别覆盖：用户手动切了项目，重渲染时被改回去会很难理解
+        setProjectId((cur) => cur || pickDefault(d.projects))
       })
       .catch(() => setProjects([]))
   }, [])
+
+  const current = useMemo(
+    () => projects.find((p) => p.project_id === projectId) ?? null,
+    [projects, projectId],
+  )
+  const currentIsDemo = current ? isDemo(current) : false
 
   const run = useCallback(
     async (text: string) => {
@@ -59,7 +86,7 @@ function App() {
       if (!value || busy) return
       setBusy(true)
       setErr(null)
-      setResult(null)
+      setEvidence(null)
       reset()
       try {
         // sync=false：立刻返回 task_id，进度走 SSE。
@@ -79,16 +106,6 @@ function App() {
     },
     [busy, projectId, reset, subscribe],
   )
-
-  // 任务结束后再拉一次详情：时间线上的摘要是流式的，
-  // 而这一步的产出（公式、入参）只在详情接口里。
-  useEffect(() => {
-    if (phase !== 'done' || !timeline.length) return
-    const last = [...timeline].reverse().find((t) => t.stepId)
-    if (!last?.stepId) return
-    const taskId = last.stepId.split('-s')[0]
-    api.getTask(taskId).then(setResult).catch(() => {})
-  }, [phase, timeline])
 
   const running = phase === 'streaming'
 
@@ -124,12 +141,26 @@ function App() {
               onChange={(e) => setProjectId(e.target.value)}
               disabled={running}
             >
-              <option value="">（不指定）</option>
-              {projects.map((p) => (
-                <option key={p.project_id} value={p.project_id}>
-                  {p.name}
-                </option>
-              ))}
+              <optgroup label="真实年报">
+                {projects
+                  .filter((p) => !isDemo(p))
+                  .map((p) => (
+                    <option key={p.project_id} value={p.project_id}>
+                      {p.name}
+                    </option>
+                  ))}
+              </optgroup>
+              {projects.some(isDemo) && (
+                <optgroup label="演示数据（合成，非年报原文）">
+                  {projects
+                    .filter(isDemo)
+                    .map((p) => (
+                      <option key={p.project_id} value={p.project_id}>
+                        {p.name}
+                      </option>
+                    ))}
+                </optgroup>
+              )}
             </select>
           </label>
           <span className="presets">
@@ -150,7 +181,7 @@ function App() {
           </span>
         </div>
 
-        {projects.some((p) => p.name.includes('演示数据')) && (
+        {currentIsDemo && (
           <p className="hint demo">
             ⚠ 当前项目是<b>演示数据</b>：数字由 <code>scripts/seed_demo.py</code> 合成，
             不是年报原文。证据面板里的原文同样带「演示数据」标记。
@@ -182,33 +213,28 @@ function App() {
           </ol>
 
           {error && <p className="hint error">{error}</p>}
-        </section>
 
-        <section className="panel grow">
-          <h2>结果</h2>
-          {!result && <p className="empty">任务完成后，每一步的产出显示在这里。</p>}
-          {result && (
-            <>
-              <p className="meta">
-                任务 <code>{result.task.task_id}</code> ·{' '}
-                {STATUS_CN[result.task.status] ?? result.task.status}
-                {result.task.skill_key && <> · Skill <code>{result.task.skill_key}</code></>}
-              </p>
-              {result.steps.map((s) => (
-                <div key={s.step_id} className={`step step-${s.status}`}>
-                  <div className="step-head">
-                    <span className="step-seq">{s.seq}</span>
-                    <span className="step-name">{s.name}</span>
-                    {s.tool && <code className="step-tool">{s.tool}</code>}
-                  </div>
-                  {s.output && <pre className="step-out">{s.output}</pre>}
-                  {s.error && <pre className="step-out err">{s.error}</pre>}
-                </div>
-              ))}
-            </>
+          {results.length > 0 && (
+            <p className="meta">
+              共 {results.length} 步产出 ·{' '}
+              {results.reduce((n, r) => n + (r.value ? 1 : 0), 0)} 步带结构化数据
+            </p>
           )}
         </section>
+
+        <div className="results grow">
+          <h2 className="results-title">
+            结果
+            {phase === 'done' && <span className="badge ok">可点开核对</span>}
+          </h2>
+          <p className="muted small">
+            表里的每个数字都可以点开，看到<b>公式、入参和它在年报的第几页</b>。
+          </p>
+          <ResultPanel results={results} onPick={setEvidence} />
+        </div>
       </div>
+
+      <EvidenceDrawer target={evidence} onClose={() => setEvidence(null)} />
     </div>
   )
 }

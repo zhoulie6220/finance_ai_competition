@@ -99,6 +99,37 @@ class LogicalLine:
         return "".join(c.c for c in self.chars).strip()
 
     @property
+    def display_text(self) -> str:
+        """**给人看**的整行文字：在单元格之间补上空格。
+
+        `full_text` 是按坐标顺序把字符直接拼起来的，于是排版上分开的单元格
+        在字符串里粘成一片：
+
+            其中：营业收入51322,115,845,919.76344,500,428,314.62
+
+        这个字符串就是 `financial_fact.source_text`，也就是证据面板里那句
+        「年报原文」。而证据面板正是本系统最有说服力的地方——一句糊在一起的
+        数字串会让人以为解析坏了，即使数值全对。
+
+        补空格**不改变任何解析结果**：解析用的是坐标，不是这个字符串。
+        所以这里另起一个属性，而不是去改 `full_text`——后者参与表名、表头、
+        单位、年份的识别，动它是在拿解析正确性换排版。
+        """
+        out: list[str] = []
+        prev: Char | None = None
+        for cur in self.chars:
+            # ⚠ 按 `chars` 的**原顺序**走，不要按 x0 重排。
+            #   折行段的字符是接在后面的（见 `merge_wrapped`），而折行段的 x
+            #   又回到左边——重排会把第二段的行名插进第一段的数字中间，
+            #   拼出一个谁也没印过的句子。
+            #   顺带：跨段处 x 是在回退，差值为负，本来也不会误插空格。
+            if prev is not None and cur.x0 - prev.x1 > CELL_GAP_PT:
+                out.append("  ")
+            out.append(cur.c)
+            prev = cur
+        return "".join(out).strip()
+
+    @property
     def x0(self) -> float:
         return min(c.x0 for c in self.chars) if self.chars else 0.0
 

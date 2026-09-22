@@ -73,9 +73,12 @@ def yoy_growth(
     2022 年报里对比 2020 年，全都会走到这些分支。
     """
     formula = f"({curr_period} − {prev_period}) / |{prev_period}|"
+    # ⚠ 键是**给用户看的**（证据面板里的「代入公式的数」），所以用中文，
+    #   而且把年份写进键里——`prev` / `curr` 这种键在界面上完全看不出
+    #   哪一年是哪一年，公式 `(2024 − 2023) / |2023|` 就对不上号了。
     inputs = {
-        "prev": str(prev), "curr": str(curr),
-        "prev_period": prev_period, "curr_period": curr_period,
+        f"{prev_period} 年（上期）": str(prev),
+        f"{curr_period} 年（本期）": str(curr),
     }
 
     if prev is None or curr is None:
@@ -112,10 +115,20 @@ def ratio(
     *,
     name: str,
     scale: Decimal = Decimal("1"),
+    labels: tuple[str, str] = ("分子", "分母"),
 ) -> RatioResult:
-    """通用比率。`scale` 用来做百分数（传 `Decimal('100')`）或倍数。"""
-    formula = f"{name} = 分子 / 分母" + ("" if scale == 1 else f" × {scale}")
-    inputs = {"numerator": str(numerator), "denominator": str(denominator)}
+    """通用比率。`scale` 用来做百分数（传 `Decimal('100')`）或倍数。
+
+    ⚠ `inputs` 的键是**给用户看的**，必须用中文科目名（`labels`），
+    不能写成 `numerator` / `denominator`。它会一路流到界面的证据面板上，
+    显示成「代入公式的数：numerator = 17569.485347」——
+    评审看到的就是这句英文，而**没有任何地方会报错**。
+    键名同时要和 `formula` 里的措辞对上，否则用户没法把两者对起来。
+    """
+    formula = f"{name} = {labels[0]} / {labels[1]}" + (
+        "" if scale == 1 else f" × {scale}"
+    )
+    inputs = {labels[0]: str(numerator), labels[1]: str(denominator)}
 
     if numerator is None or denominator is None:
         return _refuse("缺值：分子或分母没有数据，不插补为 0", formula, **inputs)
@@ -132,4 +145,7 @@ def gross_margin(
     """毛利率。营业收入为 0 或缺失时拒绝，不返回 0。"""
     if revenue is not None and revenue < 0:
         return _refuse(f"营业收入为负（{revenue}），毛利无意义", "毛利 / 营业收入")
-    return ratio(gross_profit, revenue, name="毛利率", scale=Decimal("100"))
+    return ratio(
+        gross_profit, revenue,
+        name="毛利率", scale=Decimal("100"), labels=("毛利", "营业收入"),
+    )

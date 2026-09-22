@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@tanstack/react-table": "^9.2.4",
+    "echarts": "^6.1.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "react-dropzone": "^20.1.2"
