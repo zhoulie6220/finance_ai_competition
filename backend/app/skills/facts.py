@@ -239,6 +239,23 @@ def facts_margin(ctx: StepContext, project_id: str | None = None) -> ToolOutcome
     rev, _, _ = _read_series(con, pid, "revenue")
     rev_by_year = {p["period"]: p["value"] for p in rev}
 
+    # ⚠ `gross_profit` 在字段字典里标了 `is_derived=1` —— **年报里没有这一行**，
+    #   它是「营业收入 − 营业成本」。直接去库里找它，会一个年度都找不到，
+    #   而表现为「毛利率 0 个年度可比」，看起来像数据缺失。
+    #   派生字段由程序算：这里退回去用两个原始科目相减，公式照实写出来。
+    derived = not gross
+    if derived:
+        cost, _, _ = _read_series(con, pid, "operating_cost")
+        cost_by_year = {p["period"]: p["value"] for p in cost}
+        gross = [
+            {
+                "period": p["period"],
+                "value": str(Decimal(p["value"]) - Decimal(cost_by_year[p["period"]])),
+            }
+            for p in rev if p["period"] in cost_by_year
+        ]
+        g_label = "毛利"
+
     points: list[dict[str, Any]] = []
     for p in gross:
         r = gross_margin(Decimal(p["value"]), (
@@ -248,8 +265,12 @@ def facts_margin(ctx: StepContext, project_id: str | None = None) -> ToolOutcome
             "period": p["period"],
             "margin": str(r.value) if r.ok else None,
             "note": None if r.ok else r.refused,
-            "formula": r.formula,
+            "formula": (
+                "毛利 = 营业收入 − 营业成本；毛利率 = 毛利 / 营业收入 × 100"
+                if derived else r.formula
+            ),
             "inputs": r.inputs,
+            "gross_is_derived": derived,
         })
 
     usable = [p for p in points if p["margin"]]

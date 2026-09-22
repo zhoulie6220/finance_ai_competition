@@ -1,0 +1,30 @@
+# 换行符规则。
+#
+# 为什么写成文件、而不是靠各自的 core.autocrlf：那是**每台机器自己的配置**，
+# 不进仓库。队友没设、或者设成别的值，同一份文件就会被两种换行符反复改写，
+# 于是出现「整个文件都变了、实际只改了一行」的 diff —— 那种 diff 没法 review，
+# 也没法 blame，是纯粹的噪音。
+#
+# 写在这里之后：仓库里一律存 LF，检出到本地也一律是 LF（对所有人生效），
+# 顺带让 `git add` 时那一片 "LF will be replaced by CRLF" 警告消失。
+#
+# 本项目全部是 .py / .ts / .tsx / .md / .sql / .css，Windows 上的
+# VS Code、PyCharm、记事本都能正常处理 LF。**不要**改成 eol=crlf：
+# 那会让 Mac / Linux 的队友拿到 CRLF，Python 读 sqlite 种子文件时
+# 多余的 \r 会混进字符串里，而且看不出来。
+
+* text=auto eol=lf
+
+# 二进制文件不参与任何换行符转换 —— 转换会直接损坏文件内容。
+# 下面这些要么已经在仓库里，要么很快就会进来。
+*.pdf   binary
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.gif   binary
+*.ico   binary
+*.woff  binary
+*.woff2 binary
+*.docx  binary
+*.xlsx  binary
+*.db    binary

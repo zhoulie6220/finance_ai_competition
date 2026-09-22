@@ -35,6 +35,9 @@ backend/var/
 # 样例年报 PDF 体积较大（每家约 5–20MB，9 份可达上百 MB），不入库。
 # 提取后的结构化产物与黄金标注集需入库，见 backend/app/data/。
 backend/app/data/samples/raw/
+# 原始年报 PDF：体积大（约 70MB），且为公开披露材料，不入库。
+# 解析产物随代码提交（scripts/parse_reports.py 可重新生成）。
+3份公司年报及年报摘要/
 
 # ---- 编辑器 ----
 .vscode/*
