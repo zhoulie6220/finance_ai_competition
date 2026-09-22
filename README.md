@@ -15,6 +15,8 @@
 
 ## 快速开始
 
+> **队伍成员**先看 [`TEAM.md`](TEAM.md)：分工、排期、以及第一次跑起来要敲的命令。
+
 ### 环境要求
 
 - **Python 3.12+**（用到 `python -m sqlite3` 命令行；开发环境为 3.13）
@@ -102,6 +104,8 @@ python -m pip install -r requirements.lock.txt
 ## 目录结构
 
 ```
+├── TEAM.md                  分工、排期与上手提示（给人看）
+├── CLAUDE.md                给 AI 读的仓库规则（队友的 AI 会自动加载它）
 ├── docs/                    设计规则手册
 │   ├── 00-scope.md              ✅ 系统能做什么、不做什么（适用范围与边界）
 │   ├── 01-data-contract.md      ✅ ★数据契约与字段字典

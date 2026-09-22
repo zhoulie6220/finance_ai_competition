@@ -48,30 +48,42 @@ docs/              设计规则手册（编号文档，见下）
 
 ## 当前进度
 
-**目录存在不等于功能存在。** 有七个包目前只有 `__init__.py` 占位，是给骨架预留的位置：
+**目录存在不等于功能存在。** 以文件逐个点过的实际状态为准：
 
 | 模块 | 状态 |
 |---|---|
 | `db/schema.sql`、`db/session.py` | ✅ 42 张表 + 3 个视图；三条硬规则已落到 CHECK 约束 |
 | `app/main.py` + `api/` | ✅ 可启动。`uvicorn app.main:app --reload` 已能跑；SEE 事件流通了 |
 | `agents/`（状态机 + 编排器） | ✅ 骨架冻结，见下方「冻结的接缝」 |
-| `tools/registry.py` | ✅ Tool 登记表；已登记 3 个工具（`system.*`） |
+| `agents/llm/`、`planner`、`router`、`guards.py` | ⬜ **不存在。全仓零 LLM 代码**——见下 |
+| `tools/registry.py` | ✅ Tool 登记表；已登记 **6** 个工具（3 个 `system.*`、3 个 `facts.*`） |
 | `skills/` | ✅ 契约 + 2 个真 Skill（系统自检、财务事实）；3 个主流程 Skill 待填 |
 | `observability/` | ⬜ 空包占位（结构化日志暂落在 `app_log` 表 + `main.py` 中间件） |
 | `schemas/` | ✅ 33 个模型，数据契约的机读真源 |
 | `engine/normalization.py` | ✅ 周期正常化（19 个 golden case） |
-| `engine/ratios.py` | ✅ 同比与比率，含拒绝路径；`dcf/multiples/sensitivity` 待填 |
+| `engine/ratios.py` | ✅ 同比与比率，含拒绝路径 |
+| `engine/checks|index|dcf|multiples|sensitivity` | ⬜ **全部未实现** |
 | `retrieval/fts.py` | ✅ FTS5 + 短查询 LIKE 回退 |
 | `data/seed/` | ✅ 91 个字段字典、64 条规则参数、14 条旧键名映射 |
-| `scripts/` | ✅ init_db / export_schemas / gen_data_contract_doc |
-| `parsing/` | ✅ PDF → 三张合并表 → 指标（跑通 22 份真实年报） |
+| `scripts/` | ✅ init_db / export_schemas / gen_data_contract_doc / dict_csv / seed_demo / parse_reports |
+| `parsing/` | ✅ PDF → 三张合并表 → 指标（**22 份真实年报 → 743 条事实**） |
 | `mcp/` | ⬜ **空包占位** |
-| `frontend/src/` | ✅ 任务时间线页（SSE 订阅 + 结果面板）；其余 7 页待铺 |
-| `scripts/seed_demo.py` | ✅ 演示数据（宝钢十年 380 条，全部标注为演示） |
-| `scripts/parse_reports.py` | ✅ 真实年报入库（743 条事实） |
+| `frontend/src/` | 🟡 **1/8 页**：任务时间线 + 结果面板 + 证据抽屉，已接真实数据 |
+| `docs/` | ✅ 00 / 01 / 02 / 03 / 07；⬜ **04**（指数规则）/ **05** / **06**（演示脚本） |
+| 初赛交付物 | ⬜ **项目计划书与 5 分钟视频均未开始**（截止 2026-10-18） |
 
-`engine/` 目前有 `normalization.py` 与 `ratios.py`；`checks` / `dcf` / `multiples` /
-`sensitivity` 尚未实现。
+### ⚠ 两件必须说破的事
+
+**1. 比赛主题是「金融投研智能体构建」，而仓里没有智能体。**
+`agents/` 只有状态机和编排器，Skill 靠关键词路由，**没有一句模型调用**。
+主张抽取与叙事—事实匹配是这套系统不可替代的部分；没有它，
+演示出来的东西与「AI 财报摘要工具」没有区别。
+
+**2. `docs/04-index-rules.md` 是所有下游的前置依赖，且尚未落笔。**
+诊断指数的公式 / 阈值 / 到情景的映射属会计口径，**须 K 先定**。
+它不落地，`engine/index.py` 只能凭空猜，猜完必返工。
+
+> 分工、排期与上手提示在 **`TEAM.md`**（给人看）；本文件只写给 AI 的规则。
 
 ---
 
@@ -101,11 +113,18 @@ docs/              设计规则手册（编号文档，见下）
 
 ### 各自往哪里长（**不要做的事**也写清楚了）
 
+> 排期、交付物与截止日期见 **`TEAM.md`**。这里只写「代码往哪儿长、哪儿不许碰」。
+
 | | 往这里长 | ⚠ 不要做 |
 |---|---|---|
-| **甲** | `parsing/` PDF 解析、`file` 登记后的解析流程、`observability/` 文件访问审计、新仓储方法 | 不要改 `orchestrator.py` / `state.py`；不要绕开 `TaskRepository` 直接写 SQL |
-| **乙** | `engine/ratios\|checks\|dcf\|...`、`agents/llm/`、`guards.py`、4 个主流程 Skill | 不要新造状态机或事件名（用 `EVENT_TYPES` 里已有的）；不要让 Skill 直接 `print`/写库 |
+| **甲** | `parsing/` 准确率收口、`engine/checks.py` 勾稽校验、`observability/` 文件访问审计、新仓储方法 | 不要改 `orchestrator.py` / `state.py`；不要绕开 `TaskRepository` 直接写 SQL |
+| **乙** | `agents/llm/` + `prompts/`、`guards.py`、主张抽取与匹配 Skill、`engine/index.py` | 不要新造状态机或事件名（用 `EVENT_TYPES` 里已有的）；不要让 Skill 直接 `print`/写库；**不要自己改指数公式**——那是 `docs/04` 定的 |
 | **丙** | `frontend/src/` 全部 | 不要在前端做任何业务计算；不要自己发明事件类型 |
+
+**为什么要这样切**：乙拿走的是「叙事」，甲拿走的是「数字」，丙拿走「看得见的」。
+两边在 `engine/index.py` 碰头——**乙产观测，甲算分值**，而这条传导
+（管理层的说法 → 可验证观测 → 诊断指数 → 估值情景参数）正是项目的核心机制。
+切在这个位置，三个人之间只有一份接口要商量。
 
 ### 三个契约，改动必须同步的地方
 
