@@ -31,7 +31,7 @@ from app.schemas.types import Money, Ratio
 class EbitAdjustment(BaseModel):
     """一笔 EBIT 调整。每一笔都必须留下完整审计痕迹。"""
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(title="EBIT 调整", from_attributes=True)
 
     adjustment_id: str
     normalization_year_id: str
@@ -59,7 +59,7 @@ class EbitAdjustment(BaseModel):
 class NormalizationYear(BaseModel):
     """窗口内一年的明细。三种 EBIT 并存，禁止只留一个。"""
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(title="正常化年度明细", from_attributes=True)
 
     id: str
     normalization_id: str
@@ -67,11 +67,11 @@ class NormalizationYear(BaseModel):
 
     # ---- 轻解析的原始输入（正常化只需要这几个）----
     revenue: Money | None = None
-    total_profit: Money | None = None
+    profit_before_tax: Money | None = None
     interest_expense: Money | None = None
     interest_income: Money | None = None
     operating_profit: Money | None = Field(default=None, description="交叉核对用")
-    financial_expense: Money | None = Field(default=None, description="交叉核对用")
+    finance_expense: Money | None = Field(default=None, description="交叉核对用")
 
     # ---- 三种 EBIT ----
     reported_ebit: Money | None = None
@@ -115,7 +115,7 @@ class NormalizationCrosscheck(BaseModel):
     **一律不影响 DCF。** 核心中枢只能来自 NormalizationRun.ebit_margin_mid。
     """
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(title="正常化交叉验证项", from_attributes=True)
 
     id: str
     normalization_id: str
@@ -141,7 +141,7 @@ class NormalizationCrosscheck(BaseModel):
 class NormalizationRun(BaseModel):
     """一次周期正常化运行。"""
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(title="周期正常化运行", from_attributes=True)
 
     normalization_id: str
     project_id: str
@@ -226,7 +226,7 @@ class ComparableCompany(BaseModel):
     中位数会失去意义——所以产业链上游公司只能以 chain_reference 身份出现。
     """
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(title="可比公司", from_attributes=True)
 
     comparable_id: str
     project_id: str
@@ -252,7 +252,7 @@ class ComparableCompany(BaseModel):
 class ValuationParam(BaseModel):
     """一个估值参数。**每个参数都必须标记来源**，禁止模型凭记忆填入。"""
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(title="估值参数", from_attributes=True)
 
     param_id: str
     scenario_id: str
@@ -268,7 +268,7 @@ class ValuationParam(BaseModel):
 class ValuationScenario(BaseModel):
     """一个估值情景。输出永远是区间，不是单一目标价。"""
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(title="估值情景", from_attributes=True)
 
     scenario_id: str
     run_id: str
@@ -288,7 +288,7 @@ class ValuationScenario(BaseModel):
 class ValuationRun(BaseModel):
     """一次估值运行。"""
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(title="估值运行", from_attributes=True)
 
     run_id: str
     project_id: str

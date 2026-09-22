@@ -22,7 +22,7 @@ from app.schemas.types import Money, Ratio
 class MdnaSection(BaseModel):
     """MD&A 章节切分结果。"""
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(title="MD&A 章节", from_attributes=True)
 
     section_id: str
     file_id: str
@@ -39,7 +39,7 @@ class Claim(BaseModel):
     `claim_text` 必须是**原句，不得改写**——证据链的终点就是这句话在年报里的位置。
     """
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(title="管理层主张", from_attributes=True)
 
     claim_id: str
     project_id: str
@@ -93,7 +93,7 @@ class Claim(BaseModel):
 class ClaimIndicator(BaseModel):
     """一条主张对应的候选指标。一条主张可以有多个候选。"""
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(title="主张候选指标", from_attributes=True)
 
     id: str
     claim_id: str
@@ -106,7 +106,7 @@ class ClaimIndicator(BaseModel):
 class ClaimMatch(BaseModel):
     """主张 × 指标 × 期间 三元组——诊断指数的基本观测单位。"""
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(title="主张—事实匹配", from_attributes=True)
 
     match_id: str
     claim_id: str

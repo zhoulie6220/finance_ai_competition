@@ -20,6 +20,10 @@ from pathlib import Path
 # 让脚本能直接以 `python scripts/init_db.py` 运行
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+import _console  # noqa: E402  (与本文件同目录)
+
+_console.setup()
+
 from app.db.dictionary import validate as validate_dictionary  # noqa: E402
 from app.db.session import DB_PATH_ENV_HINT, connect, init_schema, load_seeds  # noqa: E402
 

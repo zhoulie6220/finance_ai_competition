@@ -36,9 +36,30 @@ python -m pytest                  # 运行测试
 uvicorn app.main:app --reload     # 启动服务（默认 127.0.0.1:8000）
 ```
 
-> **开发中**：`app/main.py` 与服务层尚未落地。当前已完成数据库结构、数据契约
-> （Pydantic 模型）、周期正常化引擎、检索层与字段字典；`app/api/`、`app/agents/`、
-> `app/parsing/` 等包目前是占位。已完成部分见 `CLAUDE.md` 的「当前进度」。
+> **开发中**：后端**已经能启动**，编排链路已经跑通（一句话 → 任务时间线 →
+> 结构化结果 → 工具调用留痕）。已完成：数据库结构、数据契约、周期正常化引擎、
+> 检索层、字段字典、REST + SSE、编排状态机、Tool 登记表。
+> **尚未实现**：PDF 解析（`app/parsing/`）、4 个主流程 Skill、估值与诊断引擎、
+> 以及整个前端。详见 `CLAUDE.md` 的「当前进度」与「冻结的接缝」。
+
+### 跑一次看看
+
+```bash
+cd backend
+python scripts/init_db.py --force
+uvicorn app.main:app --reload          # http://127.0.0.1:8000/docs
+```
+
+另开一个终端，让系统跑一次自检：
+
+```bash
+curl -X POST http://127.0.0.1:8000/api/tasks \
+  -H "Content-Type: application/json" \
+  -d '{"input":"跑一次系统自检","sync":true}'
+```
+
+一句话会拆成 4 个步骤，产生 16 条 SSE 事件，并留下 3 条 `tool_call` 记录。
+这是「假数据真链路」里的那条**真链路**——后面所有 Skill 都往上套。
 
 模型接口的配置见 `backend/.env.example`，复制为 `.env` 后填入 DeepSeek 的 API Key。
 未配置密钥时系统仍可启动，但涉及模型调用的功能不可用。
@@ -82,14 +103,14 @@ python -m pip install -r requirements.lock.txt
 
 ```
 ├── docs/                    设计规则手册
-│   ├── 00-scope.md              系统能做什么、不做什么（适用范围与边界）
-│   ├── 01-data-contract.md      ★数据契约与字段字典
-│   ├── 02-accounting-rules.md   会计硬规则与校验清单
-│   ├── 03-valuation-rules.md    ★估值规则与周期正常化口径
-│   ├── 04-index-rules.md        诊断指数公式、阈值与传导映射
-│   ├── 05-assumptions-and-risks.md  主要假设、适用范围与风险因素
-│   ├── 06-demo-script.md        现场演示脚本与断网兜底流程
-│   └── 07-third-party-licenses.md   ★第三方名称/版本/来源/许可证/使用范围
+│   ├── 00-scope.md              ✅ 系统能做什么、不做什么（适用范围与边界）
+│   ├── 01-data-contract.md      ✅ ★数据契约与字段字典
+│   ├── 02-accounting-rules.md   ✅ ★会计硬规则与校验清单（会计同学签字）
+│   ├── 03-valuation-rules.md    ✅ ★估值规则与周期正常化口径
+│   ├── 04-index-rules.md        ⬜ 诊断指数公式、阈值与传导映射
+│   ├── 05-assumptions-and-risks.md  ⬜ 主要假设、适用范围与风险因素
+│   ├── 06-demo-script.md        ⬜ 现场演示脚本与断网兜底流程
+│   └── 07-third-party-licenses.md   ✅ ★第三方名称/版本/来源/许可证/使用范围
 │
 ├── backend/
 │   ├── app/
@@ -216,8 +237,12 @@ python scripts/dict_csv.py --import   # 读回来
 赛事要求列明第三方名称、版本、来源、许可证及具体使用范围，见
 `docs/07-third-party-licenses.md`。
 
-需要注意 **PyMuPDF 采用 AGPL-3.0**（强传染性许可证）。若需规避，可替换为
-pdfplumber（MIT）+ pypdfium2。
+需要注意 **PyMuPDF 采用 AGPL-3.0**（强传染性许可证）。
+**本次参赛决定保留它**：本项目仅用于参赛，无商业化计划、不对外提供服务、
+全部源代码提交评审，AGPL 的两类触发场景（通过网络提供服务、闭源分发）都不涉及。
+决策依据、风险与替换路径见 `docs/07-third-party-licenses.md` 第五节。
+若将来需要规避，替换为 pdfplumber（MIT）+ pypdfium2 即可——两者已在依赖树中，
+且解析层刻意保持 PDF 后端可替换。
 
 模型侧使用 DeepSeek（OpenAI 兼容接口），其名称、版本、调用方式与使用范围另在
 项目说明中列明；模型权重与商业软件源代码不随本仓库提交。

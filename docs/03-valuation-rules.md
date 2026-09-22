@@ -183,6 +183,12 @@ Adjusted EBIT = Reported EBIT − 非核心收益 + 非核心损失
 - 轧钢企业：`钢材产量 / 有效钢材产能`
 - **不能混用粗钢产能和钢材产量**
 
+对应的字段键（签字文档 A-5）：`crude_steel_output` / `crude_steel_effective_capacity`、
+`steel_output` / `steel_effective_capacity`。字典里刻意把它们做成**四个独立字段**
+而不是一个 `effective_capacity` 加一句说明：混用粗钢与钢材分母不会报错，
+只会得到一个大于 100% 或明显偏低的利用率，**必须靠字段本身挡住**。
+`crude_steel_capacity`（粗钢产能，属设计/公告口径）是补充字段，**不进分母**。
+
 不同公司口径不同，必须原样保存并标注。**分母用产量**（与吨钢毛利相反）。
 
 **产能利用率只用于判断周期阶段和经营状态，不直接进入 DCF 公式。**

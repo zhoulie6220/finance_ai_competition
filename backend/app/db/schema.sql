@@ -159,8 +159,41 @@ CREATE TABLE metric_definition (
   example_source  TEXT
                   CHECK (example_source IS NULL OR
                          example_source IN ('annual_report','synthetic_example')),
+  -- 例句的出处：实际 PDF 文件名与页码（签字文档 §6）。
+  -- 例句是**证据锚点**，所以它和 financial_fact 一样必须可点回原文——
+  -- 只写一句「真实年报原句」而不记是哪份文件的哪一页，评审核对时就无法验证，
+  -- 那句原文与编造的句子在库里长得一模一样。
+  example_file    TEXT,
+  example_page    INTEGER CHECK (example_page IS NULL OR example_page > 0),
   -- 合并/母公司口径提示：本字段在年报中通常以何种口径出现
-  scope_note      TEXT
+  scope_note      TEXT,
+
+  -- ★ 例句溯源硬规则：标为「年报原文」就必须同时有文件名与页码。
+  --   与 financial_fact 的硬规则一同源——无来源不得进已验证。
+  --   占位符句（synthetic_example）不要求出处，因为它本来就不是从年报里摘的。
+  CHECK (example_source IS NULL OR example_source <> 'annual_report' OR (
+           example_file IS NOT NULL AND length(trim(example_file)) > 0
+       AND example_page IS NOT NULL AND example_page > 0
+  ))
+);
+
+-- 旧键名迁移映射（签字文档 A-1：改名后「旧键名只保留在迁移映射表中，不再写入新数据」）。
+--
+-- 为什么要单独建表而不是只在文档里写一段对照：改名这件事本身**不会报错**。
+-- 解析器还在产出 'net_profit'、旧的黄金集标注还写着 'fixed_assets'、某人从旧分支
+-- 复制来的一段 SQL 还引用 'profit_before_tax' —— 这些都不会抛异常，只会让那部分数据
+-- 静默地查不出来。有了这张表，仓储层就能给出「'net_profit' 已改名为 'net_income'」
+-- 这种指向明确的报错，而不是一句「找不到该字段」。
+--
+-- 旧键名**不再**是 metric_definition 的行，所以两个引用它的外键也一并失效，
+-- 这正是我们要的：新数据写不进去旧键名。
+CREATE TABLE metric_key_migration (
+  legacy_key  TEXT PRIMARY KEY,                    -- 已废弃的旧键名，如 'net_profit'
+  metric_key  TEXT NOT NULL REFERENCES metric_definition(metric_key),
+  -- 改名依据：签字文档的条目号，便于会计同学回溯「为什么改了」
+  decided_by  TEXT NOT NULL,                       -- 如 'accounting_signoff_v1 A-1'
+  note        TEXT,
+  CHECK (legacy_key <> metric_key)
 );
 
 -- =============================================================================
@@ -183,6 +216,15 @@ CREATE TABLE financial_fact (
   is_primary     INTEGER NOT NULL CHECK (is_primary IN (0,1)),
 
   metric_key     TEXT NOT NULL REFERENCES metric_definition(metric_key),
+  -- 来源映射（签字文档 A-2）：只披露「营业总收入」的年度，其值映射到 revenue，
+  -- 并在此记下实际抽到的是哪一行（total_revenue）。
+  --
+  -- 为什么要单列而不是靠 source_row_label：source_row_label 是自由文本的原始行名，
+  -- 无法参与计算，也没法按它防止重复计数。而 A-2 明确要求「revenue 与 total_revenue
+  -- 两者不得相加」——按 (metric_key, period) 聚合时，如果不知道某行 revenue 其实
+  -- 就是营业总收入，就会把它和真正的 revenue 行再加一遍。
+  -- 有了这个外键，聚合前可以直接按 mapped_from 分组识别这种情况。
+  mapped_from    TEXT REFERENCES metric_definition(metric_key),
 
   -- 统一换算为百万元后的值。TEXT 存 Decimal 字符串，禁止 REAL。
   value_millions TEXT,
@@ -230,9 +272,16 @@ CREATE TABLE financial_fact (
   restatement_note TEXT,
 
   comparable     INTEGER NOT NULL DEFAULT 1 CHECK (comparable IN (0,1)),
+  -- ⚠ 取值必须与 normalization_year.incomparable_reason 完全一致，也与
+  --   app/schemas/enums.py::IncomparableReason 一致。这三处曾经分叉：
+  --   本表少了 restructuring / asset_injection / other，却多了 seasonality，
+  --   于是「资产注入年度」这个签字文档 §4 明确要求标记的情形**写不进去**，
+  --   而 Pydantic 那边是放行的——正是 enums.py 开头警告的那种「一边放行一边拒绝」。
+  --   修改任意一处都必须同步另外两处（tests/unit/schemas 里有对拍测试）。
   incomparable_reason TEXT
                  CHECK (incomparable_reason IS NULL OR incomparable_reason IN
-                        ('mna','restatement','seasonality','policy_change','scope_change','industry_cycle')),
+                        ('mna','restructuring','asset_injection','scope_change',
+                         'restatement','policy_change','industry_cycle','seasonality','other')),
 
   extractor      TEXT NOT NULL,                    -- 'rule:v3' / 'llm:deepseek-chat@<prompt_hash>' / 'human:<uid>'
   created_at     TEXT NOT NULL,
@@ -511,6 +560,12 @@ CREATE TABLE rule_config (
   industry      TEXT NOT NULL DEFAULT '',
   value         TEXT NOT NULL,
   value_type    TEXT NOT NULL CHECK (value_type IN ('decimal','integer','percent','enum','bool')),
+  -- 参数分级（签字文档 A-8）。决定改这个参数需要谁点头，以及发布前是否必须签字：
+  --   hard   硬规则：字段口径、EBIT、周期窗口、阈值、减值、估值公式 → 必须会计签字
+  --   soft   软规则：提示语、颜色、排序 → 可后续调整
+  --   model  模型参数：模型名、Prompt 版本、温度、输出长度 → 需记录版本，不属于会计口径
+  tier          TEXT NOT NULL DEFAULT 'hard'
+                CHECK (tier IN ('hard','soft','model')),
   label_cn      TEXT NOT NULL,
   description   TEXT NOT NULL,
   unit          TEXT,
@@ -656,11 +711,11 @@ CREATE TABLE normalization_year (
 
   -- ---- 轻解析的原始输入（正常化只需要这几个）----
   revenue           TEXT,                          -- 营业收入
-  total_profit      TEXT,                          -- 利润总额
+  profit_before_tax      TEXT,                          -- 利润总额
   interest_expense  TEXT,                          -- 利息费用
   interest_income   TEXT,                          -- 利息收入
   operating_profit  TEXT,                          -- 营业利润（交叉核对用）
-  financial_expense TEXT,                          -- 财务费用（交叉核对用）
+  finance_expense TEXT,                          -- 财务费用（交叉核对用）
 
   -- ---- 三种 EBIT 并存，禁止只留一个 ----
   -- Reported   = 利润总额 + 利息费用 − 利息收入        ← 主 DCF 默认口径
@@ -684,10 +739,12 @@ CREATE TABLE normalization_year (
   -- ---- 可比性：三步流程，不自动删除 ----
   -- 1. 先标记 non_comparable；2. 会计判断；3. 确认后从主中枢排除，但敏感性分析中保留
   comparable        INTEGER NOT NULL DEFAULT 1 CHECK (comparable IN (0,1)),
+  -- 取值必须与 financial_fact.incomparable_reason 完全一致（见那张表的注释）。
   incomparable_reason TEXT
                     CHECK (incomparable_reason IS NULL OR incomparable_reason IN
                            ('mna','restructuring','asset_injection','scope_change',
-                            'restatement','policy_change','industry_cycle','other')),
+                            'restatement','policy_change','industry_cycle','seasonality',
+                            'other')),
   reviewed_by_accounting INTEGER NOT NULL DEFAULT 0 CHECK (reviewed_by_accounting IN (0,1)),
   included_in_median INTEGER NOT NULL DEFAULT 1 CHECK (included_in_median IN (0,1)),
 

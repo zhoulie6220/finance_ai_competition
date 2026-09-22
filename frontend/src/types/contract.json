@@ -1,12 +1,6 @@
-/* 本文件由 backend/scripts/export_schemas.py 自动生成，请勿手改。
- *
- * 数据契约的唯一定义源在 backend/app/schemas/（Pydantic v2），
- * 人类可读版本见 docs/01-data-contract.md。
- * 契约变更后请重新运行：
- *     cd backend && python scripts/export_schemas.py
- */
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$comment": "本文件由 backend/scripts/export_schemas.py 自动生成，请勿手改。\n数据契约的唯一定义源在 backend/app/schemas/（Pydantic v2），\n人类可读版本见 docs/01-data-contract.md。\n契约变更后请重新运行：cd backend && python scripts/export_schemas.py",
   "title": "投研工作台数据契约",
   "description": "由 backend/app/schemas/ 生成",
   "$defs": {
@@ -17,11 +11,11 @@
         "not_found",
         "rejected"
       ],
-      "title": "FactStatus",
+      "title": "财务事实状态",
       "type": "string"
     },
     "IncomparableReason": {
-      "description": "不可直接比较的原因。标记后不进指数扣分，但从主中枢中排除。",
+      "description": "不可直接比较的原因。标记后不进指数扣分，但从主中枢中排除。\n\n⚠ 取值必须与 `schema.sql` 里 `financial_fact` 和 `normalization_year` 两张表的\n  `incomparable_reason` CHECK 完全一致。这三处曾经分叉过：Pydantic 放行\n  `asset_injection`，而 `financial_fact` 的 CHECK 里没有它——于是签字文档 §4\n  明确要求标记的「资产注入年度」**写不进去**，报的还是一句 constraint failed。\n  `tests/unit/schemas/test_contract.py` 里有对拍测试盯着这三处。",
       "enum": [
         "mna",
         "restructuring",
@@ -30,9 +24,10 @@
         "restatement",
         "policy_change",
         "industry_cycle",
+        "seasonality",
         "other"
       ],
-      "title": "IncomparableReason",
+      "title": "不可比原因",
       "type": "string"
     },
     "PeriodKind": {
@@ -43,7 +38,7 @@
         "opening",
         "average"
       ],
-      "title": "PeriodKind",
+      "title": "数值期间性质",
       "type": "string"
     },
     "Scope": {
@@ -52,7 +47,7 @@
         "consolidated",
         "parent"
       ],
-      "title": "Scope",
+      "title": "会计口径",
       "type": "string"
     },
     "FinancialFact": {
@@ -81,7 +76,9 @@
         },
         "value": {
           "anyOf": [
-            {},
+            {
+              "type": "string"
+            },
             {
               "type": "null"
             }
@@ -229,6 +226,19 @@
           "description": "原始行名，保留原始标签",
           "title": "Source Row Label"
         },
+        "mapped_from": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "来源映射（签字文档 A-2）：本行的值实际抽自哪一个字段。只披露「营业总收入」的年度，其值映射到 revenue 并记 mapped_from='total_revenue'。按 (metric, period) 聚合前必须看这一列——否则 revenue 与 total_revenue 会被重复计入",
+          "title": "Mapped From"
+        },
         "bbox": {
           "anyOf": [
             {
@@ -302,7 +312,7 @@
         "extractor",
         "created_at"
       ],
-      "title": "FinancialFact",
+      "title": "财务事实",
       "type": "object"
     },
     "ObservationResolution": {
@@ -312,7 +322,7 @@
         "adopted",
         "rejected"
       ],
-      "title": "ObservationResolution",
+      "title": "多源观测裁决",
       "type": "string"
     },
     "SourceLocation": {
@@ -324,7 +334,7 @@
         "mdna_text",
         "other"
       ],
-      "title": "SourceLocation",
+      "title": "数据在年报中的位置",
       "type": "string"
     },
     "FactObservation": {
@@ -375,7 +385,9 @@
         },
         "value": {
           "anyOf": [
-            {},
+            {
+              "type": "string"
+            },
             {
               "type": "null"
             }
@@ -482,7 +494,7 @@
         "extractor",
         "created_at"
       ],
-      "title": "FactObservation",
+      "title": "事实观测来源",
       "type": "object"
     },
     "FactCorrection": {
@@ -545,7 +557,7 @@
         "operator",
         "created_at"
       ],
-      "title": "FactCorrection",
+      "title": "人工修正记录",
       "type": "object"
     },
     "Severity": {
@@ -554,7 +566,7 @@
         "warn",
         "error"
       ],
-      "title": "Severity",
+      "title": "严重程度",
       "type": "string"
     },
     "CheckResult": {
@@ -589,7 +601,9 @@
         },
         "lhs": {
           "anyOf": [
-            {},
+            {
+              "type": "string"
+            },
             {
               "type": "null"
             }
@@ -599,7 +613,9 @@
         },
         "rhs": {
           "anyOf": [
-            {},
+            {
+              "type": "string"
+            },
             {
               "type": "null"
             }
@@ -609,7 +625,9 @@
         },
         "diff": {
           "anyOf": [
-            {},
+            {
+              "type": "string"
+            },
             {
               "type": "null"
             }
@@ -675,7 +693,7 @@
         "message",
         "created_at"
       ],
-      "title": "CheckResult",
+      "title": "校验结果",
       "type": "object"
     },
     "ExampleSource": {
@@ -684,7 +702,7 @@
         "annual_report",
         "synthetic_example"
       ],
-      "title": "ExampleSource",
+      "title": "例句来源",
       "type": "string"
     },
     "SignConvention": {
@@ -693,7 +711,7 @@
         "negative_is_good",
         "neutral"
       ],
-      "title": "SignConvention",
+      "title": "正负号含义",
       "type": "string"
     },
     "Statement": {
@@ -705,7 +723,7 @@
         "industry",
         "disclosure"
       ],
-      "title": "Statement",
+      "title": "报表类型",
       "type": "string"
     },
     "UnitKind": {
@@ -718,7 +736,7 @@
         "quantity",
         "text"
       ],
-      "title": "UnitKind",
+      "title": "单位类型",
       "type": "string"
     },
     "ValueType": {
@@ -728,7 +746,7 @@
         "ratio",
         "text"
       ],
-      "title": "ValueType",
+      "title": "数值类型",
       "type": "string"
     },
     "MetricDefinition": {
@@ -830,6 +848,33 @@
           "default": null,
           "description": "例句来源。synthetic_example 表示仍是占位符标准句，不得当作真实证据"
         },
+        "example_file": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "例句所在的 PDF 文件名。example_source=annual_report 时必填",
+          "title": "Example File"
+        },
+        "example_page": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "例句所在页码。example_source=annual_report 时必填",
+          "title": "Example Page"
+        },
         "scope_note": {
           "anyOf": [
             {
@@ -851,7 +896,7 @@
         "unit_kind",
         "sign_convention"
       ],
-      "title": "MetricDefinition",
+      "title": "字段字典条目",
       "type": "object"
     },
     "MdnaSectionKind": {
@@ -862,7 +907,7 @@
         "outlook",
         "other"
       ],
-      "title": "MdnaSectionKind",
+      "title": "MD&A 章节类型",
       "type": "string"
     },
     "MdnaSection": {
@@ -912,7 +957,7 @@
         "page_to",
         "text"
       ],
-      "title": "MdnaSection",
+      "title": "MD&A 章节",
       "type": "object"
     },
     "ClaimDirection": {
@@ -924,7 +969,7 @@
         "flat",
         "unknown"
       ],
-      "title": "ClaimDirection",
+      "title": "主张方向",
       "type": "string"
     },
     "ClaimType": {
@@ -940,7 +985,7 @@
         "macro",
         "other"
       ],
-      "title": "ClaimType",
+      "title": "主张主题",
       "type": "string"
     },
     "Claim": {
@@ -1044,7 +1089,9 @@
         },
         "magnitude_value": {
           "anyOf": [
-            {},
+            {
+              "type": "string"
+            },
             {
               "type": "null"
             }
@@ -1153,7 +1200,7 @@
         "status",
         "created_at"
       ],
-      "title": "Claim",
+      "title": "管理层主张",
       "type": "object"
     },
     "ClaimIndicator": {
@@ -1196,7 +1243,7 @@
         "match_confidence",
         "matched_by"
       ],
-      "title": "ClaimIndicator",
+      "title": "主张候选指标",
       "type": "object"
     },
     "MatchVerdict": {
@@ -1208,7 +1255,7 @@
         "incomparable",
         "missing"
       ],
-      "title": "MatchVerdict",
+      "title": "主张—事实匹配结论",
       "type": "string"
     },
     "ClaimMatch": {
@@ -1306,7 +1353,9 @@
         },
         "relative_deviation": {
           "anyOf": [
-            {},
+            {
+              "type": "string"
+            },
             {
               "type": "null"
             }
@@ -1396,7 +1445,7 @@
         "confidence",
         "created_at"
       ],
-      "title": "ClaimMatch",
+      "title": "主张—事实匹配",
       "type": "object"
     },
     "DiagnosisComponent": {
@@ -1479,7 +1528,7 @@
         "formula",
         "explanation"
       ],
-      "title": "DiagnosisComponent",
+      "title": "诊断指数构成项",
       "type": "object"
     },
     "IndexGrade": {
@@ -1489,7 +1538,7 @@
         "low",
         "insufficient"
       ],
-      "title": "IndexGrade",
+      "title": "诊断指数等级",
       "type": "string"
     },
     "DiagnosisRun": {
@@ -1549,7 +1598,9 @@
         },
         "coverage": {
           "anyOf": [
-            {},
+            {
+              "type": "string"
+            },
             {
               "type": "null"
             }
@@ -1560,7 +1611,9 @@
         },
         "score": {
           "anyOf": [
-            {},
+            {
+              "type": "string"
+            },
             {
               "type": "null"
             }
@@ -1625,7 +1678,7 @@
         "conclusion_boundary",
         "created_at"
       ],
-      "title": "DiagnosisRun",
+      "title": "诊断指数结果",
       "type": "object"
     },
     "RuleConfigItem": {
@@ -1707,7 +1760,7 @@
         "description",
         "default_value"
       ],
-      "title": "RuleConfigItem",
+      "title": "规则参数",
       "type": "object"
     },
     "ScenarioDelta": {
@@ -1720,7 +1773,8 @@
         },
         "weight": {
           "description": "情景权重，由映射规则给出而非手填",
-          "title": "Weight"
+          "title": "Weight",
+          "type": "string"
         },
         "revenue_growth_ref": {
           "anyOf": [
@@ -1737,7 +1791,9 @@
         },
         "wacc_delta": {
           "anyOf": [
-            {},
+            {
+              "type": "string"
+            },
             {
               "type": "null"
             }
@@ -1747,7 +1803,9 @@
         },
         "terminal_growth_delta": {
           "anyOf": [
-            {},
+            {
+              "type": "string"
+            },
             {
               "type": "null"
             }
@@ -1780,7 +1838,7 @@
         "weight",
         "note"
       ],
-      "title": "ScenarioDelta",
+      "title": "指数向情景的传导",
       "type": "object"
     },
     "EbitVariant": {
@@ -1789,7 +1847,7 @@
         "reported",
         "adjusted"
       ],
-      "title": "EbitVariant",
+      "title": "EBIT 口径",
       "type": "string"
     },
     "NormalizationStatus": {
@@ -1799,7 +1857,7 @@
         "NORMALIZATION_INSUFFICIENT_DATA",
         "incomplete_cycle"
       ],
-      "title": "NormalizationStatus",
+      "title": "周期正常化状态",
       "type": "string"
     },
     "NormalizationYear": {
@@ -1819,7 +1877,9 @@
         },
         "revenue": {
           "anyOf": [
-            {},
+            {
+              "type": "string"
+            },
             {
               "type": "null"
             }
@@ -1827,19 +1887,23 @@
           "default": null,
           "title": "Revenue"
         },
-        "total_profit": {
+        "profit_before_tax": {
           "anyOf": [
-            {},
+            {
+              "type": "string"
+            },
             {
               "type": "null"
             }
           ],
           "default": null,
-          "title": "Total Profit"
+          "title": "Profit Before Tax"
         },
         "interest_expense": {
           "anyOf": [
-            {},
+            {
+              "type": "string"
+            },
             {
               "type": "null"
             }
@@ -1849,7 +1913,9 @@
         },
         "interest_income": {
           "anyOf": [
-            {},
+            {
+              "type": "string"
+            },
             {
               "type": "null"
             }
@@ -1859,7 +1925,9 @@
         },
         "operating_profit": {
           "anyOf": [
-            {},
+            {
+              "type": "string"
+            },
             {
               "type": "null"
             }
@@ -1868,20 +1936,24 @@
           "description": "交叉核对用",
           "title": "Operating Profit"
         },
-        "financial_expense": {
+        "finance_expense": {
           "anyOf": [
-            {},
+            {
+              "type": "string"
+            },
             {
               "type": "null"
             }
           ],
           "default": null,
           "description": "交叉核对用",
-          "title": "Financial Expense"
+          "title": "Finance Expense"
         },
         "reported_ebit": {
           "anyOf": [
-            {},
+            {
+              "type": "string"
+            },
             {
               "type": "null"
             }
@@ -1891,7 +1963,9 @@
         },
         "crosscheck_ebit": {
           "anyOf": [
-            {},
+            {
+              "type": "string"
+            },
             {
               "type": "null"
             }
@@ -1901,7 +1975,9 @@
         },
         "adjusted_ebit": {
           "anyOf": [
-            {},
+            {
+              "type": "string"
+            },
             {
               "type": "null"
             }
@@ -1911,7 +1987,9 @@
         },
         "crosscheck_deviation": {
           "anyOf": [
-            {},
+            {
+              "type": "string"
+            },
             {
               "type": "null"
             }
@@ -1921,7 +1999,9 @@
         },
         "adjustment_delta": {
           "anyOf": [
-            {},
+            {
+              "type": "string"
+            },
             {
               "type": "null"
             }
@@ -1937,7 +2017,9 @@
         },
         "ebit_margin": {
           "anyOf": [
-            {},
+            {
+              "type": "string"
+            },
             {
               "type": "null"
             }
@@ -1958,7 +2040,9 @@
         },
         "revenue_weight": {
           "anyOf": [
-            {},
+            {
+              "type": "string"
+            },
             {
               "type": "null"
             }
@@ -2060,7 +2144,7 @@
         "normalization_id",
         "year"
       ],
-      "title": "NormalizationYear",
+      "title": "正常化年度明细",
       "type": "object"
     },
     "WindowMode": {
@@ -2068,7 +2152,7 @@
         "primary_8y",
         "fallback_10y"
       ],
-      "title": "WindowMode",
+      "title": "正常化窗口模式",
       "type": "string"
     },
     "NormalizationRun": {
@@ -2210,7 +2294,9 @@
         },
         "high_threshold": {
           "anyOf": [
-            {},
+            {
+              "type": "string"
+            },
             {
               "type": "null"
             }
@@ -2220,7 +2306,9 @@
         },
         "low_threshold": {
           "anyOf": [
-            {},
+            {
+              "type": "string"
+            },
             {
               "type": "null"
             }
@@ -2263,7 +2351,9 @@
         },
         "crosscheck_max_deviation": {
           "anyOf": [
-            {},
+            {
+              "type": "string"
+            },
             {
               "type": "null"
             }
@@ -2288,7 +2378,9 @@
         },
         "ebit_margin_mid": {
           "anyOf": [
-            {},
+            {
+              "type": "string"
+            },
             {
               "type": "null"
             }
@@ -2299,7 +2391,9 @@
         },
         "ebit_margin_p25": {
           "anyOf": [
-            {},
+            {
+              "type": "string"
+            },
             {
               "type": "null"
             }
@@ -2309,7 +2403,9 @@
         },
         "ebit_margin_p75": {
           "anyOf": [
-            {},
+            {
+              "type": "string"
+            },
             {
               "type": "null"
             }
@@ -2363,7 +2459,7 @@
         "rule_config_version",
         "created_at"
       ],
-      "title": "NormalizationRun",
+      "title": "周期正常化运行",
       "type": "object"
     },
     "AdjustmentCategory": {
@@ -2378,7 +2474,7 @@
         "related_party",
         "other"
       ],
-      "title": "AdjustmentCategory",
+      "title": "EBIT 调整类别",
       "type": "string"
     },
     "AdjustmentDirection": {
@@ -2386,7 +2482,7 @@
         "add_back",
         "deduct"
       ],
-      "title": "AdjustmentDirection",
+      "title": "调整方向",
       "type": "string"
     },
     "AdjustmentReviewStatus": {
@@ -2395,7 +2491,7 @@
         "approved",
         "rejected"
       ],
-      "title": "AdjustmentReviewStatus",
+      "title": "调整复核状态",
       "type": "string"
     },
     "EbitAdjustment": {
@@ -2419,7 +2515,8 @@
         },
         "amount": {
           "description": "调整金额（正数）",
-          "title": "Amount"
+          "title": "Amount",
+          "type": "string"
         },
         "direction": {
           "$ref": "#/$defs/AdjustmentDirection"
@@ -2496,7 +2593,7 @@
         "reason",
         "created_at"
       ],
-      "title": "EbitAdjustment",
+      "title": "EBIT 调整",
       "type": "object"
     },
     "NormalizationCrosscheck": {
@@ -2522,7 +2619,9 @@
         },
         "mid_cycle_value": {
           "anyOf": [
-            {},
+            {
+              "type": "string"
+            },
             {
               "type": "null"
             }
@@ -2620,7 +2719,7 @@
         "data_source",
         "created_at"
       ],
-      "title": "NormalizationCrosscheck",
+      "title": "正常化交叉验证项",
       "type": "object"
     },
     "PeerRole": {
@@ -2629,7 +2728,7 @@
         "valuation_peer",
         "chain_reference"
       ],
-      "title": "PeerRole",
+      "title": "可比公司角色",
       "type": "string"
     },
     "Profitability": {
@@ -2637,7 +2736,7 @@
         "profitable",
         "loss"
       ],
-      "title": "Profitability",
+      "title": "盈利状态",
       "type": "string"
     },
     "ComparableCompany": {
@@ -2729,7 +2828,9 @@
         },
         "pe": {
           "anyOf": [
-            {},
+            {
+              "type": "string"
+            },
             {
               "type": "null"
             }
@@ -2739,7 +2840,9 @@
         },
         "ev_ebitda": {
           "anyOf": [
-            {},
+            {
+              "type": "string"
+            },
             {
               "type": "null"
             }
@@ -2749,7 +2852,9 @@
         },
         "pb": {
           "anyOf": [
-            {},
+            {
+              "type": "string"
+            },
             {
               "type": "null"
             }
@@ -2790,7 +2895,7 @@
         "selection_reason",
         "source"
       ],
-      "title": "ComparableCompany",
+      "title": "可比公司",
       "type": "object"
     },
     "CyclePosition": {
@@ -2803,7 +2908,7 @@
         "trough",
         "unknown"
       ],
-      "title": "CyclePosition",
+      "title": "周期位置",
       "type": "string"
     },
     "ParamSourceType": {
@@ -2814,7 +2919,7 @@
         "comparable_stat",
         "model_assumption"
       ],
-      "title": "ParamSourceType",
+      "title": "估值参数来源",
       "type": "string"
     },
     "ValuationParam": {
@@ -2865,7 +2970,7 @@
         "source_type",
         "source_ref"
       ],
-      "title": "ValuationParam",
+      "title": "估值参数",
       "type": "object"
     },
     "ValuationScenario": {
@@ -2886,11 +2991,14 @@
         },
         "weight": {
           "description": "由诊断指数的映射规则给出，非手填",
-          "title": "Weight"
+          "title": "Weight",
+          "type": "string"
         },
         "enterprise_value": {
           "anyOf": [
-            {},
+            {
+              "type": "string"
+            },
             {
               "type": "null"
             }
@@ -2900,7 +3008,9 @@
         },
         "equity_value": {
           "anyOf": [
-            {},
+            {
+              "type": "string"
+            },
             {
               "type": "null"
             }
@@ -2910,7 +3020,9 @@
         },
         "value_per_share": {
           "anyOf": [
-            {},
+            {
+              "type": "string"
+            },
             {
               "type": "null"
             }
@@ -2950,7 +3062,7 @@
         "weight",
         "created_at"
       ],
-      "title": "ValuationScenario",
+      "title": "估值情景",
       "type": "object"
     },
     "ValuationRun": {
@@ -3008,10 +3120,12 @@
           "type": "string"
         },
         "tax_rate": {
-          "title": "Tax Rate"
+          "title": "Tax Rate",
+          "type": "string"
         },
         "net_debt": {
-          "title": "Net Debt"
+          "title": "Net Debt",
+          "type": "string"
         },
         "net_debt_source": {
           "title": "Net Debt Source",
@@ -3019,7 +3133,9 @@
         },
         "non_operating_assets": {
           "anyOf": [
-            {},
+            {
+              "type": "string"
+            },
             {
               "type": "null"
             }
@@ -3029,7 +3145,9 @@
         },
         "minority_interest": {
           "anyOf": [
-            {},
+            {
+              "type": "string"
+            },
             {
               "type": "null"
             }
@@ -3039,7 +3157,9 @@
         },
         "lease_liability": {
           "anyOf": [
-            {},
+            {
+              "type": "string"
+            },
             {
               "type": "null"
             }
@@ -3098,7 +3218,9 @@
         },
         "exit_multiple_check": {
           "anyOf": [
-            {},
+            {
+              "type": "string"
+            },
             {
               "type": "null"
             }
@@ -3108,7 +3230,9 @@
         },
         "implied_exit_multiple": {
           "anyOf": [
-            {},
+            {
+              "type": "string"
+            },
             {
               "type": "null"
             }
@@ -3145,7 +3269,7 @@
         "rule_config_version",
         "created_at"
       ],
-      "title": "ValuationRun",
+      "title": "估值运行",
       "type": "object"
     },
     "StepStatus": {
@@ -3157,7 +3281,7 @@
         "skipped",
         "retrying"
       ],
-      "title": "StepStatus",
+      "title": "步骤状态",
       "type": "string"
     },
     "TaskStatus": {
@@ -3170,7 +3294,7 @@
         "failed",
         "cancelled"
       ],
-      "title": "TaskStatus",
+      "title": "任务状态",
       "type": "string"
     },
     "TaskStep": {
@@ -3307,7 +3431,7 @@
         "name",
         "status"
       ],
-      "title": "TaskStep",
+      "title": "任务步骤",
       "type": "object"
     },
     "Task": {
@@ -3458,7 +3582,7 @@
         "status",
         "created_at"
       ],
-      "title": "Task",
+      "title": "任务",
       "type": "object"
     },
     "ToolTransport": {
@@ -3470,7 +3594,7 @@
         "internal",
         "skill"
       ],
-      "title": "ToolTransport",
+      "title": "工具调用通道",
       "type": "string"
     },
     "ToolCall": {
@@ -3585,7 +3709,7 @@
         "status",
         "created_at"
       ],
-      "title": "ToolCall",
+      "title": "工具调用记录",
       "type": "object"
     },
     "LlmCall": {
@@ -3772,7 +3896,7 @@
         "status",
         "created_at"
       ],
-      "title": "LlmCall",
+      "title": "模型调用记录",
       "type": "object"
     },
     "FileAccessLog": {
@@ -3893,7 +4017,7 @@
         "action",
         "allowed"
       ],
-      "title": "FileAccessLog",
+      "title": "文件访问记录",
       "type": "object"
     },
     "RunManifest": {
@@ -4040,7 +4164,7 @@
         "rule_config_version",
         "created_at"
       ],
-      "title": "RunManifest",
+      "title": "可复现凭据",
       "type": "object"
     },
     "LogLevel": {
@@ -4051,7 +4175,7 @@
         "ERROR",
         "CRITICAL"
       ],
-      "title": "LogLevel",
+      "title": "日志级别",
       "type": "string"
     },
     "AppLog": {
@@ -4157,7 +4281,7 @@
         "event",
         "message"
       ],
-      "title": "AppLog",
+      "title": "应用日志",
       "type": "object"
     },
     "TaskEvent": {
@@ -4204,7 +4328,7 @@
         "task_id",
         "type"
       ],
-      "title": "TaskEvent",
+      "title": "任务事件",
       "type": "object"
     },
     "EvidenceKind": {
@@ -4220,7 +4344,7 @@
         "peer",
         "benchmark"
       ],
-      "title": "EvidenceKind",
+      "title": "证据类型",
       "type": "string"
     },
     "Evidence": {
@@ -4307,7 +4431,7 @@
         "label_cn",
         "created_at"
       ],
-      "title": "Evidence",
+      "title": "证据指针",
       "type": "object"
     },
     "ReportCitation": {
@@ -4354,7 +4478,7 @@
         "evidence_id",
         "rendered_text"
       ],
-      "title": "ReportCitation",
+      "title": "报告引用锚点",
       "type": "object"
     },
     "ReportKind": {
@@ -4363,7 +4487,7 @@
         "audit",
         "analysis"
       ],
-      "title": "ReportKind",
+      "title": "报告类型",
       "type": "string"
     },
     "Report": {
@@ -4435,7 +4559,7 @@
         "payload_md",
         "created_at"
       ],
-      "title": "Report",
+      "title": "生成报告",
       "type": "object"
     },
     "AuditFindingStatus": {
@@ -4444,7 +4568,7 @@
         "needs_review",
         "ignored"
       ],
-      "title": "AuditFindingStatus",
+      "title": "研报问题状态",
       "type": "string"
     },
     "AuditIssueType": {
@@ -4457,7 +4581,7 @@
         "citation",
         "opinion_mixed"
       ],
-      "title": "AuditIssueType",
+      "title": "研报问题类型",
       "type": "string"
     },
     "AuditFinding": {
@@ -4527,7 +4651,804 @@
         "fix_suggestion",
         "created_at"
       ],
-      "title": "AuditFinding",
+      "title": "研报纠错发现",
+      "type": "object"
+    },
+    "TaskSummary": {
+      "description": "任务本身，**不含步骤**。\n\n继承 `Task` 而不是另抄一份字段：抄一份的话，将来给 `Task` 加字段会漏掉这里，\n接口上就凭空少一个字段，而**没有任何地方会报错**。\n`exclude=True` 让序列化时丢掉 `steps`——步骤单独放在响应体的 `steps` 里。",
+      "properties": {
+        "task_id": {
+          "title": "Task Id",
+          "type": "string"
+        },
+        "project_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Project Id"
+        },
+        "user_input": {
+          "description": "用户原话",
+          "title": "User Input",
+          "type": "string"
+        },
+        "intent": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Intent"
+        },
+        "skill_key": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Skill Key"
+        },
+        "plan": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "步骤 + 依赖 + 工具 + 是否含 LLM",
+          "title": "Plan"
+        },
+        "plan_confirmed": {
+          "default": false,
+          "title": "Plan Confirmed",
+          "type": "boolean"
+        },
+        "status": {
+          "$ref": "#/$defs/TaskStatus"
+        },
+        "llm_plan_call_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Llm Plan Call Id"
+        },
+        "error": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Error"
+        },
+        "manifest_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Manifest Id"
+        },
+        "created_at": {
+          "title": "Created At",
+          "type": "string"
+        },
+        "started_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Started At"
+        },
+        "finished_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Finished At"
+        }
+      },
+      "required": [
+        "task_id",
+        "user_input",
+        "status",
+        "created_at"
+      ],
+      "title": "任务（不含步骤）",
+      "type": "object"
+    },
+    "TaskStepView": {
+      "description": "任务时间线上的一个步骤。\n\n是 `TaskStep` 的裁剪视图：只保留前端画时间线要用的字段，\n去掉 `input_ref` / `retry_of` 这类后端内部用的列。",
+      "properties": {
+        "step_id": {
+          "title": "Step Id",
+          "type": "string"
+        },
+        "seq": {
+          "title": "Seq",
+          "type": "integer"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "tool": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Tool"
+        },
+        "status": {
+          "title": "Status",
+          "type": "string"
+        },
+        "depends_on": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Depends On",
+          "type": "array"
+        },
+        "output": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Output"
+        },
+        "error": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Error"
+        }
+      },
+      "required": [
+        "step_id",
+        "seq",
+        "name",
+        "status"
+      ],
+      "title": "任务步骤（时间线视图）",
+      "type": "object"
+    },
+    "TaskResponse": {
+      "description": "任务详情：任务本身 + 时间线步骤。",
+      "properties": {
+        "task": {
+          "$ref": "#/$defs/TaskSummary"
+        },
+        "steps": {
+          "items": {
+            "$ref": "#/$defs/TaskStepView"
+          },
+          "title": "Steps",
+          "type": "array"
+        }
+      },
+      "required": [
+        "task",
+        "steps"
+      ],
+      "title": "任务详情",
+      "type": "object"
+    },
+    "TaskListResponse": {
+      "description": "任务列表（不含步骤，避免列表接口驮上全部时间线）。",
+      "properties": {
+        "tasks": {
+          "items": {
+            "$ref": "#/$defs/TaskSummary"
+          },
+          "title": "Tasks",
+          "type": "array"
+        }
+      },
+      "required": [
+        "tasks"
+      ],
+      "title": "任务列表",
+      "type": "object"
+    },
+    "ToolCallListResponse": {
+      "description": "一个任务的全部工具调用记录。",
+      "properties": {
+        "count": {
+          "title": "Count",
+          "type": "integer"
+        },
+        "calls": {
+          "items": {
+            "$ref": "#/$defs/ToolCall"
+          },
+          "title": "Calls",
+          "type": "array"
+        }
+      },
+      "required": [
+        "count",
+        "calls"
+      ],
+      "title": "工具调用记录",
+      "type": "object"
+    },
+    "EventHistoryResponse": {
+      "description": "一次性返回已发出的 SSE 事件。\n\n给两个场景用：页面刷新后先拉历史再订阅实时流；以及排查「前端少了一格」时\n对照服务端到底发了什么。",
+      "properties": {
+        "count": {
+          "title": "Count",
+          "type": "integer"
+        },
+        "events": {
+          "items": {
+            "$ref": "#/$defs/TaskEvent"
+          },
+          "title": "Events",
+          "type": "array"
+        }
+      },
+      "required": [
+        "count",
+        "events"
+      ],
+      "title": "任务事件历史",
+      "type": "object"
+    },
+    "ValidationIssue": {
+      "description": "一条参数校验失败。\n\n这个结构**刻意保持与 FastAPI 默认的 422 响应同形**（`detail` 数组，每项带\n`loc` / `type` / `msg`），只把 `msg` 换成中文。改形状会让前端里已有的\n`detail[0].msg` 取值方式失效，而那是所有人都见过的默认约定。",
+      "properties": {
+        "field": {
+          "description": "点号分隔的字段路径，如 'project_id'",
+          "title": "Field",
+          "type": "string"
+        },
+        "loc": {
+          "description": "Pydantic 的原始位置串",
+          "items": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              }
+            ]
+          },
+          "title": "Loc",
+          "type": "array"
+        },
+        "type": {
+          "description": "机读错误码，如 'string_too_short'；前端按它分支",
+          "title": "Type",
+          "type": "string"
+        },
+        "msg": {
+          "description": "中文说明",
+          "title": "Msg",
+          "type": "string"
+        },
+        "input": {
+          "anyOf": [
+            {},
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "触发问题的原始输入",
+          "title": "Input"
+        }
+      },
+      "required": [
+        "field",
+        "loc",
+        "type",
+        "msg"
+      ],
+      "title": "参数校验问题",
+      "type": "object"
+    },
+    "ValidationErrorResponse": {
+      "description": "请求参数没通过校验（HTTP 422）。",
+      "properties": {
+        "detail": {
+          "items": {
+            "$ref": "#/$defs/ValidationIssue"
+          },
+          "title": "Detail",
+          "type": "array"
+        }
+      },
+      "required": [
+        "detail"
+      ],
+      "title": "参数校验失败",
+      "type": "object"
+    },
+    "DatabaseStatus": {
+      "properties": {
+        "ok": {
+          "title": "Ok",
+          "type": "boolean"
+        },
+        "path": {
+          "title": "Path",
+          "type": "string"
+        },
+        "counts": {
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "title": "Counts",
+          "type": "object"
+        },
+        "error": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Error"
+        }
+      },
+      "required": [
+        "ok",
+        "path"
+      ],
+      "title": "数据库状态",
+      "type": "object"
+    },
+    "HealthResponse": {
+      "description": "健康检查。\n\n数据库不可用时返回的是 **503 + `status='degraded'`**，不是 200——\n一个永远返回 200 的健康检查等于没有健康检查。",
+      "properties": {
+        "status": {
+          "description": "'ok' 或 'degraded'",
+          "title": "Status",
+          "type": "string"
+        },
+        "database": {
+          "$ref": "#/$defs/DatabaseStatus"
+        },
+        "offline_mode": {
+          "description": "离线回放模式；为真时界面必须显著标注",
+          "title": "Offline Mode",
+          "type": "boolean"
+        },
+        "llm_configured": {
+          "title": "Llm Configured",
+          "type": "boolean"
+        },
+        "model": {
+          "description": "使用的模型名，如 'deepseek-chat'",
+          "title": "Model",
+          "type": "string"
+        }
+      },
+      "required": [
+        "status",
+        "database",
+        "offline_mode",
+        "llm_configured",
+        "model"
+      ],
+      "title": "健康检查",
+      "type": "object"
+    },
+    "ToolSpecView": {
+      "description": "一个已登记的 Tool。",
+      "properties": {
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "version": {
+          "title": "Version",
+          "type": "string"
+        },
+        "description": {
+          "title": "Description",
+          "type": "string"
+        },
+        "deterministic": {
+          "description": "True=纯计算由程序完成；False=含 LLM。评审据此看边界",
+          "title": "Deterministic",
+          "type": "boolean"
+        },
+        "side_effects": {
+          "title": "Side Effects",
+          "type": "boolean"
+        },
+        "transport": {
+          "$ref": "#/$defs/ToolTransport"
+        },
+        "input_schema": {
+          "additionalProperties": true,
+          "title": "Input Schema",
+          "type": "object"
+        },
+        "output_schema": {
+          "additionalProperties": true,
+          "title": "Output Schema",
+          "type": "object"
+        }
+      },
+      "required": [
+        "name",
+        "version",
+        "description",
+        "deterministic",
+        "side_effects",
+        "transport",
+        "input_schema",
+        "output_schema"
+      ],
+      "title": "工具定义",
+      "type": "object"
+    },
+    "ToolListResponse": {
+      "properties": {
+        "count": {
+          "title": "Count",
+          "type": "integer"
+        },
+        "tools": {
+          "items": {
+            "$ref": "#/$defs/ToolSpecView"
+          },
+          "title": "Tools",
+          "type": "array"
+        },
+        "mcp_preview": {
+          "description": "同一份 input_schema 经 MCP 暴露的样子",
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "title": "Mcp Preview",
+          "type": "array"
+        }
+      },
+      "required": [
+        "count",
+        "tools"
+      ],
+      "title": "工具清单",
+      "type": "object"
+    },
+    "SkillView": {
+      "properties": {
+        "key": {
+          "title": "Key",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "description": {
+          "title": "Description",
+          "type": "string"
+        }
+      },
+      "required": [
+        "key",
+        "name",
+        "description"
+      ],
+      "title": "Skill 定义",
+      "type": "object"
+    },
+    "SkillListResponse": {
+      "properties": {
+        "count": {
+          "title": "Count",
+          "type": "integer"
+        },
+        "skills": {
+          "items": {
+            "$ref": "#/$defs/SkillView"
+          },
+          "title": "Skills",
+          "type": "array"
+        }
+      },
+      "required": [
+        "count",
+        "skills"
+      ],
+      "title": "Skill 清单",
+      "type": "object"
+    },
+    "MetaResponse": {
+      "description": "运行环境。密钥已脱敏（只显示是否配置,不显示值）。",
+      "properties": {
+        "backend_dir": {
+          "title": "Backend Dir",
+          "type": "string"
+        },
+        "data_root": {
+          "title": "Data Root",
+          "type": "string"
+        },
+        "settings": {
+          "additionalProperties": true,
+          "title": "Settings",
+          "type": "object"
+        }
+      },
+      "required": [
+        "backend_dir",
+        "data_root",
+        "settings"
+      ],
+      "title": "运行环境",
+      "type": "object"
+    },
+    "ProjectView": {
+      "description": "一个投研项目（一家公司的若干年年报）。",
+      "properties": {
+        "project_id": {
+          "title": "Project Id",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "company_name": {
+          "title": "Company Name",
+          "type": "string"
+        },
+        "stock_code": {
+          "description": "如 '600019.SH'",
+          "title": "Stock Code",
+          "type": "string"
+        },
+        "industry": {
+          "description": "'steel'；本次参赛只跑钢铁",
+          "title": "Industry",
+          "type": "string"
+        },
+        "base_currency": {
+          "title": "Base Currency",
+          "type": "string"
+        },
+        "fiscal_years": {
+          "description": "覆盖的会计年度。库里是 JSON 文本，出库时转成数组",
+          "items": {
+            "type": "string"
+          },
+          "title": "Fiscal Years",
+          "type": "array"
+        },
+        "base_scope": {
+          "description": "默认会计口径：consolidated / parent",
+          "title": "Base Scope",
+          "type": "string"
+        },
+        "status": {
+          "description": "'active' 或 'archived'",
+          "title": "Status",
+          "type": "string"
+        },
+        "created_at": {
+          "title": "Created At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "project_id",
+        "name",
+        "company_name",
+        "stock_code",
+        "industry",
+        "base_currency",
+        "base_scope",
+        "status",
+        "created_at"
+      ],
+      "title": "项目",
+      "type": "object"
+    },
+    "ProjectListResponse": {
+      "properties": {
+        "projects": {
+          "items": {
+            "$ref": "#/$defs/ProjectView"
+          },
+          "title": "Projects",
+          "type": "array"
+        }
+      },
+      "required": [
+        "projects"
+      ],
+      "title": "项目列表",
+      "type": "object"
+    },
+    "FileRole": {
+      "enum": [
+        "annual_report",
+        "half_year",
+        "quarterly",
+        "announcement",
+        "comparable",
+        "research_draft",
+        "industry_data"
+      ],
+      "title": "文件角色",
+      "type": "string"
+    },
+    "ParseStatus": {
+      "enum": [
+        "pending",
+        "parsing",
+        "parsed",
+        "failed"
+      ],
+      "title": "解析状态",
+      "type": "string"
+    },
+    "FileView": {
+      "description": "登记进项目的一份文件。\n\n`parse_status` 停在 'pending' 是**诚实的状态**：页面据此显示「待解析」，\n而不是把没解析过的文件显示成「已解析但没数据」。",
+      "properties": {
+        "file_id": {
+          "title": "File Id",
+          "type": "string"
+        },
+        "project_id": {
+          "title": "Project Id",
+          "type": "string"
+        },
+        "role": {
+          "$ref": "#/$defs/FileRole"
+        },
+        "period": {
+          "description": "'2024' / '2024H1' / '2024Q3'",
+          "title": "Period",
+          "type": "string"
+        },
+        "rel_path": {
+          "description": "相对 DATA_ROOT；绝对路径禁止入库",
+          "title": "Rel Path",
+          "type": "string"
+        },
+        "sha256": {
+          "title": "Sha256",
+          "type": "string"
+        },
+        "bytes": {
+          "title": "Bytes",
+          "type": "integer"
+        },
+        "page_count": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Page Count"
+        },
+        "is_scanned": {
+          "description": "扫描件需走 OCR 通道，精度不同",
+          "title": "Is Scanned",
+          "type": "boolean"
+        },
+        "parse_status": {
+          "$ref": "#/$defs/ParseStatus"
+        },
+        "parse_error": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Parse Error"
+        },
+        "uploaded_at": {
+          "title": "Uploaded At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "file_id",
+        "project_id",
+        "role",
+        "period",
+        "rel_path",
+        "sha256",
+        "bytes",
+        "is_scanned",
+        "parse_status",
+        "uploaded_at"
+      ],
+      "title": "文件",
+      "type": "object"
+    },
+    "FileListResponse": {
+      "properties": {
+        "files": {
+          "items": {
+            "$ref": "#/$defs/FileView"
+          },
+          "title": "Files",
+          "type": "array"
+        }
+      },
+      "required": [
+        "files"
+      ],
+      "title": "文件列表",
       "type": "object"
     }
   }

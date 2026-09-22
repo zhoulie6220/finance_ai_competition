@@ -8,9 +8,51 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from enum import StrEnum
+from typing import Any, TypeVar
+
+from pydantic import GetJsonSchemaHandler
+from pydantic.json_schema import JsonSchemaValue
+from pydantic_core import core_schema
+
+E = TypeVar("E", bound=type)
 
 
+def _with_cn_title(
+    cls: Any, schema: core_schema.CoreSchema, handler: GetJsonSchemaHandler
+) -> JsonSchemaValue:
+    js = handler(schema)
+    title = getattr(cls, "title_cn", "")
+    if title:
+        js["title"] = title
+    return js
+
+
+def cn_enum(title: str) -> Callable[[E], E]:
+    """给枚举在 OpenAPI 里挂一个中文标题。
+
+    枚举的 title 默认取**类名**（`FileRole`），而类名是英文——`/docs` 的 Schemas 区
+    和前端从 `contract.json` 生成的类型名都会照搬它。Pydantic 认 `model_config` 的只有
+    BaseModel，Enum 没有这条路，所以这里在类创建后挂一个 JSON Schema 钩子。
+
+    ⚠ 不要改成「让枚举继承一个带 title 的基类」：Python 的 Enum 不许被有成员的枚举
+      继承，而用 `ClassVar` / `nonmember` 声明基类属性也挡不住子类里的赋值——
+      赋值照样会变成**一个真实的枚举成员**，于是 `list(FileRole)` 里凭空多出
+      `title_cn`，所有遍历枚举的地方都会多跑一轮。这个坑实测过。
+
+    **取值本身（'annual_report' 等）不翻译**——它们是要落库、要进 JSON、要与
+    schema.sql 的 CHECK 逐字对上的数据，不是文案。要说明取值含义就写进类 docstring。
+    """
+    def decorate(cls: E) -> E:
+        cls.title_cn = title
+        cls.__get_pydantic_json_schema__ = classmethod(_with_cn_title)
+        return cls
+
+    return decorate
+
+
+@cn_enum("会计口径")
 class Scope(StrEnum):
     """会计口径。默认合并口径；母公司口径只在用户明确选择时展示。"""
 
@@ -18,6 +60,7 @@ class Scope(StrEnum):
     PARENT = "parent"
 
 
+@cn_enum("数值期间性质")
 class PeriodKind(StrEnum):
     """数值本身的性质，不是它出现在哪份报告里。
 
@@ -32,6 +75,7 @@ class PeriodKind(StrEnum):
     AVERAGE = "average"
 
 
+@cn_enum("财务事实状态")
 class FactStatus(StrEnum):
     VALIDATED = "validated"
     NEEDS_REVIEW = "needs_review"
@@ -40,8 +84,16 @@ class FactStatus(StrEnum):
     REJECTED = "rejected"
 
 
+@cn_enum("不可比原因")
 class IncomparableReason(StrEnum):
-    """不可直接比较的原因。标记后不进指数扣分，但从主中枢中排除。"""
+    """不可直接比较的原因。标记后不进指数扣分，但从主中枢中排除。
+
+    ⚠ 取值必须与 `schema.sql` 里 `financial_fact` 和 `normalization_year` 两张表的
+      `incomparable_reason` CHECK 完全一致。这三处曾经分叉过：Pydantic 放行
+      `asset_injection`，而 `financial_fact` 的 CHECK 里没有它——于是签字文档 §4
+      明确要求标记的「资产注入年度」**写不进去**，报的还是一句 constraint failed。
+      `tests/unit/schemas/test_contract.py` 里有对拍测试盯着这三处。
+    """
 
     MNA = "mna"
     RESTRUCTURING = "restructuring"
@@ -50,9 +102,24 @@ class IncomparableReason(StrEnum):
     RESTATEMENT = "restatement"
     POLICY_CHANGE = "policy_change"
     INDUSTRY_CYCLE = "industry_cycle"
+    SEASONALITY = "seasonality"
     OTHER = "other"
 
 
+@cn_enum("规则参数分级")
+class ParamTier(StrEnum):
+    """规则参数的分级（签字文档 A-8）。
+
+    决定改一个参数需要谁点头，而不是它是「重要」还是「不重要」——
+    `soft` 的提示语照样可以改错，只是改错不会影响任何数字。
+    """
+
+    HARD = "hard"      # 字段口径、EBIT、周期窗口、阈值、减值、估值公式 → 发布前会计签字
+    SOFT = "soft"      # 提示语、颜色、排序 → 可后续调整
+    MODEL = "model"    # 模型名、Prompt 版本、温度、输出长度 → 记版本，不属于会计口径
+
+
+@cn_enum("报表类型")
 class Statement(StrEnum):
     BALANCE = "balance"
     INCOME = "income"
@@ -63,6 +130,7 @@ class Statement(StrEnum):
     DISCLOSURE = "disclosure"
 
 
+@cn_enum("数值类型")
 class ValueType(StrEnum):
     STOCK = "stock"      # 时点（资产负债表）
     FLOW = "flow"        # 期间（利润表、现金流量表）
@@ -70,6 +138,7 @@ class ValueType(StrEnum):
     TEXT = "text"        # 文本，无对应数值
 
 
+@cn_enum("单位类型")
 class UnitKind(StrEnum):
     CURRENCY = "currency"
     PERCENT = "percent"
@@ -80,6 +149,7 @@ class UnitKind(StrEnum):
     TEXT = "text"
 
 
+@cn_enum("例句来源")
 class ExampleSource(StrEnum):
     """字段字典里例句的来源。
 
@@ -91,12 +161,14 @@ class ExampleSource(StrEnum):
     SYNTHETIC_EXAMPLE = "synthetic_example"
 
 
+@cn_enum("正负号含义")
 class SignConvention(StrEnum):
     POSITIVE_IS_GOOD = "positive_is_good"
     NEGATIVE_IS_GOOD = "negative_is_good"
     NEUTRAL = "neutral"
 
 
+@cn_enum("数据在年报中的位置")
 class SourceLocation(StrEnum):
     """同一数字在年报中的位置。位置不同可信度不同，交叉校验时按此加权。"""
 
@@ -107,6 +179,7 @@ class SourceLocation(StrEnum):
     OTHER = "other"
 
 
+@cn_enum("多源观测裁决")
 class ObservationResolution(StrEnum):
     """同一次取值的多个观测，裁决结果。"""
 
@@ -115,6 +188,7 @@ class ObservationResolution(StrEnum):
     REJECTED = "rejected"
 
 
+@cn_enum("校验状态")
 class CheckStatus(StrEnum):
     PASSED = "passed"
     FAILED = "failed"
@@ -123,12 +197,14 @@ class CheckStatus(StrEnum):
     SKIPPED_INCOMPARABLE = "skipped_incomparable"
 
 
+@cn_enum("严重程度")
 class Severity(StrEnum):
     INFO = "info"
     WARN = "warn"
     ERROR = "error"
 
 
+@cn_enum("主张方向")
 class ClaimDirection(StrEnum):
     UP = "up"
     DOWN = "down"
@@ -138,6 +214,7 @@ class ClaimDirection(StrEnum):
     UNKNOWN = "unknown"
 
 
+@cn_enum("主张主题")
 class ClaimType(StrEnum):
     """MD&A 主张的主题。对应大框架里的四类叙事信号。"""
 
@@ -152,6 +229,7 @@ class ClaimType(StrEnum):
     OTHER = "other"
 
 
+@cn_enum("主张—事实匹配结论")
 class MatchVerdict(StrEnum):
     """主张—事实匹配的四态 + 部分支持。
 
@@ -165,6 +243,7 @@ class MatchVerdict(StrEnum):
     MISSING = "missing"             # 不推断为失败，转人工复核
 
 
+@cn_enum("诊断指数等级")
 class IndexGrade(StrEnum):
     HIGH = "high"
     MEDIUM = "medium"
@@ -173,6 +252,7 @@ class IndexGrade(StrEnum):
     INSUFFICIENT = "insufficient"
 
 
+@cn_enum("周期正常化状态")
 class NormalizationStatus(StrEnum):
     NORMALIZED = "normalized"                                 # 主窗口 8 年成功
     EXTENDED_NORMALIZED = "extended_normalized"               # 回退窗口 10 年成功
@@ -180,11 +260,13 @@ class NormalizationStatus(StrEnum):
     INCOMPLETE_CYCLE = "incomplete_cycle"                     # 周期覆盖不完整
 
 
+@cn_enum("正常化窗口模式")
 class WindowMode(StrEnum):
     PRIMARY_8Y = "primary_8y"
     FALLBACK_10Y = "fallback_10y"
 
 
+@cn_enum("EBIT 口径")
 class EbitVariant(StrEnum):
     """Reported 为 DCF 默认；Adjusted 需会计逐笔批准后才可切换。"""
 
@@ -192,6 +274,7 @@ class EbitVariant(StrEnum):
     ADJUSTED = "adjusted"
 
 
+@cn_enum("周期位置")
 class CyclePosition(StrEnum):
     """当前处于周期什么位置。必须显式标注，不能假装周期不存在。"""
 
@@ -203,6 +286,7 @@ class CyclePosition(StrEnum):
     UNKNOWN = "unknown"
 
 
+@cn_enum("EBIT 调整类别")
 class AdjustmentCategory(StrEnum):
     GOV_SUBSIDY = "gov_subsidy"
     ASSET_DISPOSAL = "asset_disposal"
@@ -215,17 +299,20 @@ class AdjustmentCategory(StrEnum):
     OTHER = "other"
 
 
+@cn_enum("调整方向")
 class AdjustmentDirection(StrEnum):
     ADD_BACK = "add_back"
     DEDUCT = "deduct"
 
 
+@cn_enum("调整复核状态")
 class AdjustmentReviewStatus(StrEnum):
     PENDING = "pending"
     APPROVED = "approved"
     REJECTED = "rejected"
 
 
+@cn_enum("估值参数来源")
 class ParamSourceType(StrEnum):
     """估值参数的来源。禁止模型凭记忆填入。"""
 
@@ -235,11 +322,13 @@ class ParamSourceType(StrEnum):
     MODEL_ASSUMPTION = "model_assumption"
 
 
+@cn_enum("盈利状态")
 class Profitability(StrEnum):
     PROFITABLE = "profitable"
     LOSS = "loss"          # 亏损公司不得机械使用 PE
 
 
+@cn_enum("可比公司角色")
 class PeerRole(StrEnum):
     """可比公司的角色。
 
@@ -251,6 +340,7 @@ class PeerRole(StrEnum):
     CHAIN_REFERENCE = "chain_reference"
 
 
+@cn_enum("文件角色")
 class FileRole(StrEnum):
     ANNUAL_REPORT = "annual_report"
     HALF_YEAR = "half_year"
@@ -261,6 +351,7 @@ class FileRole(StrEnum):
     INDUSTRY_DATA = "industry_data"
 
 
+@cn_enum("解析状态")
 class ParseStatus(StrEnum):
     PENDING = "pending"
     PARSING = "parsing"
@@ -268,6 +359,7 @@ class ParseStatus(StrEnum):
     FAILED = "failed"
 
 
+@cn_enum("MD&A 章节类型")
 class MdnaSectionKind(StrEnum):
     MDNA = "mdna"
     RISK_DISCLOSURE = "risk_disclosure"
@@ -276,6 +368,7 @@ class MdnaSectionKind(StrEnum):
     OTHER = "other"
 
 
+@cn_enum("任务状态")
 class TaskStatus(StrEnum):
     PENDING = "pending"
     PLANNED = "planned"
@@ -286,6 +379,7 @@ class TaskStatus(StrEnum):
     CANCELLED = "cancelled"
 
 
+@cn_enum("步骤状态")
 class StepStatus(StrEnum):
     PENDING = "pending"
     RUNNING = "running"
@@ -295,6 +389,7 @@ class StepStatus(StrEnum):
     RETRYING = "retrying"
 
 
+@cn_enum("工具调用通道")
 class ToolTransport(StrEnum):
     REST = "rest"
     SSE = "sse"
@@ -304,6 +399,7 @@ class ToolTransport(StrEnum):
     SKILL = "skill"
 
 
+@cn_enum("证据类型")
 class EvidenceKind(StrEnum):
     FACT = "fact"
     CLAIM = "claim"
@@ -317,6 +413,7 @@ class EvidenceKind(StrEnum):
     BENCHMARK = "benchmark"
 
 
+@cn_enum("研报问题类型")
 class AuditIssueType(StrEnum):
     NUMBER = "number"
     UNIT = "unit"
@@ -327,12 +424,14 @@ class AuditIssueType(StrEnum):
     OPINION_MIXED = "opinion_mixed"     # 事实与观点混写
 
 
+@cn_enum("研报问题状态")
 class AuditFindingStatus(StrEnum):
     CONFIRMED = "confirmed"
     NEEDS_REVIEW = "needs_review"
     IGNORED = "ignored"
 
 
+@cn_enum("人工复核动作")
 class ReviewAction(StrEnum):
     CONFIRM = "confirm"
     REJECT = "reject"
@@ -340,12 +439,14 @@ class ReviewAction(StrEnum):
     RESET_RULES = "reset_rules"
 
 
+@cn_enum("报告类型")
 class ReportKind(StrEnum):
     MEMO = "memo"
     AUDIT = "audit"
     ANALYSIS = "analysis"
 
 
+@cn_enum("日志级别")
 class LogLevel(StrEnum):
     DEBUG = "DEBUG"
     INFO = "INFO"

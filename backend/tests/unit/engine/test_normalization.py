@@ -45,11 +45,11 @@ def year(
     """
     rev = D(revenue)
     ebit = rev * D(margin)
-    total_profit = ebit - D(interest_expense) + D(interest_income)
+    profit_before_tax = ebit - D(interest_expense) + D(interest_income)
     return YearInput(
         year=y,
         revenue=rev,
-        total_profit=total_profit,
+        profit_before_tax=profit_before_tax,
         interest_expense=D(interest_expense),
         interest_income=D(interest_income),
         comparable=comparable,
@@ -305,7 +305,7 @@ def test_reported_ebit_formula():
     y = year("2024", revenue="1000", margin="0.10",
              interest_expense="30", interest_income="5")
     # 利润总额 = 100 − 30 + 5 = 75；EBIT = 75 + 30 − 5 = 100
-    assert y.total_profit == D("75")
+    assert y.profit_before_tax == D("75")
     assert reported_ebit(y) == D("100")
 
 
@@ -313,11 +313,11 @@ def test_crosscheck_deviation_flags_large_gap():
     y = YearInput(
         year="2024",
         revenue=D("1000"),
-        total_profit=D("100"),        # reported EBIT = 100 + 0 − 0 = 100
+        profit_before_tax=D("100"),        # reported EBIT = 100 + 0 − 0 = 100
         interest_expense=D("0"),
         interest_income=D("0"),
         operating_profit=D("200"),    # cross-check = 200 + 0 = 200，与 100 相差一倍
-        financial_expense=D("0"),
+        finance_expense=D("0"),
     )
     dev = crosscheck_deviation(y)
     assert dev == D("1.000000")

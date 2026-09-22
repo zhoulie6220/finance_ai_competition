@@ -19,7 +19,7 @@ class Evidence(BaseModel):
     校验、计算、页面……），`file_id` + `page_no` + `quote` 指向它在年报里的出处。
     """
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(title="证据指针", from_attributes=True)
 
     evidence_id: str
     kind: EvidenceKind
@@ -40,7 +40,7 @@ class ReportCitation(BaseModel):
     这是防止模型在组织文字时悄悄改数的最后一道检查。
     """
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(title="报告引用锚点", from_attributes=True)
 
     id: str
     report_id: str
@@ -53,7 +53,7 @@ class ReportCitation(BaseModel):
 class AuditFinding(BaseModel):
     """研究报告纠错的一条发现。"""
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(title="研报纠错发现", from_attributes=True)
 
     finding_id: str
     report_id: str
@@ -74,7 +74,7 @@ class Report(BaseModel):
     条件这类「不写也没人发现」的段落就会消失。
     """
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(title="生成报告", from_attributes=True)
 
     report_id: str
     project_id: str

@@ -74,12 +74,12 @@ class YearInput:
 
     year: str
     revenue: Decimal
-    total_profit: Decimal
+    profit_before_tax: Decimal
     interest_expense: Decimal
     interest_income: Decimal
     # 交叉核对用（年报齐备时才有）
     operating_profit: Decimal | None = None
-    financial_expense: Decimal | None = None
+    finance_expense: Decimal | None = None
     # 可比性。系统只做初判，是否排除由会计同学确认。
     comparable: bool = True
     incomparable_reason: str | None = None
@@ -201,7 +201,7 @@ def reported_ebit(y: YearInput) -> Decimal:
 
     这是主 DCF 的默认口径，也是历史轻解析阶段唯一能算出来的口径。
     """
-    return y.total_profit + y.interest_expense - y.interest_income
+    return y.profit_before_tax + y.interest_expense - y.interest_income
 
 
 def crosscheck_ebit(y: YearInput) -> Decimal | None:
@@ -210,9 +210,9 @@ def crosscheck_ebit(y: YearInput) -> Decimal | None:
     仅在年报数据齐备时可用。注意它包含投资收益等非经营项，与 Reported EBIT
     天然存在口径差，因此只用作**核对**，不直接参与估值。
     """
-    if y.operating_profit is None or y.financial_expense is None:
+    if y.operating_profit is None or y.finance_expense is None:
         return None
-    return y.operating_profit + y.financial_expense
+    return y.operating_profit + y.finance_expense
 
 
 def adjusted_ebit(y: YearInput) -> Decimal:

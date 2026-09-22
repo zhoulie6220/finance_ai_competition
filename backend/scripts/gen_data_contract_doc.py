@@ -23,6 +23,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+import _console  # noqa: E402  (与本文件同目录)
+
+_console.setup()
+
 from app.db.session import DEFAULT_DB_PATH  # noqa: E402
 
 REPO_DIR = Path(__file__).resolve().parent.parent.parent
@@ -61,7 +65,7 @@ def render() -> str:
     rows = con.execute(
         "SELECT metric_key, label_cn, statement, value_type, unit_kind, is_nonrecurring,"
         " is_derived, industry, parent_key, aliases, exclusion_terms,"
-        " example_sentence, example_source"
+        " example_sentence, example_source, example_file, example_page"
         " FROM metric_definition ORDER BY display_order"
     ).fetchall()
     con.close()
@@ -118,23 +122,41 @@ def render() -> str:
 
     # 例句锚点单独成节：句子有几十字，塞进上面的宽表会把它撑到没法看。
     # 「占位符句」是带【数值】的标准句，只供解析器回归测试，**不得**当成年报原文展示。
+    #
+    # 出处两列（文件、页码）必须一起显示：签字文档 §6 要求真实例句可回溯到
+    # 具体文件的某一页。表格里只写「年报原文」而不给出处的话，文档读者无法核对，
+    # 这一节就退化成了一句自我声明。
     with_example = [r for r in rows if r["example_sentence"]]
     synthetic = sum(1 for r in with_example if r["example_source"] == "synthetic_example")
     lines += [
         f"#### 例句锚点（{len(with_example)}/{total} 项已填，其中占位符句 {synthetic} 项）",
         "",
-        "| 字段键 | 例句 | 来源 |",
-        "|---|---|---|",
+        "| 字段键 | 例句 | 来源 | 出处 |",
+        "|---|---|---|---|",
     ]
     for r in with_example:
         src = _EXAMPLE_SOURCE_CN.get(r["example_source"] or "", "未标注")
-        lines.append(f"| `{r['metric_key']}` | {r['example_sentence']} | {src} |")
+        if r["example_file"]:
+            where = f"`{r['example_file']}` p.{r['example_page']}"
+        elif r["example_source"] == "annual_report":
+            # 数据库的 CHECK 不允许走到这里，真走到这里说明两边规则分叉了
+            where = "**⚠ 缺出处**"
+        else:
+            where = "—"
+        lines.append(f"| `{r['metric_key']}` | {r['example_sentence']} | {src} | {where} |")
     lines.append("")
     lines.append(
         f"> 仍有 **{total - len(with_example)}** 个字段没有例句锚点。"
         "占位符句必须在上传真实年报后逐条替换为原文，并把 `example_source` 改为"
-        " `annual_report`——在此之前它不能作为任何结论的证据。"
+        " `annual_report`、同时填上 `example_file` 与 `example_page`"
+        "——在此之前它不能作为任何结论的证据。"
     )
+    if synthetic:
+        lines.append(">")
+        lines.append(
+            f"> 当前 {synthetic} 条仍是带【数值】占位符的标准句，"
+            "**不得在界面或报告里当成年报原文展示**。"
+        )
     return "\n".join(lines)
 
 

@@ -139,13 +139,69 @@ def test_catches_placeholder_marked_as_annual_report(con: sqlite3.Connection) ->
 
     这正是比赛「明确区分事实与观点」要求的那条线：占位符句不是事实。
     """
+    # 出处必须一起填，否则先被下面那条「年报原文必须有出处」的 CHECK 拦下，
+    # 就测不到占位符这一条了——两条规则都得能单独触发。
     _mutate(
         con,
         "cfo",
         example_sentence="经营活动产生的现金流量净额为【数值】元。",
         example_source="annual_report",
+        example_file="600019_2024_年报.pdf",
+        example_page=86,
     )
     assert _has(validate(con), "cfo", "仍有【】占位符")
+
+
+def test_catches_annual_report_provenance_missing(con: sqlite3.Connection) -> None:
+    """标为年报原文却没记是哪份文件的哪一页（签字文档 §6）。
+
+    这是「例句是证据锚点」的具体落实：没有出处的原文，
+    和一句编造的话在库里长得完全一样，评委无从核对。
+
+    数据库的 CHECK 会先拦下来，所以这里断言的是 IntegrityError；
+    validate() 里那条同名规则是为 CSV 导入路径准备的——那条路径在装库**之前**跑，
+    能报出「第几行、哪个字段」而不是一句 constraint failed。
+    """
+    with pytest.raises(sqlite3.IntegrityError):
+        _mutate(
+            con,
+            "cfo",
+            example_sentence="经营活动产生的现金流量净额为 2,345,678,901.23 元。",
+            example_source="annual_report",
+        )
+
+
+def test_catches_half_migrated_example(con: sqlite3.Connection) -> None:
+    """句子还是占位符，出处却已经填上了 —— 改了一半的状态。
+
+    这是最容易蒙混过关的一种：看起来「已经标了来源和页码」，
+    但句子本身还是合成的。检出的依据是 example_sentence 里仍有【】占位符，
+    与 example_source 是否为 annual_report 无关。
+    """
+    _mutate(
+        con,
+        "cfo",
+        example_sentence="经营活动产生的现金流量净额为【数值】元。",
+        example_source="synthetic_example",
+        example_file="600019_2024_年报.pdf",
+        example_page=86,
+    )
+    assert _has(validate(con), "cfo", "却填了 example_file")
+
+
+def test_catches_annual_report_missing_sentence_but_has_provenance(
+    con: sqlite3.Connection,
+) -> None:
+    """反向残缺：出处齐了，句子没了。"""
+    _mutate(
+        con,
+        "cfo",
+        example_sentence=None,
+        example_source="annual_report",
+        example_file="600019_2024_年报.pdf",
+        example_page=86,
+    )
+    assert _has(validate(con), "cfo", "没有例句却标了 example_source")
 
 
 def test_catches_invalid_json_in_aliases(con: sqlite3.Connection) -> None:

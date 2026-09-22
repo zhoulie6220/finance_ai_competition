@@ -25,7 +25,7 @@ from app.schemas.types import Ratio
 class DiagnosisComponent(BaseModel):
     """指数的构成项。页面据此展示「这个分是怎么来的」。"""
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(title="诊断指数构成项", from_attributes=True)
 
     id: str
     run_id: str
@@ -46,7 +46,7 @@ class DiagnosisComponent(BaseModel):
 class DiagnosisRun(BaseModel):
     """一次诊断指数计算的结果。"""
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(title="诊断指数结果", from_attributes=True)
 
     run_id: str
     project_id: str
@@ -97,7 +97,7 @@ class DiagnosisRun(BaseModel):
 class RuleConfigItem(BaseModel):
     """一条规则参数。页面提供查看 / 修改 / 恢复默认。"""
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(title="规则参数", from_attributes=True)
 
     key: str
     industry: str = Field(default="", description="空串表示全局默认；填具体行业则只覆盖该行业")
@@ -117,6 +117,8 @@ class ScenarioDelta(BaseModel):
     **纯函数的产物，绝不产出目标价。** 每次传导都要能回答
     「原参数是什么、新参数是什么、由哪条证据触发、适用范围到哪」。
     """
+
+    model_config = ConfigDict(title="指数向情景的传导")
 
     scenario: str = Field(description="base / bull / bear")
     weight: Ratio = Field(description="情景权重，由映射规则给出而非手填")

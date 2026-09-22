@@ -52,18 +52,109 @@ docs/              设计规则手册（编号文档，见下）
 
 | 模块 | 状态 |
 |---|---|
-| `db/schema.sql`、`db/session.py` | ✅ 41 张表 + 3 个视图；三条硬规则已落到 CHECK 约束 |
+| `db/schema.sql`、`db/session.py` | ✅ 42 张表 + 3 个视图；三条硬规则已落到 CHECK 约束 |
+| `app/main.py` + `api/` | ✅ 可启动。`uvicorn app.main:app --reload` 已能跑；SEE 事件流通了 |
+| `agents/`（状态机 + 编排器） | ✅ 骨架冻结，见下方「冻结的接缝」 |
+| `tools/registry.py` | ✅ Tool 登记表；已登记 3 个工具（`system.*`） |
+| `skills/` | ✅ 契约 + 2 个真 Skill（系统自检、财务事实）；3 个主流程 Skill 待填 |
+| `observability/` | ⬜ 空包占位（结构化日志暂落在 `app_log` 表 + `main.py` 中间件） |
 | `schemas/` | ✅ 33 个模型，数据契约的机读真源 |
 | `engine/normalization.py` | ✅ 周期正常化（19 个 golden case） |
+| `engine/ratios.py` | ✅ 同比与比率，含拒绝路径；`dcf/multiples/sensitivity` 待填 |
 | `retrieval/fts.py` | ✅ FTS5 + 短查询 LIKE 回退 |
-| `data/seed/` | ✅ 89 个字段字典、65 条规则参数 |
+| `data/seed/` | ✅ 91 个字段字典、64 条规则参数、14 条旧键名映射 |
 | `scripts/` | ✅ init_db / export_schemas / gen_data_contract_doc |
-| `parsing/` `agents/` `tools/` `skills/` `mcp/` `observability/` `api/` | ⬜ **空包占位** |
-| `app/main.py` | ⬜ 未创建 |
-| `frontend/src/` | ⬜ 仅占位 `App.tsx` |
+| `parsing/` `mcp/` | ⬜ **空包占位** |
+| `frontend/src/` | ✅ 任务时间线页（SSE 订阅 + 结果面板）；其余 7 页待铺 |
+| `scripts/seed_demo.py` | ✅ 演示数据（宝钢十年 380 条事实，全部标注为演示） |
 
 `engine/` 目前只有 `normalization.py`；`ratios` / `checks` / `dcf` / `multiples` /
 `sensitivity` 尚未实现。
+
+---
+
+## ★ 冻结的接缝 —— 三个人都从这条线往上长
+
+**2026-09-22 建立的骨架。这些文件已经定稿，请在上面扩展，不要重写。**
+
+重写的代价不是"多写一遍"，而是同一个位置出现两套并存的约定：一边发
+`step.finished`、另一边发 `step.succeeded`，前端只能显示一半，而且**两边都不报错**。
+
+### 已经冻结的东西
+
+| 文件 | 冻结了什么 | 谁往上长 |
+|---|---|---|
+| `app/main.py` | 应用装配（lifespan / CORS / 路由注册 / 访问日志中间件 / 异常处理） | 都不改；加路由去 `api/` |
+| `app/agents/state.py` | **任务与步骤的状态机**、SSE 事件类型白名单、可注入时钟 | 乙：加事件类型要同时改这三处 |
+| `app/api/events.py` | **SSE 事件总线**：seq 单调、有界历史、`Last-Event-ID` 续传、心跳、终态关流 | 都不改 |
+| `app/api/routes_tasks.py` | 任务接口形状 + SSE 端点契约 | 丙照此写前端；加字段要同步 `contract.json` |
+| `app/tools/registry.py` | **ToolSpec**：一份 JSON Schema 同时供给 REST 与 MCP；调用留痕 | 乙：新工具用 `@tool` 注册即可 |
+| `app/skills/base.py` | **Skill 协议**：`can_handle` / `plan` / `run(step, ctx, prior)` | 乙：4 个主流程 Skill 实现它 |
+| `app/agents/orchestrator.py` | 建任务 → 规划 → 逐步执行 → 落库 → 发事件的流程 | 乙：只加 Skill，**不改编排器** |
+| `app/db/repositories/task_repo.py` | task / task_step / tool_call / app_log 的读写 | 甲：加仓储方法，别绕过它直接写 SQL |
+| `app/db/repositories/project_repo.py` | project / file 的读写（含 JSON 列转换） | 甲：加方法，别在路由里写 SQL |
+| `app/schemas/api.py` | **HTTP 响应契约**：每个接口返回什么形状 | 加接口在这里加模型；路由必须声明 `response_model=` |
+| `app/api/errors.py` | 422 的中文报错与响应说明 | 加校验规则时在这里加错误码的中文 |
+| `app/config.py` | 配置与 `Clock` 注入 | 都不改；加配置项在这里加字段 |
+
+### 各自往哪里长（**不要做的事**也写清楚了）
+
+| | 往这里长 | ⚠ 不要做 |
+|---|---|---|
+| **甲** | `parsing/` PDF 解析、`file` 登记后的解析流程、`observability/` 文件访问审计、新仓储方法 | 不要改 `orchestrator.py` / `state.py`；不要绕开 `TaskRepository` 直接写 SQL |
+| **乙** | `engine/ratios\|checks\|dcf\|...`、`agents/llm/`、`guards.py`、4 个主流程 Skill | 不要新造状态机或事件名（用 `EVENT_TYPES` 里已有的）；不要让 Skill 直接 `print`/写库 |
+| **丙** | `frontend/src/` 全部 | 不要在前端做任何业务计算；不要自己发明事件类型 |
+
+### 三个契约，改动必须同步的地方
+
+1. **SSE 事件类型**：`state.py::EVENT_TYPES` ←→ `schemas/task.py::TaskEvent.type` 的说明
+   ←→ 前端分发逻辑。拼错不会报错，只会让那一帧**静默不显示**。
+   测试：`tests/unit/agents/test_orchestrator.py::test_every_published_event_has_a_valid_type`
+2. **状态取值**：`schemas/enums.py` 的 `TaskStatus` / `StepStatus` ←→ `schema.sql` 的 CHECK
+   ←→ `state.py` 的转移表。测试：`test_every_status_appears_in_the_table`
+3. **工具留痕**：`tool_call.status` 的取值受 CHECK 约束
+   （`'succeeded'` / `'failed'` / `'timeout'`），**不要自创**
+
+### 加一个 Skill 的最小步骤
+
+```python
+# app/skills/your_skill.py
+class YourSkill:
+    key, name_cn, description_cn = "parsing", "解析年报", "..."
+    def can_handle(self, request): ...          # 规则路由，关键词优先
+    def plan(self, request) -> list[PlannedStep]: ...
+    async def run(self, step, ctx, prior) -> StepOutcome: ...
+
+# app/skills/__init__.py
+ALL_SKILLS = (SELFCHECK, YourSkill())
+```
+
+**不需要改编排器，也不需要改路由。** 工具用 `@tool(...)` 装饰器注册即可
+（见 `app/skills/selfcheck.py` 的三个例子）。
+
+### 当前能跑通的东西（先跑一遍再动手）
+
+```bash
+cd backend
+python scripts/init_db.py --force      # 建库 + 种子数据
+python scripts/seed_demo.py            # 灌演示数据（380 条事实，可选但前端要用）
+uvicorn app.main:app --reload
+# 另开一个终端：
+curl -X POST localhost:8000/api/tasks -H "Content-Type: application/json" \
+     -d '{"input":"跑一次系统自检","sync":true}'
+```
+
+同时看前端（两个终端）：
+
+```bash
+cd frontend && npm run dev     # http://localhost:5173
+```
+
+页面上输入「看一下这家公司的财务事实趋势」→ 中间时间线逐条亮起 → 右侧出结果。
+**这是验证整条链路最快的方式**，比在 `/docs` 上点接口直观得多。
+
+一句话 → 4 个步骤 → 16 条 SSE 事件 → 3 条 `tool_call` 留痕。
+**这是"假数据真链路"里的那条真链路**，后面所有 Skill 都往上套。
 
 ## 常用命令
 
@@ -124,8 +215,80 @@ npm run build
 
 前端**只能**通过 REST + SSE 取数，不在浏览器里做任何业务计算。
 
-> ⚠ `uvicorn app.main:app --reload` 是最终形态，但 `app/main.py` **尚未创建**，
-> 现在执行会失败。见下方「当前进度」。
+后端**现在就能起来**（先确保跑过 `python scripts/init_db.py`，否则启动自检会拒绝启动
+并告诉你该跑什么）：
+
+```bash
+cd backend
+.venv/Scripts/python.exe -m uvicorn app.main:app --reload   # http://127.0.0.1:8000/docs
+```
+
+启动时会做一次自检：数据库在不在、种子数据全不全、Skill 注册上没有。
+**失败就拒绝启动**——不带着一个空库跑起来，然后让用户点下按钮才看到 500，
+那时的报错跟真正的原因（库是空的）离得很远。
+
+## 前端
+
+React + Vite，**没有引 UI 库**（计划里是 Ant Design，等链路稳了再上——
+换掉的是 JSX，协议层不用动）。
+
+### 前端不做任何业务计算
+
+同比、比率、估值一律由后端 `app/engine/` 算好返回。浏览器里算的东西没法审计，
+而「计算可复算、过程可追溯」是比赛的硬要求。前端只做两件事：取数、渲染。
+
+### 类型来自后端，不要手抄
+
+`frontend/src/types/contract.ts` 由 `python scripts/export_schemas.py` 生成，
+含 89 个类型定义、枚举字面量联合、以及 **SSE 事件类型清单**。
+手抄的会在后端加字段时静默过期——所以字段名拼错时 `npm run build` 会直接失败，
+这是刻意的。
+
+> ⚠ `contract.json` 曾经带头部 `/* */` 注释，**根本不是合法 JSON**，
+> 浏览器 import 不了。而 `--check` 一直是绿的（它比文本）。现在头部是
+> `$comment` 字段，`test_exported_files_are_actually_usable_by_the_frontend` 盯着。
+
+### SSE 订阅只有一处实现
+
+`frontend/src/hooks/useTaskStream.ts`。**不要在每个页面里各写一遍 EventSource。**
+它处理的三件事都不是可选的：
+
+1. **按类型逐个 `addEventListener`**——服务端发的是具名事件，不会触发 `onmessage`。
+   清单来自 `contract.ts`，由后端导出。
+2. **不自己重连、不自己记序号**——EventSource 重连时自动带 `Last-Event-ID`，
+   服务端从该序号后补发。自己再记一遍会把事件处理两遍，时间线上凭空多两个步骤。
+3. **收到终态事件就 `close()`**——不关的话浏览器把「服务端正常关流」当成断线，
+   无限重连，已完成的页面永远显示「重连中」。
+
+开发时前端走 **Vite 代理**（`vite.config.ts`）请求 `/api`，因此不受跨域影响；
+后端另放行了 `localhost` 与 `127.0.0.1` 两种写法（它们**不是**同一个来源）。
+
+## 演示数据
+
+`python scripts/seed_demo.py` 灌一份宝钢 2015–2024 的十年财务事实（380 条）。
+它的作用是**把「界面能不能正确渲染」和「PDF 解析得准不准」解耦**——
+解析还没做，前端页面照样能开发和验收。
+
+### ⚠ 这些数字是合成的，不是年报原文
+
+所以它在**三个地方**被标成演示数据，而不是靠使用者记得：
+
+| 位置 | 值 |
+|---|---|
+| `project.name` | 前缀「【演示数据】」，页面上第一眼就能看到 |
+| `financial_fact.extractor` | `'demo:seed_v1'`，可按它整批查出/删掉 |
+| `financial_fact.source_text` | 前缀「【演示数据】」，**证据面板里也逃不掉** |
+
+第三条最要紧。本系统的卖点是「点任意结论都能回到年报原文」，
+演示数据的 `source_text` 若长得和真原文一样，它在证据面板里就是**一句看起来
+很真的假话**——与「标为 `annual_report` 就必须带出处」是同一条规则。
+
+### 数据必须自洽，而且从库里就能勾稽
+
+脚本生成后先断言、落库后再**从库里读回来**断言一遍（`verify_from_db`）。
+理由：乙 的勾稽检查跑的是 SQL，不是脚本里的内存变量。内存里对、落库时错位，
+是这类脚本最典型的翻车方式。守的恒等式：资产 = 负债 + 权益、现金滚动、
+毛利 = 收入 − 成本、营业利润 = 毛利 − 期间费用。
 
 ## 数据库
 
@@ -172,6 +335,34 @@ VS Code 的 SQLite Viewer 扩展。
 【数值】的标准句，只供解析器回归测试，**不得在界面或报告里当成年报原文展示**；
 摘到真实原文后必须同步改成 `annual_report`。表里没有 `example_source` 的例句一律
 视为未标注，不得使用。
+
+**标为 `annual_report` 就必须带出处。** 签字文档 §6 要求真实例句同时具备
+`example_file`（PDF 文件名）与 `example_page`（页码），由 `metric_definition` 上的
+CHECK 强制。理由与硬规则一相同：例句是别名维护的锚点，也是评委核对字典的入口，
+**它就是证据**。只写一句「真实年报原句」而不记是哪份文件的哪一页，
+那句原文和一句编造的话在库里长得完全一样。
+
+### 旧键名只活在 `metric_key_migration` 里
+
+会计签字文档 A-1 改了 13 个字段键名，A-3 另加一个跨年度主字段映射。旧键名
+（`net_profit`、`fixed_assets`、`trade_receivables` …）**不再是 `metric_definition`
+的行**，所以：
+
+- 写进 `financial_fact.metric_key` 会被外键拒绝 —— 这是刻意的
+- 表结构里也不许残留旧列名（`normalization_year` 曾经留着 `total_profit` 与
+  `financial_expense`，同一个东西两个名字）
+- 两者分别由 `test_legacy_keys_cannot_be_written_as_facts` 与
+  `test_no_live_column_is_named_after_a_legacy_key` 盯着
+
+> 改名本身**不会报错**。队友按早先的设计文档写出 `net_profit`，只会得到
+> 「这个字段没有数据」——和「公司没披露这一项」看起来一模一样。映射表的价值
+> 在于让仓储层能报出「已改名为 `net_income`（依据 A-1）」这种指向明确的错。
+
+### `rule_config.tier` 决定改一个参数要谁点头
+
+`hard`（默认，会计口径须签字）/ `soft`（提示语、排序）/ `model`（模型参数，
+不进种子文件，逐次记进 `run_manifest`）。**不写 `tier` 一律按 `hard` 处理**——
+让参数「不算数」需要有人明确声明，而不是靠忘记写 `tier` 偷偷降级。
 
 ### `period_kind` 不含 `'prior'`
 
@@ -220,6 +411,50 @@ kind，同一笔事实会存成两行，任何聚合都重复计算且不报错�
 ## 编辑约定
 
 - **界面文案与代码注释用中文**
+
+### 对外可见的东西也必须是中文（不只是注释）
+
+代码注释是中文还不够。**用户在浏览器里看得见的一切**都要是中文：`/docs` 的
+schema 标题、响应说明、422 的报错句子、枚举在文档里的名字。默认全是英文的，
+而且**不会报错**——只是评审看到的中文界面上突然冒出一句
+`String should have at least 1 character`。
+
+三条约定，每一条都有测试盯着：
+
+1. **每个 Pydantic 模型写 `ConfigDict(title="中文名")`**。不写就退回类名，
+   `/docs` 和 `frontend/src/types/contract.json` 里显示的是 `TaskStepView`。
+   测试：`tests/unit/schemas/test_chinese_surface.py`
+2. **每个枚举挂 `@cn_enum("中文名")`**。⚠ 别改成「继承一个带 title 的基类」——
+   Python 的 Enum 不许被有成员的枚举继承，而 `ClassVar` / `nonmember` 也挡不住
+   子类里的赋值，`title_cn` 会变成**一个真实的枚举成员**，
+   `list(FileRole)` 里凭空多一项。理由与实测写在 `app/schemas/enums.py` 里。
+3. **每个路由写 `response_model=`**。返回 `dict[str, Any]` 时 FastAPI 生成的是
+   `{"additionalProp1": {}}` 空壳——它看起来像一份文档，实际什么也没说，
+   前端也没法据此生成类型。测试：
+   `tests/integration/test_api.py::test_every_endpoint_declares_a_response_model`
+
+> **枚举取值本身（`'annual_report'` 等）不翻译。** 它们要落库、要进 JSON、
+> 要与 `schema.sql` 的 CHECK 逐字对上，是**数据**不是文案。要说明取值含义就写进
+> 类 docstring（Pydantic 会把它变成 schema 里的 `description`）。
+
+### JSON 列在仓储层转，不往上传
+
+`plan` / `depends_on` / `args` / `payload` / `fiscal_years` 在库里都是 **TEXT**，
+出库时必须在这一层转回对象。漏转的后果一律是**静默失效**，不报错：
+
+| 字段 | 不转的后果 |
+|---|---|
+| `tool_call.args` | 接口返回 `'{}'` 字符串，`call.args.include_llm` → `undefined`，过滤条件静默失效 |
+| `project.fiscal_years` | 返回 `'["2024"]'`，JS 里 `for (const y of years)` 逐个**字符**迭代 |
+| `file.is_scanned`（0/1） | 字符串 `'0'` 在 JS 里是真值 → **每份文件都被当成扫描件** |
+
+盯着它们的测试：`test_tool_call_args_is_an_object_not_a_string` /
+`test_project_json_columns_come_back_parsed` / `test_file_is_scanned_is_a_boolean`。
+
+- **`scripts/` 下的脚本开头必须调 `_console.setup()`**。Windows 控制台默认 GBK，
+  中文提示语和 ✓ / ✗ 会抛 `UnicodeEncodeError`——而且是**在活儿全干完之后**才抛，
+  用户看到 traceback 会以为写失败了并重跑一遍。会计同学用的 `dict_csv.py --import`
+  正是这条路径
 - 改动 `schema.sql` 后必须跑 `python scripts/init_db.py --force` 与 `python -m pytest`
 - `tests/unit/db/test_schema_integrity.py` 里每条断言都对应一个曾经真实存在、
   且**不会报错只会静默损坏数据**的缺陷。改动 schema 时不要删这些测试

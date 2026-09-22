@@ -14,7 +14,19 @@ import sqlite3
 from pathlib import Path
 
 BACKEND_DIR = Path(__file__).resolve().parent.parent.parent
+#: 默认库位置。实际取值以 `settings.data_root` 为准，见 `default_db_path()`。
 DEFAULT_DB_PATH = BACKEND_DIR / "var" / "finance.db"
+
+
+def default_db_path() -> Path:
+    """当前生效的数据库路径。
+
+    放在函数里而不是模块级常量：配置可以在运行期被测试改掉，
+    模块级常量一旦求值就固化了，会让「改 DATA_ROOT」变成一句空话。
+    """
+    from app.config import get_settings
+
+    return get_settings().db_path
 
 DB_PATH_ENV_HINT = (
     "查看数据：python -m sqlite3 var/finance.db（Python 3.12+ 自带），"
@@ -30,11 +42,26 @@ def connect(db_path: str | Path | None = None) -> sqlite3.Connection:
     - `busy_timeout`     遇到写锁时等待而非立刻报错，避免并发下随机失败
     - `synchronous=NORMAL`  WAL 模式下的推荐值，兼顾安全与速度
     - `row_factory=sqlite3.Row`  便于按列名取值
+
+    不传 `db_path` 时取 `settings.data_root / finance.db`。**这一点很重要**：
+    `.env` 里 `DATA_ROOT` 是可配的，如果这里写死 `DEFAULT_DB_PATH`，
+    改 `DATA_ROOT` 就只会影响文件读写、不影响数据库——两半数据落在不同地方，
+    而两边都不会报错。测试也正是靠它把库指到临时目录。
     """
-    path = Path(db_path) if db_path is not None else DEFAULT_DB_PATH
+    path = Path(db_path) if db_path is not None else default_db_path()
     path.parent.mkdir(parents=True, exist_ok=True)
 
-    con = sqlite3.connect(path)
+    # ⚠ check_same_thread=False 是必须的，理由不是「为了省事」：
+    #   FastAPI 把**同步**路由与同步依赖都丢进线程池执行，而且不保证是同一个线程。
+    #   于是「依赖里建的连接，在路由里用」会随机撞上
+    #   `SQLite objects created in a thread can only be used in that same thread`。
+    #   dev 环境常常侥幸不复现，上线后每个同步接口都可能间歇性 500。
+    #
+    #   这样安全的前提是**一条连接只归一个请求/一个任务所有**（本项目的做法：
+    #   `app/api/deps.py` 每个请求开一条，后台任务各开一条）。
+    #   一旦有人把一条连接跨请求共享、或多协程交错使用，这条保护就没了——
+    #   那时会出现事务边界错乱，且**不会报错**。改这里之前请先确认这一点。
+    con = sqlite3.connect(path, check_same_thread=False)
     con.row_factory = sqlite3.Row
 
     # 顺序有讲究：foreign_keys 必须在任何 DML 之前设置，否则会被忽略
@@ -55,7 +82,7 @@ def connect(db_path: str | Path | None = None) -> sqlite3.Connection:
 
 def connect_memory() -> sqlite3.Connection:
     """内存库，供测试使用。schema 需另行加载。"""
-    con = sqlite3.connect(":memory:")
+    con = sqlite3.connect(":memory:", check_same_thread=False)
     con.row_factory = sqlite3.Row
     con.execute("PRAGMA foreign_keys = ON")
     if con.execute("PRAGMA foreign_keys").fetchone()[0] != 1:

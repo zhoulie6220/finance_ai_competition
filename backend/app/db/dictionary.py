@@ -37,9 +37,14 @@ COLUMNS: tuple[str, ...] = (
     "display_order",
     "example_sentence",
     "example_source",
+    "example_file",
+    "example_page",
     "scope_note",
     "note",
 )
+
+# 例句的溯源列（签字文档 §6）：标为年报原文就必须带上 PDF 文件名与页码。
+EXAMPLE_PROVENANCE_COLUMNS = ("example_file", "example_page")
 
 # 多值列在 CSV 单元格里的分隔符。导出用 '|'，导入时也接受 ';'——
 # 会计同学上一版 docx 用的是分号，没必要让他们改习惯。
@@ -47,6 +52,12 @@ MULTI_SEP = "|"
 MULTI_SEP_ALSO = ("|", ";", "；")
 
 JSON_COLUMNS = ("aliases", "exclusion_terms")
+
+# 整数列。CSV 里所有单元格都是字符串，导出时是 int、导入时是 '86'，
+# 渲染时必须统一成整数再写 SQL —— 否则 `example_page > 0` 这类 CHECK 会拿
+# 文本去和数字比，在 SQLite 的列亲和性下结果正确与否取决于具体写法，
+# 属于「大多数时候对、偶尔静默出错」的那类问题。
+INTEGER_COLUMNS = ("is_nonrecurring", "is_derived", "display_order", "example_page")
 
 # 这两列在 schema 里的可空性不同：aliases 是 NOT NULL，exclusion_terms 可空。
 # 渲染时得区别对待——空列表一律写 NULL 会让 aliases 撞上 NOT NULL 约束，
@@ -222,6 +233,31 @@ def validate(con: sqlite3.Connection) -> list[str]:
                 "请替换为真实原句，或改回 synthetic_example"
             )
 
+        # ---- 例句的溯源（签字文档 §6）----
+        # 「真实年报原句」不是一句自我声明。没有文件名和页码，评委无法核对，
+        # 那句原文和一句编造的话在库里长得完全一样。
+        # 数据库那边有 CHECK 兜底，这里再查一遍是为了给出带字段名的中文提示——
+        # CHECK 报错只会甩一句 constraint failed，改字典的人无从下手。
+        example_file = (r["example_file"] or "").strip() or None
+        example_page = r["example_page"]
+        if source == "annual_report":
+            if example_file is None:
+                problems.append(
+                    f"{where} 标为年报原文，但没有记录 example_file（实际 PDF 文件名）"
+                )
+            if not example_page:
+                problems.append(
+                    f"{where} 标为年报原文，但没有记录 example_page（实际页码）"
+                )
+        # 反向：占位符句不该带出处。带了就说明这一行处于「改了一半」的状态——
+        # 句子还是合成的，出处却填了，是最容易蒙混过关的一种半成品。
+        elif source == "synthetic_example" and (example_file or example_page):
+            problems.append(
+                f"{where} 是占位符句（synthetic_example），却填了 example_file/"
+                "example_page——请把例句替换为年报原文并改为 annual_report，"
+                "或清空出处"
+            )
+
     # ---- 一个别名只能属于一个字段（同行业内） ----
     owner: dict[str, list[str]] = defaultdict(list)
     industry_of = {r["metric_key"]: r["industry"] for r in rows}
@@ -257,6 +293,27 @@ def _sql_literal(value: object) -> str:
     return "'" + text.replace("'", "''") + "'"
 
 
+def _as_int(value: object) -> int | None:
+    """把 CSV 里的 '86' / '86.0' 之类还原成整数。空值返回 None。
+
+    转不动就**抛错**而不是返回 None：静默把一列整数写成 NULL，
+    库里看起来只是「这一行没填页码」，而实际是填了个没法解析的东西。
+    """
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return int(value)
+    if isinstance(value, int):
+        return value
+    text = str(value).strip()
+    if not text:
+        return None
+    try:
+        return int(float(text))
+    except ValueError as exc:
+        raise ValueError(f"期望整数，收到 {value!r}") from exc
+
+
 def _section_of(row: dict) -> str:
     industry = (row.get("industry") or "").strip()
     if industry in _SECTION_BY_INDUSTRY:
@@ -280,7 +337,9 @@ def render_sql(rows: list[dict]) -> str:
         cells = []
         for col in COLUMNS:
             value = row.get(col)
-            if col in JSON_COLUMNS:
+            if col in INTEGER_COLUMNS:
+                value = _as_int(value)
+            elif col in JSON_COLUMNS:
                 # 空列表：NOT NULL 列写 '[]'，可空列写 NULL。
                 # 目的是让重新渲染前后的文件逐字节一致——否则每次 import
                 # 都会产生一整份无意义的 diff，真正的改动反而看不见了。

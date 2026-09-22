@@ -12,6 +12,27 @@
     python scripts/export_schemas.py
 """
 
+from app.schemas.api import (
+    DatabaseStatus,
+    EventHistoryResponse,
+    FileListResponse,
+    FileView,
+    HealthResponse,
+    MetaResponse,
+    ProjectListResponse,
+    ProjectView,
+    SkillListResponse,
+    SkillView,
+    TaskListResponse,
+    TaskResponse,
+    TaskStepView,
+    TaskSummary,
+    ToolCallListResponse,
+    ToolListResponse,
+    ToolSpecView,
+    ValidationErrorResponse,
+    ValidationIssue,
+)
 from app.schemas.claim import Claim, ClaimIndicator, ClaimMatch, MdnaSection
 from app.schemas.diagnosis import (
     DiagnosisComponent,
@@ -122,4 +143,11 @@ __all__ = [
     "AppLog", "TaskEvent",
     # 证据与报告
     "Evidence", "Report", "ReportCitation", "AuditFinding", "MEMO_SECTIONS",
+    # HTTP 接口形状（响应模型；与业务实体分开，见 app/schemas/api.py）
+    "TaskSummary", "TaskStepView", "TaskResponse", "TaskListResponse",
+    "ToolCallListResponse", "EventHistoryResponse", "ValidationIssue",
+    "ValidationErrorResponse", "HealthResponse", "DatabaseStatus",
+    "ToolSpecView", "ToolListResponse", "SkillView", "SkillListResponse",
+    "MetaResponse", "ProjectView", "ProjectListResponse", "FileView",
+    "FileListResponse",
 ]

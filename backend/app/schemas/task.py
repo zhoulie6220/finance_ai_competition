@@ -19,7 +19,7 @@ from app.schemas.enums import LogLevel, StepStatus, TaskStatus, ToolTransport
 class TaskStep(BaseModel):
     """任务计划中的一步。"""
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(title="任务步骤", from_attributes=True)
 
     step_id: str
     task_id: str
@@ -46,7 +46,7 @@ class Task(BaseModel):
     否则「执行过程可追溯」无从谈起。
     """
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(title="任务", from_attributes=True)
 
     task_id: str
     project_id: str | None = None
@@ -68,7 +68,7 @@ class Task(BaseModel):
 class ToolCall(BaseModel):
     """一次工具调用。"""
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(title="工具调用记录", from_attributes=True)
 
     call_id: str
     task_id: str | None = None
@@ -96,7 +96,7 @@ class LlmCall(BaseModel):
     现场断网时走预录响应，**界面必须显著标注「离线回放模式」**。
     """
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(title="模型调用记录", from_attributes=True)
 
     call_id: str
     task_id: str | None = None
@@ -126,7 +126,7 @@ class LlmCall(BaseModel):
 class FileAccessLog(BaseModel):
     """一次文件访问。「完整记录文件访问」的落点。"""
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(title="文件访问记录", from_attributes=True)
 
     id: int | None = None
     ts: str
@@ -150,7 +150,7 @@ class RunManifest(BaseModel):
     规则版本 + 随机种子，缺一不可。
     """
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(title="可复现凭据", from_attributes=True)
 
     manifest_id: str
     project_id: str | None = None
@@ -180,7 +180,7 @@ class AppLog(BaseModel):
     也无法在页面上按 task_id 查询。
     """
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(title="应用日志", from_attributes=True)
 
     id: int | None = None
     ts: str
@@ -197,6 +197,8 @@ class AppLog(BaseModel):
 
 class TaskEvent(BaseModel):
     """SSE 事件。前端按 seq 游标重连，断线时带 Last-Event-ID 续传，保证时间线不丢帧。"""
+
+    model_config = ConfigDict(title="任务事件")
 
     seq: int
     ts: str

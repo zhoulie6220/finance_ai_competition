@@ -30,6 +30,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+import _console  # noqa: E402  (与本文件同目录)
+
+_console.setup()
+
 from app.db import dictionary  # noqa: E402
 from app.db.session import BACKEND_DIR, connect_memory, init_schema, load_seeds  # noqa: E402
 from app.schemas.enums import SignConvention, Statement, UnitKind, ValueType  # noqa: E402
@@ -154,6 +158,29 @@ def _preflight(rows: list[dict]) -> list[str]:
         if parent and parent not in keys:
             problems.append(f"{where} 的父字段 {parent!r} 在本表里不存在")
 
+        # ---- 例句出处（签字文档 §6）----
+        # 数据库的 CHECK 也能拦，但它只会说 constraint failed。
+        # 对着 89 行的 Excel 表，会计同学需要知道的是「第几行、哪一格填错了」。
+        page = str(r.get("example_page") or "").strip()
+        file_ = str(r.get("example_file") or "").strip()
+        source = str(r.get("example_source") or "").strip()
+
+        if page and (_to_int(page) is None or _to_int(page) <= 0):
+            problems.append(f"{where} example_page={page!r} 不是正整数页码")
+
+        if source == "annual_report":
+            if not file_:
+                problems.append(
+                    f"{where} 标为年报原文，example_file（PDF 文件名）不能为空"
+                )
+            if not page:
+                problems.append(f"{where} 标为年报原文，example_page（页码）不能为空")
+        elif source == "synthetic_example" and (file_ or page):
+            problems.append(
+                f"{where} 是占位符句，却填了 example_file/example_page —— "
+                "要么把例句换成年报原文并改成 annual_report，要么清空这两格"
+            )
+
     return problems
 
 
@@ -171,6 +198,8 @@ def _to_db_values(rows: list[dict]) -> list[dict]:
         d["parent_key"] = r.get("parent_key") or None
         d["example_sentence"] = r.get("example_sentence") or None
         d["example_source"] = r.get("example_source") or None
+        d["example_file"] = r.get("example_file") or None
+        d["example_page"] = _to_int(r.get("example_page"))
         d["scope_note"] = r.get("scope_note") or None
         d["note"] = r.get("note") or None
         out.append(d)
@@ -190,7 +219,9 @@ def _canonical(row: dict) -> dict:
             out[col] = dictionary.as_json_list(dictionary._parse_multi(value))
         elif col in ("is_nonrecurring", "is_derived"):
             out[col] = _to_flag(value)
-        elif col == "display_order":
+        elif col in ("display_order", "example_page"):
+            # example_page 也必须归一化：SQL 侧读回来是 int，CSV 侧是 '86'，
+            # 不归一化会让 --check 每次都对这一列报假差异。
             out[col] = _to_int(value)
         else:
             out[col] = str(value).strip() if value is not None else ""

@@ -32,7 +32,7 @@ from app.schemas.types import Money, Ratio
 class MetricDefinition(BaseModel):
     """字段字典的一条。aliases / exclusion_terms 由会计同学维护。"""
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(title="字段字典条目", from_attributes=True)
 
     metric_key: str = Field(description="机器可读的指标键，如 'revenue'")
     label_cn: str
@@ -54,7 +54,40 @@ class MetricDefinition(BaseModel):
         default=None,
         description="例句来源。synthetic_example 表示仍是占位符标准句，不得当作真实证据",
     )
+    example_file: str | None = Field(
+        default=None,
+        description="例句所在的 PDF 文件名。example_source=annual_report 时必填",
+    )
+    example_page: int | None = Field(
+        default=None,
+        ge=1,
+        description="例句所在页码。example_source=annual_report 时必填",
+    )
     scope_note: str | None = None
+
+    @model_validator(mode="after")
+    def _example_provenance_is_complete(self) -> MetricDefinition:
+        """标为年报原文就必须带出处（签字文档 §6）。
+
+        与数据库的 CHECK 是同一条规则的两处表达——这里拦在构造期，能给出
+        字段级的错误信息；数据库那处防的是绕过 Pydantic 的直接写入。
+        """
+        if self.example_source is ExampleSource.ANNUAL_REPORT:
+            missing = [
+                name
+                for name, value in (
+                    ("example_sentence", self.example_sentence),
+                    ("example_file", self.example_file),
+                    ("example_page", self.example_page),
+                )
+                if not value
+            ]
+            if missing:
+                raise ValueError(
+                    "example_source=annual_report 必须同时提供例句与出处，缺少："
+                    + "、".join(missing)
+                )
+        return self
 
 
 class FinancialFact(BaseModel):
@@ -64,7 +97,7 @@ class FinancialFact(BaseModel):
     source_page / source_text / confidence / status。
     """
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(title="财务事实", from_attributes=True)
 
     fact_id: str
     project_id: str
@@ -100,6 +133,14 @@ class FinancialFact(BaseModel):
     )
     source_table: str | None = None
     source_row_label: str | None = Field(default=None, description="原始行名，保留原始标签")
+    mapped_from: str | None = Field(
+        default=None,
+        description=(
+            "来源映射（签字文档 A-2）：本行的值实际抽自哪一个字段。"
+            "只披露「营业总收入」的年度，其值映射到 revenue 并记 mapped_from='total_revenue'。"
+            "按 (metric, period) 聚合前必须看这一列——否则 revenue 与 total_revenue 会被重复计入"
+        ),
+    )
     bbox: str | None = None
     extractor: str = Field(description="'rule:v3' / 'llm:deepseek-chat@<prompt_hash>' / 'human:<uid>'")
 
@@ -151,7 +192,7 @@ class FactObservation(BaseModel):
     其余必须写明未采纳理由。
     """
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(title="事实观测来源", from_attributes=True)
 
     observation_id: str
     project_id: str
@@ -196,7 +237,7 @@ class FactObservation(BaseModel):
 class FactCorrection(BaseModel):
     """人工修正。只追加增量，旧行保留，绝不原地覆盖。"""
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(title="人工修正记录", from_attributes=True)
 
     correction_id: str
     fact_id: str
@@ -214,7 +255,7 @@ class CheckResult(BaseModel):
     每条都带公式与输入 fact_id 列表，构成「结论 → 计算 → 字段 → 页码 → 原文」的证据链。
     """
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(title="校验结果", from_attributes=True)
 
     check_id: str
     project_id: str
