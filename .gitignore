@@ -39,6 +39,11 @@ backend/app/data/samples/raw/
 # 解析产物随代码提交（scripts/parse_reports.py 可重新生成）。
 3份公司年报及年报摘要/
 
+# 发给队友的数据包（约 63MB：库 + 年报 PDF）。
+# ⚠ 体积大，一旦提交就永久留在 Git 历史里，删文件也减不掉仓库大小。
+# 它是**随时可以重新生成**的，不入库。
+*.zip
+
 # ---- 编辑器 ----
 .vscode/*
 !.vscode/extensions.json
