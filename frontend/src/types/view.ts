@@ -70,6 +70,83 @@ export interface MarginResult {
   points: MarginPoint[]
 }
 
+/** `narrative.consistency` 的一条观测。与后端 `skills/narrative.py::_obs_payload` 对应。 */
+export interface NarrativeObservation {
+  theme_key: string
+  theme_label: string
+  /** 年报里的原句。**照抄，前端不做任何加工。** */
+  text: string
+  page_no: number
+  /** 这句出自哪份年报。只有页码而公司有十份年报时，引用指不到任何地方 */
+  source_file: string
+  /** 命中的那个词。用户会问「你凭什么说这句是降本增效」，答案就是它。 */
+  matched: string
+  /** 出自哪一年的年报 */
+  source_period: string
+  /** 拿哪一年的财务事实去验的。前瞻表述会比 source_period 晚一年 */
+  verify_period: string
+  forward: boolean
+  metric_key: string
+  metric_label: string
+  metric_unit: string
+  /** 为什么用这个指标验，给评审看的 */
+  basis_cn: string
+  state: NarrativeState
+  state_cn: string
+  reason: string
+  formula: string
+  inputs: Record<string, string>
+  /** 指标的实际走向，如「14.9926 → 10.8791（-4.1135 %）」 */
+  actual: string
+  /** 财务侧的出处。派生指标（毛利率）是 `{derived: true, sources: [...]}` */
+  metric_source?: NarrativeMetricSource | null
+}
+
+export type NarrativeState =
+  | 'supported'
+  | 'partial'
+  | 'conflicted'
+  | 'incomparable'
+  | 'missing'
+
+export interface NarrativeMetricSource {
+  derived?: boolean
+  sources?: EvidenceSource[]
+  label_cn?: string
+  unit?: string
+  period?: string
+  value?: string
+  fact_id?: string
+  source_file?: string
+  source_page?: number
+  source_table?: string
+  source_text?: string
+}
+
+export interface ThemeSummary {
+  theme_key: string
+  label_cn: string
+  metric_label: string
+  basis_cn: string
+  total: number
+  counts: Record<string, number>
+}
+
+export interface NarrativeResult {
+  project_id: string
+  headline: string
+  verdict_text: string
+  total: number
+  counts: Record<string, number>
+  themes: ThemeSummary[]
+  observations: NarrativeObservation[]
+  min_rel_change: string
+  /** 为什么不出诊断指数。**必须显示**，否则用户会以为这个数就是全部。 */
+  index_note?: string
+  no_text?: boolean
+  error?: string
+}
+
 /** `facts.coverage` 的产出。 */
 export interface CoverageResult {
   project_id: string
@@ -119,6 +196,20 @@ export function asMargin(v: Record<string, unknown> | null): MarginResult | null
   const points = r?.points as MarginPoint[] | undefined
   if (!Array.isArray(points) || !points.length) return null
   return 'margin' in points[0] ? (r as unknown as MarginResult) : null
+}
+
+/**
+ * ⚠ 这个**不能**用 `unwrap()`。`narrative.consistency` 的产出里既有
+ * `observations` 也有 `headline`，编排器不会再套一层 `{result, ...}`——
+ * 硬拆的话拿到的是原对象本身（`unwrap` 判断过），结果碰巧是对的，
+ * 但那是巧合，不是契约。所以直接按形状认。
+ */
+export function asNarrative(v: Record<string, unknown> | null): NarrativeResult | null {
+  if (!v) return null
+  const r = (v.result ?? v) as Record<string, unknown>
+  return Array.isArray(r?.observations) && typeof r?.headline === 'string'
+    ? (r as unknown as NarrativeResult)
+    : null
 }
 
 /**

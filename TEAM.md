@@ -21,8 +21,10 @@
 | **`parsing/`** | ✅ **最难的已经做完** | 22 份真实年报 → **743 条事实**，每条带文件/页码/原文 |
 | `engine/normalization.py` | ✅ | 周期正常化，19 个 golden case |
 | `engine/ratios.py` | ✅ | 同比与比率，含拒绝路径 |
-| `skills/selfcheck` `skills/facts` | ✅ | 2 个真 Skill |
-| `frontend/` | 🟡 **1/8 页** | 任务时间线 + 结果面板 + 证据抽屉，已接真实数据 |
+| `skills/selfcheck` `skills/facts` `skills/narrative` | ✅ | 3 个真 Skill |
+| **`engine/narrative.py`** | ✅ **规则法已通** | 主张抽取 + 方向比对，四态观测。**不含 LLM**——这是给模型版做对照的基线 |
+| **正文与 MD&A 入库** | ✅ | `scripts/parse_mdna.py`：3547 页正文、120 个章节段。顺带把一直空着的检索层填上了 |
+| `frontend/` | 🟡 **1/8 页** | 任务时间线 + 结果面板 + 证据抽屉 + **叙事一致性卡**，已接真实数据 |
 | `docs/00 01 02 03 07` | ✅ | 已写 |
 
 **还是一片空白的：**
@@ -30,10 +32,10 @@
 | 缺口 | 严重程度 |
 |---|---|
 | **`agents/llm/`、`guards.py`** | 🔴 **一处 LLM 代码都没有**。比赛主题是「金融投研**智能体**构建」，而现在整套系统是确定性流水线，没有一句模型调用 |
-| `engine/index.py`（诊断指数） | 🔴 项目的核心创新，零代码 |
-| `engine/checks.py`（勾稽校验） | 🟡 解析质量的下一个台阶 |
-| `docs/04-index-rules.md` | 🔴 **所有人都卡在它上面**（见下） |
-| 3 个主流程 Skill（主张抽取 / 一致性诊断 / 估值） | 🔴 |
+| `engine/index.py`（诊断指数） | 🟡 公式与参数**已在 `rule_config` 里**（I = 50+20H+20C+5R−10P−15Q），H/C 两项叙事层已能产；**R/P/Q 装不上，Q 卡在 `engine/checks.py`** |
+| `engine/checks.py`（勾稽校验） | 🟡 解析质量的下一个台阶，**也是指数 Q 项的前置** |
+| `docs/04-index-rules.md` | 🔴 机读版在种子文件里，**人读版仍缺**；分级线、覆盖率闸门都还没签字 |
+| LLM 版主张抽取（替代规则法） | 🔴 规则法基线已通（33 条主张 / 23 支持 / 8 冲突），模型版是往上叠，不是从零写 |
 | `engine/dcf | multiples | sensitivity` | 🟡 决赛项 |
 | `observability/`、`mcp/` | ⬜ 空包，决赛项 |
 | **项目计划书 PDF、5 分钟视频** | 🔴 **初赛交付物，现在零进度** |

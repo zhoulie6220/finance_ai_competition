@@ -15,6 +15,18 @@
   --ok: #15803d;
   --bad: #b91c1c;
   --warn: #b45309;
+
+  /* ⚠ 这里有两套红绿，**不能合并**：
+   *
+   *   --ok / --bad    状态语义：成功是绿、失败是红。全世界通用，徽章用它。
+   *   --up / --down   行情语义：**A 股红涨绿跌**，与欧美相反。图表用它。
+   *
+   * 合并成一套的话，要么状态徽章变成「成功是红的」，要么柱状图变成
+   * 「上涨是绿的」——两者都会让懂行的人第一眼就看出不对，
+   * 而它们各自在自己的语境里都是对的。 */
+  --up: #e04a4a;
+  --down: #12a05c;
+  --flat: #94a3b8;
 }
 
 * { box-sizing: border-box; }
@@ -174,8 +186,9 @@ body {
 .card-headline { margin: 0; font-size: 13px; color: var(--muted); }
 .card-headline b { font-size: 16px; color: var(--text); font-variant-numeric: tabular-nums; }
 .card-headline em { font-style: normal; margin-left: 6px; }
-.card-headline .up { color: var(--ok); }
-.card-headline .down { color: var(--bad); }
+/* 同比文字跟着图表走 A 股配色，不跟着状态徽章走——它讲的是涨跌 */
+.card-headline .up { color: var(--up); }
+.card-headline .down { color: var(--down); }
 
 /* ---- 结果面板：表格 ---- */
 
@@ -215,6 +228,60 @@ body {
 .raw-step .step-out { margin-top: 6px; max-height: 320px; overflow: auto; }
 
 .hint.warn-box { background: #fffbeb; border: 1px solid #fde68a; color: #92400e; }
+
+/* ---- 叙事一致性卡 ---- */
+
+/* ⚠ 这张卡的判定色**与上面图表的红绿相反**，是有意的：
+ *   图表说「数字涨没涨」，这张卡说「管理层说对了没有」。
+ *   两套语义共用一套配色的话，红色柱子会被读成「叙事有问题」。 */
+.st-ok { background: #f0fdf4; color: var(--ok); }
+.st-bad { background: #fef2f2; color: var(--bad); }
+.st-partial { background: #fffbeb; color: var(--warn); }
+.st-na { background: #f3f4f6; color: var(--muted); }
+
+.verdict {
+  display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: baseline;
+  border-radius: 8px; padding: 10px 14px; margin: 6px 0 14px;
+  border: 1px solid var(--line);
+}
+.verdict.ok { background: #f0fdf4; border-color: #bbf7d0; }
+.verdict.bad { background: #fef2f2; border-color: #fecaca; }
+.verdict b { font-size: 15px; }
+.verdict em {
+  font-style: normal; font-size: 12px; padding: 2px 9px;
+  border-radius: 999px; margin-left: 6px;
+}
+
+.themes { display: grid; gap: 10px; margin-bottom: 14px; }
+.theme { border: 1px solid var(--line); border-radius: 8px; padding: 9px 12px; }
+.theme-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+.theme-head b { font-size: 13px; }
+.theme-bar { display: flex; height: 7px; border-radius: 999px; overflow: hidden; margin: 7px 0 6px; gap: 2px; }
+.theme-bar i { display: block; min-width: 3px; }
+/* ⚠ 色条要**实心**色，不能复用上面 `.st-*` 的浅底色。
+ *  那几个类是给文字徽章用的（浅底 + 深字），直接拿来填色条，
+ *   画出来是一条几乎看不见的白线——主张全被判成「支持」的
+ *   「降本增效」看起来和没有数据的一模一样。 */
+.theme-bar i.st-ok { background: var(--ok); }
+.theme-bar i.st-bad { background: var(--bad); }
+.theme-bar i.st-partial { background: var(--warn); }
+.theme-bar i.st-na { background: #d1d5db; }
+.theme p { margin: 0; }
+
+.narr-grid td { vertical-align: top; }
+/* 原句照排，但**截断到三行**：这是证据的入口，不是证据本身。
+ * 完整原句在抽屉里，那里宽度给够、不做省略——两处各有各的用途。 */
+.narr-text {
+  font-size: 12px; color: #374151; line-height: 1.5;
+  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical;
+  overflow: hidden; max-width: 46ch;
+}
+.narr-actual { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.st {
+  display: inline-block; font-size: 11px; padding: 1px 8px;
+  border-radius: 999px; white-space: nowrap;
+}
+.tag-match { color: var(--brand); border-color: #bfdbfe; background: #eff6ff; }
 
 /* ---- 证据面板 ---- */
 

@@ -19,8 +19,22 @@ import { ResultPanel } from './components/ResultPanel'
 import { useTaskStream } from './hooks/useTaskStream'
 import type { ProjectView } from './types/contract'
 
+/**
+ * ⚠ 按钮文案**是被路由关键词反向约束的**，不是随手写的。
+ *
+ * 路由取第一个命中，而 Skill 按 key 排序：facts 在 narrative 前面。
+ * `facts` 的关键词里有「事实」，所以「管理层说的话和财务**事实**对得上吗」
+ * 会命中 facts —— 用户想问叙事一致性，拿到的是三张财务图表，
+ * **而且不会有任何提示**。
+ *
+ * 所以这里一律说「数字」不说「事实」。这个约束很别扭，但它是真的：
+ * 规则路由就是靠关键词，关键词撞了就是静默走错分支。
+ * 根治要么改 `skills/base.py::route`（已冻结），要么等乙的 LLM 路由兜底。
+ * 眼下先钉一个测试：`tests/unit/skills/test_routing.py`。
+ */
 const PRESETS = [
   { label: '看财务事实趋势', text: '看一下这家公司的财务事实趋势' },
+  { label: '看叙事一致性', text: '管理层说的话和财务数字对得上吗' },
   { label: '跑一次系统自检', text: '跑一次系统自检' },
 ]
 

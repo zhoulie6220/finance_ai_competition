@@ -27,12 +27,55 @@ import type { StepResult } from '../hooks/useTaskStream'
 import {
   asCoverage,
   asMargin,
+  asNarrative,
   asSeries,
   unwrap,
   type EvidenceSource,
   type MarginPoint,
+  type NarrativeObservation,
   type SeriesPoint,
 } from '../types/view'
+
+/* ---- A 股配色：红涨绿跌 ----
+ *
+ * 与欧美市场相反，也与「红=危险」的通用界面语义相反。这里按 A 股来：
+ * 用这套系统的人眼里，绿色柱子就是「跌」。
+ *
+ * ⚠ 颜色只是**同一个数字的第二种呈现**，不承载任何计算。
+ *   `barColor` 做的是「后一年比前一年大还是小」这一下比较，
+ *   没有算增长率、没有算差额——真正算数的地方在后端 `app/engine/`。
+ *   首年没有上期，用中性灰，**不假装它是涨的**。
+ */
+const UP = '#e04a4a'
+const DOWN = '#12a05c'
+const FLAT = '#94a3b8'
+const TREND = '#2f6fd0'
+
+function barColor(curr: string | null, prev: string | null | undefined): string {
+  if (curr == null || prev == null) return FLAT
+  const a = Number(curr)
+  const b = Number(prev)
+  if (!Number.isFinite(a) || !Number.isFinite(b)) return FLAT
+  return a > b ? UP : a < b ? DOWN : FLAT
+}
+
+/** 柱状图统一叠一条趋势线：柱子回答「这一年涨没涨」，线回答「这一路怎么走」。 */
+function barSeries(data: { value: number | null; itemStyle: { color: string; borderRadius: number[] } }[]) {
+  return { type: 'bar' as const, barMaxWidth: 34, data, z: 2 }
+}
+
+function trendSeries(values: (number | null)[]) {
+  return {
+    type: 'line' as const,
+    name: '趋势',
+    smooth: false,
+    symbolSize: 6,
+    data: values,
+    z: 3,
+    itemStyle: { color: TREND },
+    lineStyle: { width: 2 },
+  }
+}
 
 /** 金额一律按后端给的单位显示，这里只加千分位与两位小数。 */
 const NUM = new Intl.NumberFormat('zh-CN', {
@@ -132,15 +175,16 @@ function SeriesCard({
       splitLine: { lineStyle: { color: '#eef1f6' } },
     },
     series: [
-      {
-        type: 'line',
-        smooth: false,
-        symbolSize: 7,
-        data: points.map((p) => (p.value == null ? null : Number(p.value))),
-        itemStyle: { color: '#2f6fd0' },
-        lineStyle: { width: 2 },
-        areaStyle: { opacity: 0.06 },
-      },
+      barSeries(
+        points.map((p, i) => ({
+          value: p.value == null ? null : Number(p.value),
+          itemStyle: {
+            color: barColor(p.value, i > 0 ? points[i - 1].value : null),
+            borderRadius: [3, 3, 0, 0],
+          },
+        })),
+      ),
+      trendSeries(points.map((p) => (p.value == null ? null : Number(p.value)))),
     ],
   }
 
@@ -237,12 +281,16 @@ function MarginCard({
       splitLine: { lineStyle: { color: '#eef1f6' } },
     },
     series: [
-      {
-        type: 'bar',
-        barMaxWidth: 34,
-        data: points.map((p) => (p.margin == null ? null : Number(p.margin))),
-        itemStyle: { color: '#4a90d9', borderRadius: [3, 3, 0, 0] },
-      },
+      barSeries(
+        points.map((p, i) => ({
+          value: p.margin == null ? null : Number(p.margin),
+          itemStyle: {
+            color: barColor(p.margin, i > 0 ? points[i - 1].margin : null),
+            borderRadius: [3, 3, 0, 0],
+          },
+        })),
+      ),
+      trendSeries(points.map((p) => (p.margin == null ? null : Number(p.margin)))),
     ],
   }
 
@@ -308,6 +356,182 @@ function MarginCard({
   )
 }
 
+// ------------------------------------------------------------------ 叙事一致性
+
+/* 五种状态的配色。**冲突用红色、支持用绿色，与上面的 K 线红绿相反**——
+ * 那不是笔误：上面管的是「数字涨没涨」，这里管的是「管理层说对了没有」。
+ * 两套语义混用会让人以为红色柱子代表叙事有问题。
+ *
+ * 顺序即严重程度，表格默认按它排：冲突排最前。评审的注意力有限，
+ * 而这张表存在的意义就是让他先看到对不上的那几条。 */
+const STATE_STYLE: Record<string, { cls: string; order: number }> = {
+  conflicted: { cls: 'st-bad', order: 0 },
+  partial: { cls: 'st-partial', order: 1 },
+  incomparable: { cls: 'st-na', order: 2 },
+  missing: { cls: 'st-na', order: 3 },
+  supported: { cls: 'st-ok', order: 4 },
+}
+
+function obsTarget(o: NarrativeObservation): EvidenceTarget {
+  // 一张对照表要能核对**两个**东西：管理层真这么说了，以及数字真是这样。
+  // 只给其中一个的话，用户能看见结论却验不了它。
+  const sources: EvidenceSource[] = [
+    {
+      role: `管理层原话 · ${o.source_period} 年报`,
+      source_file: o.source_file,
+      source_page: o.page_no,
+      source_text: o.text,
+    },
+  ]
+  const ms = o.metric_source
+  if (ms?.derived && ms.sources?.length) {
+    // 派生的毛利率出处是两行，与 facts.margin 一致——只留一个就是半个算式
+    sources.push(...ms.sources)
+  } else if (ms?.source_page) {
+    sources.push({
+      role: `验证依据 · ${o.metric_label}（${o.verify_period} 年）`,
+      fact_id: ms.fact_id,
+      source_file: ms.source_file,
+      source_page: ms.source_page,
+      source_table: ms.source_table,
+      source_text: ms.source_text,
+    })
+  }
+  return {
+    title: `${o.source_period} 年 · ${o.theme_label}`,
+    value: `${o.state_cn}｜${o.metric_label} ${o.actual || '—'}`,
+    formula: o.formula,
+    inputs: o.inputs,
+    note: o.reason,
+    sources,
+  }
+}
+
+function NarrativeCard({
+  n,
+  onPick,
+}: {
+  n: NonNullable<ReturnType<typeof asNarrative>>
+  onPick: (t: EvidenceTarget) => void
+}) {
+  const [showAll, setShowAll] = useState(false)
+  const rows = [...n.observations].sort(
+    (a, b) => (STATE_STYLE[a.state]?.order ?? 9) - (STATE_STYLE[b.state]?.order ?? 9),
+  )
+  const shown = showAll ? rows : rows.filter((o) => o.state === 'conflicted').slice(0, 6)
+  const hidden = rows.length - shown.length
+
+  const bad = n.counts.conflicted ?? 0
+  const tone = bad === 0 ? 'ok' : 'bad'
+
+  return (
+    <section className="panel card narr">
+      <header className="card-head">
+        <h3>财报叙事一致性</h3>
+        <p className="card-headline">
+          共 {n.total} 条可验证主张
+          <em className={tone === 'ok' ? 'up' : 'down'}> · {n.headline}</em>
+        </p>
+      </header>
+
+      <div className={`verdict ${tone}`}>
+        <b>{n.headline}</b>
+        <span>
+          {['supported', 'partial', 'conflicted', 'incomparable', 'missing'].map((s) => {
+            const c = n.counts[s] ?? 0
+            if (!c) return null
+            return (
+              <em key={s} className={STATE_STYLE[s]?.cls}>
+                {s === 'supported' && '支持 '}
+                {s === 'partial' && '部分支持 '}
+                {s === 'conflicted' && '冲突 '}
+                {s === 'incomparable' && '不可比 '}
+                {s === 'missing' && '缺失 '}
+                {c}
+              </em>
+            )
+          })}
+        </span>
+      </div>
+
+      {/* 按主题分组：评审要看的不是「33 条里 8 条冲突」，而是
+          「哪一类说法系统性地对不上」——那才是有投资含义的东西。 */}
+      <div className="themes">
+        {n.themes.map((t) => (
+          <div key={t.theme_key} className="theme">
+            <div className="theme-head">
+              <b>{t.label_cn}</b>
+              <span className="muted small">
+                共 {t.total} 条 · 验 {t.metric_label}
+              </span>
+            </div>
+            <div className="theme-bar">
+              {['conflicted', 'partial', 'incomparable', 'missing', 'supported'].map((s) => {
+                const c = t.counts[s] ?? 0
+                if (!c) return null
+                return (
+                  <i
+                    key={s}
+                    className={STATE_STYLE[s]?.cls}
+                    style={{ flexGrow: c }}
+                    title={`${s} ${c}`}
+                  />
+                )
+              })}
+            </div>
+            <p className="muted small">{t.basis_cn}</p>
+          </div>
+        ))}
+      </div>
+
+      <table className="grid narr-grid">
+        <thead>
+          <tr>
+            <th>判定</th>
+            <th>年度</th>
+            <th>管理层原话（点开看原文与出处）</th>
+            <th>验证指标</th>
+          </tr>
+        </thead>
+        <tbody>
+          {shown.map((o, i) => (
+            <tr key={`${o.theme_key}-${o.source_period}-${o.page_no}-${i}`}
+                className="clickable" onClick={() => onPick(obsTarget(o))}>
+              <td>
+                <span className={`st ${STATE_STYLE[o.state]?.cls}`}>{o.state_cn}</span>
+              </td>
+              <td>
+                {o.source_period}
+                {o.forward && <span className="tag tag-warn">前瞻</span>}
+              </td>
+              <td className="narr-text">
+                {o.text}
+                <span className="tag tag-match">命中「{o.matched}」</span>
+              </td>
+              <td className="narr-actual">
+                <span className="muted small">{o.metric_label}</span>
+                <br />
+                {o.state === 'conflicted' || o.state === 'supported' ? o.actual : o.reason}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+
+      {hidden > 0 && (
+        <button className="chip" onClick={() => setShowAll((v) => !v)}>
+          {showAll ? '只看相悖的' : `展开其余 ${hidden} 条`}
+        </button>
+      )}
+
+      {/* ⚠ 诊断指数为什么不出分，必须写在界面上。
+          不写的话，用户看到「33 条主张、8 条冲突」会默认这就是全部结论，
+          而完整的指数还含 R/P/Q 三项构成（共 30 分权重）没接上。 */}
+      {n.index_note && <p className="hint warn-box">{n.index_note}</p>}
+    </section>
+  )
+}
+
 // ------------------------------------------------------------------ 主组件
 
 interface Props {
@@ -327,10 +551,16 @@ export function ResultPanel({ results, onPick }: Props) {
     ReturnType<typeof asSeries>
   >[]
   const margin = results.map((r) => asMargin(r.value)).find(Boolean) ?? null
+  const narrative = results.map((r) => asNarrative(r.value)).find(Boolean) ?? null
 
-  // 最后一步是 Skill 自己合成的结论（不经过工具，因而没有 {result,...} 那一层）
+  // 最后一步是 Skill 自己合成的结论（不经过工具，因而没有 {result,...} 那一层）。
+  //
+  // ⚠ 有叙事卡时不显示它：叙事卡自己带了抬头与逐条判定，
+  //   而 Skill 的摘要是同一批信息的文字版。两份并排出现，用户会去找
+  //   「哪个才是结论」——一份界面给出两个说法，就已经输了一半。
   const last = results[results.length - 1]
-  const conclusion = last && !unwrap(last.value ?? {})?.points ? last.summary : null
+  const conclusion =
+    last && !narrative && !unwrap(last.value ?? {})?.points ? last.summary : null
 
   return (
     <>
@@ -344,6 +574,8 @@ export function ResultPanel({ results, onPick }: Props) {
       )}
 
       <CoverageCard c={coverage} />
+
+      {narrative && <NarrativeCard n={narrative} onPick={onPick} />}
 
       {series.map((s) => (
         <SeriesCard key={s.metric_key} s={s} onPick={onPick} />

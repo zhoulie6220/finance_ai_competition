@@ -56,17 +56,18 @@ docs/              设计规则手册（编号文档，见下）
 | `app/main.py` + `api/` | ✅ 可启动。`uvicorn app.main:app --reload` 已能跑；SEE 事件流通了 |
 | `agents/`（状态机 + 编排器） | ✅ 骨架冻结，见下方「冻结的接缝」 |
 | `agents/llm/`、`planner`、`router`、`guards.py` | ⬜ **不存在。全仓零 LLM 代码**——见下 |
-| `tools/registry.py` | ✅ Tool 登记表；已登记 **6** 个工具（3 个 `system.*`、3 个 `facts.*`） |
-| `skills/` | ✅ 契约 + 2 个真 Skill（系统自检、财务事实）；3 个主流程 Skill 待填 |
+| `tools/registry.py` | ✅ Tool 登记表；已登记 **8** 个工具（3 个 `system.*`、3 个 `facts.*`、2 个 `narrative.*`） |
+| `skills/` | ✅ 契约 + **3 个真 Skill**（系统自检、财务事实、叙事一致性）；2 个主流程 Skill 待填 |
 | `observability/` | ⬜ 空包占位（结构化日志暂落在 `app_log` 表 + `main.py` 中间件） |
 | `schemas/` | ✅ 33 个模型，数据契约的机读真源 |
 | `engine/normalization.py` | ✅ 周期正常化（19 个 golden case） |
 | `engine/ratios.py` | ✅ 同比与比率，含拒绝路径 |
-| `engine/checks|index|dcf|multiples|sensitivity` | ⬜ **全部未实现** |
-| `retrieval/fts.py` | ✅ FTS5 + 短查询 LIKE 回退 |
-| `data/seed/` | ✅ 91 个字段字典、64 条规则参数、14 条旧键名映射 |
-| `scripts/` | ✅ init_db / export_schemas / gen_data_contract_doc / dict_csv / seed_demo / parse_reports |
-| `parsing/` | ✅ PDF → 三张合并表 → 指标（**22 份真实年报 → 743 条事实**） |
+| `engine/narrative.py` | ✅ 主张抽取 + 方向比对，四态观测（**规则法，不含 LLM**） |
+| `engine/checks|index|dcf|multiples|sensitivity` | ⬜ **全部未实现**（`index.py` 卡在 R/P/Q 三项构成，见下） |
+| `retrieval/fts.py` | ✅ FTS5 + 短查询 LIKE 回退（**现在真的有数据可搜了**——3547 页） |
+| `data/seed/` | ✅ 91 个字段字典、66 条规则参数、14 条旧键名映射 |
+| `scripts/` | ✅ init_db / export_schemas / gen_data_contract_doc / dict_csv / seed_demo / parse_reports / **parse_mdna** |
+| `parsing/` | ✅ PDF → 三张合并表 → 指标（**16 份真实年报 → 743 条事实**）+ **正文与 MD&A 章节** |
 | `mcp/` | ⬜ **空包占位** |
 | `frontend/src/` | 🟡 **1/8 页**：任务时间线 + 结果面板 + 证据抽屉，已接真实数据 |
 | `docs/` | ✅ 00 / 01 / 02 / 03 / 07；⬜ **04**（指数规则）/ **05** / **06**（演示脚本） |
@@ -153,6 +154,25 @@ ALL_SKILLS = (SELFCHECK, YourSkill())
 **不需要改编排器，也不需要改路由。** 工具用 `@tool(...)` 装饰器注册即可
 （见 `app/skills/selfcheck.py` 的三个例子）。
 
+### ⚠ 关键词撞车会**静默走错分支**（真发生过）
+
+`route()` 取**第一个**命中，而 `all()` 按 key 排序，顺序固定为
+`facts → narrative → selfcheck`。`facts` 的关键词里有「事实」，
+于是「管理层说的话和财务**事实**对得上吗」命中的是 `facts`——
+用户想问叙事一致性，拿到三张财务图表，**而且没有任何提示**，
+任务照样标记「已完成」。
+
+两条规矩：
+
+1. **新 Skill 的关键词不得与已有的互相包含。**
+   测试：`tests/unit/skills/test_routing.py::test_no_skill_keyword_is_a_substring_of_another_skills_keyword`
+2. **前端预设按钮的文案也受这个约束**（它决定演示当天点下去走哪条路）。
+   `App.tsx::PRESETS` 上方写了原因，并有测试逐条钉着：
+   `test_the_demo_button_labels_route_correctly`
+
+根治要么改 `base.py::route` 的判定规则（已冻结，属乙的 router），
+要么等 LLM 兜底路由。**眼下先靠测试挡。**
+
 ### 当前能跑通的东西（先跑一遍再动手）
 
 ```bash
@@ -188,6 +208,21 @@ python -m venv .venv && .venv\Scripts\activate     # Windows；macOS 用 source 
 python -m pip install -r requirements.lock.txt     # 复现优先用 lock，不是 requirements.txt
 python scripts/init_db.py --force                  # 重建数据库（含字段字典与规则参数）
 ```
+
+> ⚠ **`init_db.py --force` 是「重建」，不是「补齐」。** 它把整个库删掉重来，
+> 于是 `financial_fact` 与 `mdna_section` 一起清空——解析出来的 743 条事实和
+> 全部正文都会没有。**改完种子文件后要按顺序补跑：**
+>
+> ```bash
+> python scripts/init_db.py --force      # 1. 重建库 + 种子
+> python scripts/parse_reports.py --source var/samples   # 2. 财务事实（约 1 分钟）
+> python scripts/parse_mdna.py           # 3. 正文与 MD&A（约 1 分钟）
+> ```
+>
+> 漏跑第 3 步的表现是「叙事一致性提示没有正文」——那句话是对的，
+> 但它不会告诉你库是刚重建的。种子文件改动**不必**用 `--force`：
+> 只加 `rule_config` 行的话，删掉那几行再跑一次 `init_db.py`（不带 --force）
+> 也行，但通常不如干脆重建再补解析省事。
 
 测试（注意 `python -m pytest` 而非裸 `pytest`，否则 `pythonpath = .` 不生效）：
 
@@ -515,6 +550,80 @@ kind，同一笔事实会存成两行，任何聚合都重复计算且不报错�
 「收入」「成本」这类两字词极多，直接查 `page_fts` 会让它们永远搜不出来。
 
 **检索一律走 `app.retrieval.fts.search_pages()`**，它会在短查询时自动回退到 LIKE。
+
+## 叙事层
+
+「管理层说的话，财务事实认不认」——这一层就是项目名里那个「叙事一致性」。
+三个文件，职责严格分开：
+
+    app/parsing/mdna.py      PDF → 章节正文（IO）
+    app/engine/narrative.py  正文 → 主张 → 观测（纯函数，零 IO 零 LLM）
+    app/skills/narrative.py  取数、组织、留痕（编排）
+
+    先跑一次：python scripts/parse_mdna.py
+
+### ⚠ 正文不落库，前端就只能编
+
+`parse_reports.py` 原来只写财务事实，正文一个字都没入库，`mdna_section` 与
+`document_page` 一直是空表。**「词频分析」不是前端改改样式就能做的**——
+前端拿不到文本。`scripts/parse_mdna.py` 补上了这一步，顺带因为
+`document_page` 上有三个同步 `page_fts` 的触发器，**检索层第一次有数据可搜**
+（此前查任何词都是 0 条，而 0 条和「年报里没写这件事」长得一模一样）。
+
+### ⚠ 章节边界按「第X节」扫，不按页码
+
+各家的 MD&A 位置差得很远（宝钢 2024 在第三节 p.9，宝钢 2015 在第四节 p.10，
+华菱 2024 在第三节 p.11）。**按页号硬编码换一家就崩，而且崩得不报错**——
+只是切出一段前言，关键词一个都命中不了，表现为「这家公司没有叙事」。
+
+判据同 `statements.py::_title_lines`：一页里出现两个以上章节名就是目录页，整页丢掉。
+
+### ⚠ 词表是拿真实语料试出来的，不是想出来的
+
+在宝钢 2015–2024 十份年报上实测后改过两轮，两个反直觉的结论：
+
+1. **「产能释放」不能算利好。** 2024 年报原话是「市场有效需求不足、钢铁产能释放
+   较快……行业盈利空间受到挤压」——**产能释放在这里是利空**。按词面当利好主张，
+   系统会在一份基调悲观的年报上判出「管理层看好产能扩张」。
+2. **结构化词多是工程名。** 「结构优化」在宝钢 2024 命中 6 句，其中 5 句是
+   「无取向硅钢产品结构优化**工程**」。所以词表除了关键词还要有**排除词**
+   （同 `metric_definition.aliases` / `exclude_words` 的思路）。
+
+结论：**只收措辞明确、方向无歧义的短语**，含糊的记 `missing`，不猜。
+
+### ⚠ 否定词不能用单字
+
+`_NEGATION` 里写「未」，会命中「**未**来」——而前瞻段里「未来」遍地都是，
+结果是整段展望被静默丢光。写「下降」，会命中「成本**下降**」——那正是
+「降本增效」的正面措辞，等于把要验的主张本身过滤掉。**否定词一律用二字词。**
+
+### ⚠ 重要性阈值：没有它，噪声会淹掉结论
+
+宝钢 2019 年毛利率从 10.8791% 走到 10.8350%（动了 **0.04 个百分点**），
+曾被判成「管理层说降本增效，事实相悖」。那种量级在会计上什么都不说明，
+而它和真正的背离（2018 年 14.99% → 10.88%）在四态表里**长得一模一样**。
+
+阈值是 `rule_config.narrative.min_rel_change`（默认 0.01），**属会计口径，
+待 K 确认**。改数据不改代码。
+
+### 前瞻段验的是**下一年**
+
+「2024 年报说 2025 年要降本」要拿 2025 年的数字验。不区分的话，前瞻主张会
+和本年数字比，方向多半对不上，于是**所有尚未到期的计划都被判成冲突**——
+而那正是这个系统最该算对的一类（指数里的 H 历史兑现度）。
+
+### ⚠ 诊断指数**不出分**，直到五项齐全
+
+公式与参数都在 `rule_config`（它是 `docs/04` 的机读版本）：
+
+    I = 50 + 20·H + 20·C + 5·R − 10·P − 15·Q
+
+H（历史兑现度）与 C（当前一致性）由叙事层产出；**R（风险披露变化）、
+P（模板化惩罚）、Q（财务质量冲突）尚未接入**，Q 依赖 `engine/checks.py`。
+
+只算得出两项时就出分，是最糟的选择：分母没变、权重照乘，**分数看起来和
+完整版一模一样**，而它缺了足足 30 分权重的构成项。所以界面上的
+`narrative_consistency` 只给观测与计数，并**把不出分的原因写在卡片上**。
 
 ## 计算引擎
 

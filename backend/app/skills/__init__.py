@@ -27,9 +27,10 @@ from __future__ import annotations
 
 from app.skills.base import REGISTRY, Skill
 from app.skills.facts import SKILL as FACTS
+from app.skills.narrative import SKILL as NARRATIVE
 from app.skills.selfcheck import SKILL as SELFCHECK
 
-ALL_SKILLS: tuple[Skill, ...] = (SELFCHECK, FACTS)
+ALL_SKILLS: tuple[Skill, ...] = (SELFCHECK, FACTS, NARRATIVE)
 
 for _skill in ALL_SKILLS:
     REGISTRY.register(_skill)
