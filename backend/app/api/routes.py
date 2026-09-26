@@ -192,6 +192,106 @@ def stored_checks(
     return {"project_id": project_id, "results": checks_skill.load_results(con, project_id)}
 
 
+# ---------------------------------------------------------------- 叙事一致性
+
+
+@router.get("/projects/{project_id}/narrative/claims")
+def narrative_claims(
+    project_id: str,
+    theme: str | None = Query(default=None),
+    limit: int = Query(default=300, ge=1, le=2000),
+    con: sqlite3.Connection = Depends(get_con),
+) -> dict[str, Any]:
+    """主张—事实对照表。乙的叙事页主表用。"""
+    _require_project(con, project_id)
+    from app.skills import narrative
+
+    return {
+        "project_id": project_id,
+        "stats": narrative.claim_stats(con, project_id),
+        "claims": narrative.list_claims(con, project_id, theme=theme, limit=limit),
+    }
+
+
+@router.get("/projects/{project_id}/narrative/matches")
+def narrative_matches(
+    project_id: str,
+    limit: int = Query(default=300, ge=1, le=2000),
+    con: sqlite3.Connection = Depends(get_con),
+) -> dict[str, Any]:
+    """判定结果。没跑过匹配时返回空表并说明怎么跑。"""
+    _require_project(con, project_id)
+    from app.skills import matching
+
+    rows = matching.load_matches(con, project_id, limit=limit)
+    counts = matching.verdict_counts(con, project_id)
+    return {
+        "project_id": project_id,
+        "counts": counts,
+        "hint": None if rows else "尚未跑过匹配。先抽主张再跑匹配。",
+        "matches": rows,
+    }
+
+
+@router.get("/projects/{project_id}/narrative/index")
+def narrative_index(
+    project_id: str,
+    con: sqlite3.Connection = Depends(get_con),
+) -> dict[str, Any]:
+    """诊断指数。
+
+    **每次调用都重算**，不读缓存——数据可能变了，读一份过期结论
+    比重新算一遍危险得多（后者慢，前者错）。
+
+    闸门不过时返回 `score: null` 并附**逐条的**未满足条件。
+    页面据此显示「证据不足，不出分」，**绝不用 0 分或 50 分代替**。
+    """
+    _require_project(con, project_id)
+    from app.engine.index import GRADE_ACTIONS, compute_index
+    from app.skills import matching
+
+    data, diag = matching.project_index_input(con, project_id)
+    result = compute_index(data)
+    action, valuation_action, user_hint = GRADE_ACTIONS[result.grade]
+
+    return {
+        "project_id": project_id,
+        "status": result.status,
+        "grade": result.grade,
+        # 字符串出网，绝不经过 float
+        "score": None if result.score is None else str(result.score),
+        "components": {
+            "history": _dec(result.history),
+            "current": _dec(result.current),
+            "risk": _dec(result.risk),
+            "template": _dec(result.template),
+            "quality": _dec(result.quality),
+        },
+        "coverage": _dec(result.coverage),
+        "counts": {
+            "n": result.observation_count,
+            "N": result.denominator_count,
+            "history_observations": result.history_count,
+            "current_observations": result.current_count,
+            # 跳过了什么也要说，不只报成功的数
+            "skipped_no_period": diag["skipped_no_period"],
+            "skipped_no_fact": diag["skipped_no_fact"],
+        },
+        "insufficient_reason": result.insufficient_reason,
+        "formula": result.formula,
+        "conclusion_boundary": result.conclusion_boundary,
+        "action": action,
+        "valuation_action": valuation_action,
+        "user_hint": user_hint,
+        "method_version": result.method_version,
+    }
+
+
+def _dec(value: Any) -> str | None:
+    """Decimal → 字符串。金额与比率一律以字符串出网。"""
+    return None if value is None else str(value)
+
+
 # ---------------------------------------------------------------- 规则参数
 
 

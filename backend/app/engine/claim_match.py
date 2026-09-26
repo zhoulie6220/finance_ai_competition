@@ -218,6 +218,33 @@ def _require_ratio(value: Decimal, label: str) -> None:
 # ---------------------------------------------------------------- 判定
 
 
+def is_explicit_target(claim: ClaimInput) -> bool:
+    """句子里的那个数字是不是一个**目标**。
+
+    ⚠ 这个区分非常要紧。年报里绝大多数数字是**已发生的事实**：
+
+        2022 年，公司销售商品坯材 4,976.3 万吨。
+        本期财务费用 24.7 亿元，同比增加流量 19.0 亿元。
+
+    那是**报告**，不是承诺。把它们当成目标去核验，会拿「4,976.3 万吨」
+    和「营业成本的变化率」相比——量纲完全不同，算出来的偏差毫无意义，
+    然后判成「未达成」。实测中这一条让宝钢多出 60 多条假的「相悖」，
+    而假的冲突比漏报更糟：它会让整张对照表失去可信度。
+
+    真正能当目标核验的只有两类：
+
+      · **比率型**（「增长 5% 以上」「下降不超过 10%」）——有方向、有幅度
+      · **带界限的绝对量**（「不低于 100 万吨」「至少 5 亿元」）
+
+    没有界限的绝对量只是陈述，按方向性主张处理（走噪声带）。
+    """
+    if claim.magnitude_value is None:
+        return False
+    if claim.magnitude_unit in ("%", "％", "个百分点"):
+        return True
+    return claim.bound in ("at_least", "at_most")
+
+
 def judge(
     claim: ClaimInput,
     *,
@@ -262,19 +289,21 @@ def judge(
                 confidence=0.0, fact_period=value.period,
             )
 
+    kind = metric_kind(metric)
+
+    # ---- 4. 明确数值目标：噪声带不适用 ----------------------------------
+    # ⚠ 只对**真正的目标**走这条；句子里的普通数字是已发生的事实，
+    # 不是承诺（见 is_explicit_target 的说明）。
+    if is_explicit_target(claim):
+        return _judge_explicit_target(claim, current, base, kind, cfg, metric)
+
     # ---- 3. 方向性主张但基期缺失 ----------------------------------------
-    if base is None and claim.magnitude_value is None:
+    if base is None:
         return _out(
             claim, metric, "needs_review",
             f"缺少 {claim.period_norm} 的上期数据，无法计算变化方向，转人工复核。",
             confidence=0.0,
         )
-
-    kind = metric_kind(metric)
-
-    # ---- 4. 明确数值目标：噪声带不适用 ----------------------------------
-    if claim.magnitude_value is not None:
-        return _judge_explicit_target(claim, current, base, kind, cfg, metric)
 
     # ---- 5 & 6. 方向性主张 ----------------------------------------------
     assert base is not None
