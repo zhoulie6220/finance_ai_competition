@@ -260,9 +260,22 @@ def get_page(con: sqlite3.Connection, page_id: str) -> dict[str, Any] | None:
     if row is None:
         return None
 
+    # 前后页直接返回 **page_id**，而不是让前端自己拼。
+    # 前端如果拿 (file_id, page_no) 拼一个 id 去请求，就得和后端的 id 生成规则
+    # 保持一致——那种隐式约定一旦分叉，表现为「翻页点了没反应」，不报错。
     neighbors = con.execute(
-        "SELECT MIN(page_no), MAX(page_no) FROM document_page WHERE file_id = ?",
-        (row["file_id"],),
+        """
+        SELECT
+          (SELECT page_id FROM document_page WHERE file_id = ? AND page_no = ?),
+          (SELECT page_id FROM document_page WHERE file_id = ? AND page_no = ?),
+          (SELECT MIN(page_no) FROM document_page WHERE file_id = ?),
+          (SELECT MAX(page_no) FROM document_page WHERE file_id = ?)
+        """,
+        (
+            row["file_id"], row["page_no"] - 1,
+            row["file_id"], row["page_no"] + 1,
+            row["file_id"], row["file_id"],
+        ),
     ).fetchone()
 
     return {
@@ -276,8 +289,10 @@ def get_page(con: sqlite3.Connection, page_id: str) -> dict[str, Any] | None:
         "text": row["text"],
         "text_source": row["text_source"],
         "has_table": bool(row["has_table"]),
-        "first_page_no": neighbors[0],
-        "last_page_no": neighbors[1],
+        "prev_page_id": neighbors[0],
+        "next_page_id": neighbors[1],
+        "first_page_no": neighbors[2],
+        "last_page_no": neighbors[3],
     }
 
 

@@ -1,23 +1,102 @@
+import { useMemo } from 'react'
+import { NavLink, Outlet, useLocation } from 'react-router-dom'
+
+import { useApi } from './api/client'
+import type { Health, Project } from './api/types'
+import OfflineBadge from './components/OfflineBadge'
+
 /**
- * 工作台骨架占位。
+ * 工作台外壳。
  *
- * 原有的「拖入 CSV → DuckDB-WASM 查询 → 裸表格显示」链路已整体移除，原因：
- * 赛事要求「计算可复算、执行过程可追溯」，计算必须发生在服务端确定性引擎里并落
- * tool_call 日志；在浏览器里跑 SQL 既无法审计，还会带来约 73MB 的 wasm 体积。
- *
- * 后续这里将重建为 8 页工作台（项目首页 / 文件与解析 / 财务事实 / 财务分析 /
- * MD&A 一致性 / 估值 / 备忘录 / 任务与日志），数据一律来自后端 REST + SSE。
+ * 用 **HashRouter**（见 main.tsx）而不是 BrowserRouter：演示时用
+ * `vite preview` 或任何静态托管，刷新页面不会 404，也不用配 rewrite 规则。
+ * 现场演示时刷新一下出来一个 404 页，是很没必要的风险。
  */
-function App() {
+export default function App() {
+  const health = useApi<Health>('/health')
+
+  // 从路径里取项目 id，而不是 useParams：外壳是外层布局，
+  // useParams 拿不到子路由的参数。解析路径虽然朴素，但不依赖路由嵌套层级。
+  const { pathname } = useLocation()
+  const projectId = useMemo(() => {
+    const m = /\/projects\/([^/]+)/.exec(pathname)
+    return m ? m[1] : null
+  }, [pathname])
+
   return (
-    <div style={{ padding: 24, fontFamily: 'sans-serif' }}>
-      <h1>财报叙事一致性分析与情景估值投研工作台</h1>
-      <p style={{ color: '#666' }}>
-        前端工作台正在重建中。后端服务见 <code>backend/</code>，设计约定见{' '}
-        <code>docs/</code>。
-      </p>
+    <div className="app">
+      <header className="app-head">
+        <NavLink to="/" className="brand">
+          财报叙事一致性分析与情景估值投研工作台
+        </NavLink>
+        <nav className="app-nav">
+          {projectId && (
+            <>
+              <NavLink to={`/projects/${projectId}/facts`}>财务事实</NavLink>
+              <NavLink to={`/projects/${projectId}/narrative`}>叙事一致性</NavLink>
+            </>
+          )}
+        </nav>
+        {health.data && (
+          <span className="app-status" title={health.data.llm_description}>
+            规则版本 v{health.data.rule_config_version}
+          </span>
+        )}
+      </header>
+
+      <OfflineBadge health={health.data} />
+
+      {health.data && !health.data.db_ok && (
+        <div className="db-warning" role="alert">
+          <strong>数据库是空的</strong>
+          <span>{health.data.db_hint}</span>
+        </div>
+      )}
+
+      <main className="app-main">
+        <Outlet />
+      </main>
     </div>
-  );
+  )
 }
 
-export default App;
+/** 首页：项目选择器。演示动线的第一步。 */
+export function Home() {
+  const projects = useApi<Project[]>('/projects')
+
+  return (
+    <div className="page">
+      <header className="page-head">
+        <h2>选择公司</h2>
+        <p className="page-note">
+          A 股能源钢铁行业。主公司为宝钢股份，另两家为估值可比公司。
+        </p>
+      </header>
+
+      {projects.loading && <div className="async-state">正在加载…</div>}
+      {projects.error && (
+        <div className="async-state async-error">{projects.error}</div>
+      )}
+
+      <div className="project-list">
+        {projects.data?.map((p) => (
+          <NavLink
+            key={p.project_id}
+            to={`/projects/${p.project_id}/facts`}
+            className="project-card"
+          >
+            <div className="project-name">{p.company_name}</div>
+            <div className="project-code">{p.stock_code}</div>
+            <div className="project-meta">
+              {p.fiscal_years[0]}–{p.fiscal_years[p.fiscal_years.length - 1]} ·{' '}
+              {p.fiscal_years.length} 个年度
+            </div>
+            <div className="project-meta">
+              已验证事实 {p.fact_count ?? 0} 条 · MD&amp;A 段落 {p.mdna_count ?? 0} 段
+            </div>
+          </NavLink>
+        ))}
+      </div>
+    </div>
+  )
+}

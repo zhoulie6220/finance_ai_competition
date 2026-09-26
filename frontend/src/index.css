@@ -5,4 +5,603 @@
 body {
   margin: 0;
   background: #fff;
+  color: #1f1f1f;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC',
+    'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+/* ---------------------------------------------------------------- 外壳 */
+
+.app-head {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  padding: 12px 24px;
+  border-bottom: 1px solid #f0f0f0;
+  background: #fafafa;
+}
+
+.brand {
+  font-weight: 600;
+  color: #1f1f1f;
+  text-decoration: none;
+}
+
+.app-nav {
+  display: flex;
+  gap: 16px;
+}
+
+.app-nav a {
+  color: #595959;
+  text-decoration: none;
+}
+
+.app-nav a.active {
+  color: #1677ff;
+  font-weight: 500;
+}
+
+.app-status {
+  margin-left: auto;
+  color: #8c8c8c;
+  font-size: 12px;
+}
+
+.app-main {
+  padding: 24px;
+}
+
+.page-head {
+  margin-bottom: 16px;
+}
+
+.page-head h2 {
+  margin: 0;
+  font-size: 20px;
+}
+
+.page-head .subtitle,
+.panel h3 .subtitle {
+  margin-left: 12px;
+  font-size: 13px;
+  font-weight: 400;
+  color: #8c8c8c;
+}
+
+.page-note {
+  margin: 6px 0 0;
+  color: #595959;
+  max-width: 76ch;
+}
+
+.panel {
+  border: 1px solid #f0f0f0;
+  border-radius: 6px;
+  padding: 16px;
+  margin-bottom: 20px;
+}
+
+.panel h3 {
+  margin: 0 0 12px;
+  font-size: 16px;
+}
+
+.panel h4 {
+  margin: 18px 0 8px;
+  font-size: 14px;
+  color: #434343;
+}
+
+/* ---------------------------------------------------------------- 提示条 */
+
+/* 离线回放横幅常驻、醒目。docs/00 把「回放时装作实时」列为诚信问题，
+   所以这条不能折叠、不能隐藏、不能只放进控制台。 */
+.offline-banner {
+  display: flex;
+  gap: 12px;
+  align-items: baseline;
+  padding: 8px 24px;
+  background: #fff7e6;
+  border-bottom: 1px solid #ffd591;
+  color: #874d00;
+}
+
+.offline-banner strong {
+  flex: none;
+}
+
+.offline-banner-warn {
+  background: #f5f5f5;
+  border-bottom-color: #d9d9d9;
+  color: #595959;
+}
+
+.db-warning {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 24px;
+  background: #fff1f0;
+  border-bottom: 1px solid #ffa39e;
+  color: #a8071a;
+}
+
+/* ---------------------------------------------------------------- 四态 */
+
+.async-state {
+  padding: 32px;
+  text-align: center;
+  color: #8c8c8c;
+}
+
+.async-title {
+  font-weight: 600;
+  color: #cf1322;
+  margin-bottom: 4px;
+}
+
+.async-detail {
+  max-width: 70ch;
+  margin: 0 auto;
+}
+
+.async-error button {
+  margin-top: 12px;
+}
+
+.spinner {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  margin-right: 8px;
+  border: 2px solid #d9d9d9;
+  border-top-color: #1677ff;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  vertical-align: -1px;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ---------------------------------------------------------------- 项目卡片 */
+
+.project-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 16px;
+}
+
+.project-card {
+  display: block;
+  padding: 16px;
+  border: 1px solid #f0f0f0;
+  border-radius: 6px;
+  text-decoration: none;
+  color: inherit;
+}
+
+.project-card:hover {
+  border-color: #91caff;
+}
+
+.project-name {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.project-code,
+.project-meta {
+  color: #8c8c8c;
+  font-size: 13px;
+}
+
+/* ---------------------------------------------------------------- 事实网格 */
+
+.grid-wrap {
+  overflow: auto;
+  max-height: calc(100vh - 260px);
+  border: 1px solid #f0f0f0;
+  border-radius: 6px;
+}
+
+table.fact-grid {
+  border-collapse: separate;
+  border-spacing: 0;
+  width: max-content;
+  min-width: 100%;
+}
+
+table.fact-grid th,
+table.fact-grid td {
+  padding: 2px 8px;
+  border-bottom: 1px solid #f5f5f5;
+  white-space: nowrap;
+  font-weight: 400;
+}
+
+table.fact-grid thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: #fafafa;
+  font-weight: 600;
+  border-bottom: 1px solid #e8e8e8;
+}
+
+/* 首列冻结：指标名要一直看得见，否则横向滚动后不知道看的是哪一行 */
+table.fact-grid .sticky-col {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: #fff;
+  text-align: left;
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+table.fact-grid .sticky-head {
+  z-index: 3;
+}
+
+table.fact-grid .group-row th {
+  background: #f5f5f5;
+  color: #595959;
+  font-weight: 600;
+  padding: 4px 8px;
+}
+
+table.fact-grid td.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.cell-button {
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  color: #0958d9;
+  cursor: pointer;
+  text-decoration: underline dotted;
+}
+
+.cell-button:hover {
+  background: #e6f4ff;
+}
+
+/* 四种格子状态视觉可分。**绝不与「0」混淆**——灰色的「—」旁边有 tooltip
+   明说「未在年报中定位到，不是 0」。 */
+.cell-notfound {
+  color: #bfbfbf;
+  cursor: help;
+}
+
+.cell-review {
+  color: #d46b08;
+  cursor: help;
+}
+
+.cell-incomparable {
+  color: #8c8c8c;
+  background: repeating-linear-gradient(
+    45deg,
+    #fafafa,
+    #fafafa 4px,
+    #f0f0f0 4px,
+    #f0f0f0 8px
+  );
+  cursor: help;
+}
+
+.cell-missing {
+  color: #cf1322;
+}
+
+/* ---------------------------------------------------------------- 抽屉 */
+
+.drawer-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.35);
+  display: flex;
+  justify-content: flex-end;
+  z-index: 100;
+}
+
+.drawer {
+  width: min(720px, 92vw);
+  height: 100%;
+  overflow-y: auto;
+  background: #fff;
+  padding: 16px 20px 40px;
+}
+
+.drawer-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid #f0f0f0;
+  padding-bottom: 8px;
+  margin-bottom: 12px;
+}
+
+.drawer-head h3 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.drawer-head button {
+  border: 0;
+  background: none;
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+  color: #8c8c8c;
+}
+
+.fact-headline {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 8px 0 12px;
+  border-bottom: 1px solid #f5f5f5;
+}
+
+.fact-label {
+  font-weight: 600;
+}
+
+.fact-value {
+  font-size: 18px;
+  font-variant-numeric: tabular-nums;
+}
+
+dl.kv {
+  margin: 8px 0;
+}
+
+.kv-row {
+  display: flex;
+  gap: 12px;
+  padding: 2px 0;
+}
+
+.kv-row dt {
+  flex: none;
+  width: 96px;
+  color: #8c8c8c;
+}
+
+.kv-row dd {
+  margin: 0;
+  word-break: break-all;
+}
+
+.kv-warn dd {
+  color: #d46b08;
+}
+
+.page-meta {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  color: #595959;
+  font-size: 13px;
+  margin-bottom: 8px;
+}
+
+.page-nav {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.page-hint {
+  color: #d46b08;
+  font-size: 13px;
+}
+
+.page-text {
+  margin: 0;
+  padding: 12px;
+  background: #fafafa;
+  border: 1px solid #f0f0f0;
+  border-radius: 4px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: inherit;
+  font-size: 13px;
+  max-height: 46vh;
+  overflow-y: auto;
+}
+
+.page-text mark {
+  background: #ffe58f;
+  padding: 0 1px;
+}
+
+.tag {
+  padding: 0 6px;
+  border: 1px solid #d9d9d9;
+  border-radius: 3px;
+  font-size: 12px;
+}
+
+/* ---------------------------------------------------------------- 指数卡片 */
+
+.index-card {
+  display: flex;
+  gap: 24px;
+  align-items: flex-start;
+}
+
+.index-score {
+  flex: none;
+  width: 150px;
+  padding: 16px;
+  border-radius: 6px;
+  text-align: center;
+}
+
+/* 证据不足时**绝不显示 0 或 50 分**——页面上出现一个大号数字，
+   人工复核的入口就没人看了。 */
+.index-insufficient {
+  background: #f5f5f5;
+  border: 1px dashed #d9d9d9;
+}
+
+.score-value {
+  font-size: 22px;
+  font-weight: 600;
+  color: #595959;
+}
+
+.score-grade {
+  color: #8c8c8c;
+}
+
+.index-reason ul {
+  margin: 8px 0;
+  padding-left: 20px;
+}
+
+.hint {
+  color: #8c8c8c;
+  font-size: 13px;
+}
+
+/* ---------------------------------------------------------------- 校验 */
+
+.check-summary {
+  margin-bottom: 16px;
+}
+
+.summary-line {
+  font-weight: 500;
+  margin-bottom: 8px;
+}
+
+.summary-tiles {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.tile {
+  min-width: 84px;
+  padding: 8px 12px;
+  border: 1px solid #f0f0f0;
+  border-radius: 4px;
+  text-align: center;
+}
+
+.tile-value {
+  font-size: 18px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.tile-label {
+  color: #8c8c8c;
+  font-size: 12px;
+}
+
+.tile-ok .tile-value {
+  color: #389e0d;
+}
+
+.tile-warn .tile-value {
+  color: #d46b08;
+}
+
+.tile-bad .tile-value {
+  color: #cf1322;
+}
+
+.sheet-verdict {
+  margin-top: 8px;
+}
+
+.warn-box {
+  padding: 10px 12px;
+  background: #fff7e6;
+  border: 1px solid #ffd591;
+  border-radius: 4px;
+  margin-bottom: 12px;
+}
+
+.warn-box ul {
+  margin: 6px 0 0;
+  padding-left: 20px;
+}
+
+.check-failures {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.failure-card {
+  padding: 12px;
+  border: 1px solid #ffccc7;
+  background: #fff2f0;
+  border-radius: 4px;
+}
+
+.failure-head {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.failure-body {
+  margin-bottom: 8px;
+}
+
+.failure-suggestion {
+  color: #595959;
+  font-size: 13px;
+  border-top: 1px dashed #ffccc7;
+  padding-top: 6px;
+}
+
+table.plain-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+table.plain-table th,
+table.plain-table td {
+  border-bottom: 1px solid #f0f0f0;
+  padding: 4px 8px;
+  text-align: left;
+  vertical-align: top;
+}
+
+table.plain-table th {
+  background: #fafafa;
+}
+
+table.plain-table td.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+table.plain-table td.msg {
+  color: #595959;
+}
+
+.chip {
+  font-weight: 500;
+  white-space: nowrap;
 }
