@@ -37,6 +37,10 @@ Direction = Literal["up", "down", "improve", "deteriorate", "flat", "unknown"]
 class ThemeRule:
     theme: str
     label_cn: str
+    #: 落库到 `claim.claim_type` 的值。**取值受该列的 CHECK 约束**，
+    #: 与业务主题名不是一回事——两边对不上时 INSERT 会被数据库拒绝，
+    #: 而拒绝发生在整批写入的中途，前面写进去的回滚、后面的全没写。
+    claim_type: str
     #: 主判据的 metric_key。None 表示字典里没有合适的直接指标。
     primary_metric: str | None
     supporting: tuple[str, ...]
@@ -52,6 +56,7 @@ THEMES: tuple[ThemeRule, ...] = (
     ThemeRule(
         theme="cost_reduction",
         label_cn="降本增效",
+        claim_type="cost",
         primary_metric="operating_cost",
         supporting=("gross_margin", "admin_expense", "selling_expense", "rd_expense"),
         trigger_terms=(
@@ -67,11 +72,16 @@ THEMES: tuple[ThemeRule, ...] = (
     ThemeRule(
         theme="demand_sales",
         label_cn="需求与产销",
+        claim_type="demand",
         primary_metric="steel_sales_volume",
         supporting=("total_revenue", "revenue", "inventory", "contract_liabilities"),
+        # ⚠ 「市场」「销售」这类词几乎命中一切句子（实测分别命中 97 / 143 句），
+        # 而它们区分不出「这是一条关于产销的主张」还是「这句话里恰好出现了
+        # 市场两个字」。触发词要么具体、要么带指标，宁缺毋滥——
+        # 漏掉的可以由 LLM 版补，噪音则会让页面完全没法看。
         trigger_terms=(
-            "销量", "产销", "需求", "订单", "产量", "市场", "销售",
-            "去库存", "库存", "合同负债", "预收",
+            "销量", "产销", "需求", "订单", "产量", "去库存", "库存",
+            "合同负债", "预收", "产销量", "销售量", "产能利用率",
         ),
         forbidden=(
             "收入下降可能由价格造成，不能直接用收入验证需求",
@@ -82,11 +92,15 @@ THEMES: tuple[ThemeRule, ...] = (
     ThemeRule(
         theme="collection",
         label_cn="回款改善",
+        claim_type="collection",
         primary_metric="accounts_receivable",
         supporting=("cfo", "notes_receivable", "accounts_payable"),
+        # ⚠ 刻意**不含「现金」「资金」**。它们太泛——实测「现金」命中 119 句，
+        # 而现金流量表的每一行都带「现金」，于是「购建固定资产支付的现金」
+        # 这类科目行全被归成了「回款改善」。那不是主张，是报表科目。
         trigger_terms=(
-            "回款", "回笼", "应收账款", "账期", "现金", "现款", "票据",
-            "货款", "资金", "周转",
+            "回款", "回笼", "应收账款", "应收票据", "账期", "现款",
+            "货款", "票据结算", "周转天数", "应收账款周转",
         ),
         forbidden=(
             "CFO 下滑不能单独否定回款——存货采购与应付结算也会影响 CFO",
@@ -97,6 +111,7 @@ THEMES: tuple[ThemeRule, ...] = (
     ThemeRule(
         theme="product_mix",
         label_cn="产品结构升级",
+        claim_type="product_mix",
         primary_metric=None,
         supporting=("gross_margin", "rd_expense", "steel_price_avg"),
         trigger_terms=(
@@ -114,6 +129,7 @@ THEMES: tuple[ThemeRule, ...] = (
     ThemeRule(
         theme="capacity_release",
         label_cn="产能释放",
+        claim_type="capacity",
         primary_metric="capacity_utilization",
         supporting=("steel_output", "cip", "ppe"),
         trigger_terms=("产能", "投产", "达产", "产能利用率", "释放", "在建工程", "转固"),
@@ -346,6 +362,22 @@ def resolve_period(
             if delta == 1 and not forward_verifies_next_year:
                 return None
             return str(base + delta)
+    return None
+
+
+def extract_period_expr(text: str) -> str | None:
+    """取出**原文里的期间表述**（「2024 年」「明年」「本期」），原样保留。
+
+    与 `period_norm` 分开存：归一化期间用于匹配财务事实，
+    原始表述用于在页面上显示「系统是照哪句话判的」。
+    只存归一化值的话，人工复核时看不出它到底对应原文的哪几个字。
+    """
+    m = _YEAR_RE.search(text)
+    if m:
+        return text[m.start() : m.end() + 1] if text[m.end() : m.end() + 1] == "年" else m.group(0)
+    for word in _RELATIVE:
+        if word in text:
+            return word
     return None
 
 

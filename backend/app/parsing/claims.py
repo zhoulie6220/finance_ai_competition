@@ -73,12 +73,15 @@ def join_wrapped_lines(text: str) -> str:
             prev
             and prev.strip()
             and not prev.rstrip().endswith(("。", "！", "？", "；", "："))
-            # ⚠ **表格行是完整的块，不能往里接。**
-            # 表格行末尾没有句末标点，所以下面两个条件都会认为「可以接」——
-            # 一旦接上，整行的数字占比被正文稀释，后面的表格剔除器就再也
-            # 认不出它了。实测踩过：占比从 0.89 掉到 0.45，
-            # 于是那串数字连同后面的正文一起进了候选句。
+            # ⚠ **表格行与标题行都是完整的块，不能往里接。**
+            #
+            # 两者末尾都没有句末标点，所以下面的条件都会认为「可以接」：
+            #   · 表格行接上正文后，数字占比被稀释，后面的剔除器再也认不出它
+            #     （实测：占比从 0.89 掉到 0.45，整串数字进了候选句）
+            #   · 标题行接上正文后，抽出来的「原句」会带着标题一起进 claim 表，
+            #     而 claim_text 是证据链的终点，它必须是年报里真实存在的那一句
             and not looks_like_table_row(prev)
+            and not HEADING_RE.match(prev.strip())
             and not _starts_new_block(line)
         ):
             out[-1] = prev + line.lstrip()
