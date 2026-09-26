@@ -1,0 +1,7 @@
+{
+  "cassette_id": "f4db48e537954dc101c7dbbede4bee75",
+  "model_version": "deepseek-flash",
+  "text": "{\n  \"claims\": [\n    {\n      \"text\": \"全年实现\\\"1+1+N\\\"产品销量2538万吨，销量同比上升183万吨。\",\n      \"subject\": \"公司\",\n      \"period_expr\": \"全年\",\n      \"direction\": \"up\",\n      \"magnitude_text\": \"2538万吨，同比上升183万吨\",\n      \"metric_key\": \"steel_sales_volume\",\n      \"metric_note\": null,\n      \"claim_type\": \"demand\",\n      \"verifiable\": true,\n      \"confidence\": 0.9\n    },\n    {\n      \"text\": \"报告期内公司销售商品坯材4,976.3万吨，实现营业总收入3,690.6亿元。\",\n      \"subject\": \"公司\",\n      \"period_expr\": \"报告期内\",\n      \"direction\": \"unknown\",\n      \"magnitude_text\": \"4,976.3万吨\",\n      \"metric_key\": \"steel_sales_volume\",\n      \"metric_note\": null,\n      \"claim_type\": \"demand\",\n      \"verifiable\": true,\n      \"confidence\": 0.85\n    },\n    {\n      \"text\": \"报告期内公司销售商品坯材4,976.3万吨，实现营业总收入3,690.6亿元。\",\n      \"subject\": \"公司\",\n      \"period_expr\": \"报告期内\",\n      \"direction\": \"unknown\",\n      \"magnitude_text\": \"3,690.6亿元\",\n      \"metric_key\": \"revenue\",\n      \"metric_note\": null,\n      \"claim_type\": \"other\",\n      \"verifiable\": true,\n      \"confidence\": 0.85\n    }\n  ]\n}",
+  "tokens_in": 707,
+  "tokens_out": 355
+}
