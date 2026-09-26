@@ -194,10 +194,51 @@ def check_grid_coverage(base: str = BASE) -> tuple[bool, str]:
     return True, ""
 
 
+def check_concurrency(base: str = BASE, *, rounds: int = 8) -> tuple[bool, str]:
+    """★ 并发打一遍——抓「偶发 500」。
+
+    这一类 bug 的形态是：**刷新一下就好了**。所以顺序打是打不出来的，
+    必须并发。
+
+    实测踩过：FastAPI 把同步接口丢进线程池，而依赖注入与接口函数
+    不保证落在同一个线程，于是 SQLite 随机报
+    「objects created in a thread can only be used in that same thread」。
+    表现就是随机 500、重试能过——彩排时刷新几下正常了，
+    正式录的时候它偏偏出来。
+
+    所以这一步不是锦上添花，是**每遍都要跑的**。
+    """
+    import concurrent.futures as cf
+    from collections import Counter
+
+    paths = [s.path for s in STEPS]
+
+    def hit(path: str) -> object:
+        try:
+            status, _body, _ = fetch(path, base=base)
+            return status
+        except RuntimeError as exc:
+            return str(exc)[:40]
+
+    with cf.ThreadPoolExecutor(max_workers=min(32, len(paths) * 4)) as ex:
+        results = list(ex.map(hit, paths * rounds))
+
+    bad = [r for r in results if r != 200]
+    if bad:
+        return False, (
+            f"{len(bad)}/{len(results)} 个并发请求失败（{dict(Counter(bad))}）。"
+            f"**偶发的 500 会在演示当天出现**，必须先修。"
+        )
+    return True, f"{len(results)} 个并发请求全部 200"
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="演示动线冒烟测试")
     parser.add_argument("--times", type=int, default=1, help="连跑几遍（默认 1）")
     parser.add_argument("--base", default=BASE, help=f"后端地址（默认 {BASE}）")
+    parser.add_argument(
+        "--no-concurrency", action="store_true", help="跳过并发检查（不推荐）"
+    )
     args = parser.parse_args()
 
     base = args.base
@@ -223,6 +264,16 @@ def main() -> int:
             overall.failed += 1
             overall.failures.append(f"网格覆盖：{why}")
             print(f"  ✗ 网格覆盖：{why}")
+
+        # 并发检查同样每遍都做：偶发 500 只有并发才打得出来
+        if not args.no_concurrency:
+            cok, cwhy = check_concurrency(base)
+            if cok:
+                print(f"  ✓ 并发检查：{cwhy}")
+            else:
+                overall.failed += 1
+                overall.failures.append(f"并发检查：{cwhy}")
+                print(f"  ✗ 并发检查：{cwhy}")
         print()
 
     if overall.durations:

@@ -30,11 +30,28 @@ def connect(db_path: str | Path | None = None) -> sqlite3.Connection:
     - `busy_timeout`     遇到写锁时等待而非立刻报错，避免并发下随机失败
     - `synchronous=NORMAL`  WAL 模式下的推荐值，兼顾安全与速度
     - `row_factory=sqlite3.Row`  便于按列名取值
+    - `check_same_thread=False`  允许连接被「换一个线程」使用，见下
+
+    ⚠ **为什么必须关掉线程检查**
+
+    FastAPI 把同步的接口函数丢进**线程池**执行，而同一个请求的依赖注入
+    与接口函数**不保证落在同一个线程**。于是会出现：
+
+        依赖里 connect()          → 线程 A
+        接口函数用这条连接查询     → 线程 B    ✗ ProgrammingError
+
+    实测表现是**随机 500，刷新一下又好了**——因为下次请求恰好分到同一个线程。
+    这种「偶发、重试能过」的错误最难查，也最容易在演示当天出现。
+
+    关掉检查是安全的，前提是**每条连接只属于一个请求、不会有两处同时用它**。
+    本项目的所有连接都用 `with con:` 包住写入、请求结束即 close，
+    没有任何一处把连接存下来跨请求复用。**不要打破这个前提**——
+    真出现两个线程同时用一条连接，SQLite 的行为是未定义的。
     """
     path = Path(db_path) if db_path is not None else DEFAULT_DB_PATH
     path.parent.mkdir(parents=True, exist_ok=True)
 
-    con = sqlite3.connect(path)
+    con = sqlite3.connect(path, check_same_thread=False)
     con.row_factory = sqlite3.Row
 
     # 顺序有讲究：foreign_keys 必须在任何 DML 之前设置，否则会被忽略
