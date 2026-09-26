@@ -12,6 +12,10 @@
     python scripts/dict_csv.py --import      # CSV → SQL，写入前先校验
     python scripts/dict_csv.py --check       # 只校验两者是否同步（可放进 CI）
 
+    # 从某个库（而非种子）导出——用于把只存在于 .db 快照里的字典改动追回种子：
+    python scripts/dict_csv.py --export --db var/finance.db
+    python scripts/dict_csv.py --import      # 再写回种子（先校验后落盘）
+
 导入是**先校验、后写入**：候选 SQL 会先在内存库里加载并跑一遍
 `app.db.dictionary.validate()`，有任何一条不通过就整体拒绝，原文件不动。
 这样「改坏了一半」不会落盘，也不会出现建库失败才发现问题的情况。
@@ -31,7 +35,13 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from app.db import dictionary  # noqa: E402
-from app.db.session import BACKEND_DIR, connect_memory, init_schema, load_seeds  # noqa: E402
+from app.db.session import (  # noqa: E402
+    BACKEND_DIR,
+    connect,
+    connect_memory,
+    init_schema,
+    load_seeds,
+)
 from app.schemas.enums import SignConvention, Statement, UnitKind, ValueType  # noqa: E402
 
 SEED_PATH = BACKEND_DIR.joinpath(*dictionary.SEED_PATH_PARTS)
@@ -62,8 +72,20 @@ def _read_seed_text() -> str:
     return SEED_PATH.read_text(encoding="utf-8")
 
 
-def cmd_export(csv_path: Path) -> int:
-    con = _memory_with_seed()
+def cmd_export(csv_path: Path, db_path: Path | None = None) -> int:
+    """把字段字典导出成 CSV。
+
+    `db_path` 为空时从种子文件导出（常规用法）。给了路径则**从那个库**导出——
+    用于把某台机器上跑出来的字典追回种子：字典的改动有时只存在于某个 .db 快照里
+    （现场解析出的别名、会计同学临时加的排除词），不追回来就会随快照一起丢掉。
+    导出后用 `--import` 写回种子，那条路径会先校验再落盘。
+    """
+    if db_path is None:
+        con = _memory_with_seed()
+    else:
+        if not Path(db_path).exists():
+            raise SystemExit(f"找不到数据库：{db_path}")
+        con = connect(db_path)
     rows = dictionary.fetch(con)
     con.close()
 
@@ -79,8 +101,12 @@ def cmd_export(csv_path: Path) -> int:
                 out[col] = "" if value is None else value
             writer.writerow(out)
 
-    print(f"已导出 {len(rows)} 个字段 → {csv_path}")
+    source = SEED_PATH.name if db_path is None else str(db_path)
+    print(f"已从 {source} 导出 {len(rows)} 个字段 → {csv_path}")
     print("多值列（aliases / exclusion_terms）用 | 分隔，一格一个，不必碰中括号和引号。")
+    if db_path is not None:
+        print()
+        print("⚠ 这只改了 CSV。要写回种子请再跑 --import —— 那条路径会先校验后落盘。")
     return 0
 
 
@@ -345,10 +371,20 @@ def main() -> int:
         action="store_true",
         help="允许 CSV 里缺少的字段被删除（默认拒绝，防止误删整行）",
     )
+    parser.add_argument(
+        "--db",
+        type=Path,
+        default=None,
+        help="配合 --export：从这个库导出，而不是从种子文件。"
+             "用于把某台机器上跑出来的字典改动追回种子",
+    )
     args = parser.parse_args()
 
+    if args.db is not None and not args.export:
+        parser.error("--db 只配合 --export 使用")
+
     if args.export:
-        return cmd_export(args.csv)
+        return cmd_export(args.csv, args.db)
     if args.do_import:
         return cmd_import(args.csv, args.allow_delete)
     return cmd_check(args.csv)

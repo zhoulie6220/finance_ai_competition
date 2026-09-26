@@ -62,14 +62,20 @@ EXPORTED_MODELS = [
     "AuditFinding",
 ]
 
-HEADER = """/* 本文件由 backend/scripts/export_schemas.py 自动生成，请勿手改。
- *
- * 数据契约的唯一定义源在 backend/app/schemas/（Pydantic v2），
- * 人类可读版本见 docs/01-data-contract.md。
- * 契约变更后请重新运行：
- *     cd backend && python scripts/export_schemas.py
- */
-"""
+# 导出文件的说明文字。
+#
+# 以前这里是一段 `/* ... */` JS 块注释、直接拼在 JSON 前面，那会让 contract.json
+# 变成 JSONC：`json.load` 解析不了，TypeScript 没开 resolveJsonModule 时也 import
+# 不进来。现在改成 JSON 的 `$comment` 键——文件是严格 JSON，两边都能直接吃。
+# json.dumps 保留插入顺序，所以 $comment 会落在最前面，人打开还是先看到这段话。
+GENERATED_NOTICE = (
+    "本文件由 backend/scripts/export_schemas.py 自动生成，请勿手改。\n"
+    "\n"
+    "数据契约的唯一定义源在 backend/app/schemas/（Pydantic v2），\n"
+    "人类可读版本见 docs/01-data-contract.md。\n"
+    "契约变更后请重新运行：\n"
+    "    cd backend && python scripts/export_schemas.py"
+)
 
 
 def build_schema() -> dict:
@@ -99,6 +105,7 @@ def build_schema() -> dict:
         _rewrite_refs(sch)
 
     return {
+        "$comment": GENERATED_NOTICE,
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "title": "投研工作台数据契约",
         "description": "由 backend/app/schemas/ 生成",
@@ -124,7 +131,7 @@ def main() -> int:
     parser.add_argument("--check", action="store_true", help="只校验，不写文件")
     args = parser.parse_args()
 
-    content = HEADER + json.dumps(build_schema(), ensure_ascii=False, indent=2) + "\n"
+    content = json.dumps(build_schema(), ensure_ascii=False, indent=2) + "\n"
     target = OUT_DIR / "contract.json"
 
     if args.check:

@@ -73,9 +73,15 @@ VIEW_CHECKS: tuple[SampleCount, ...] = (
 
 # 种子：来自 app/data/seed/，随时能从 git 重建，所以对不上只是提醒不算失败。
 # 对得上说明 DDL/种子批次已经落库。
+#
+# 注意这两个数**与数据包不同**，是刻意超前于它的：
+#   指标 91 —— 与数据包一致（steel_effective_capacity 等两个产能专职字段）
+#   参数 72 —— 数据包是 66。多出的 6 条是会计口径 v1.1 要求、但两边都还没有的键：
+#              narrative.min_ratio_change / min_days_change / min_utilization_change
+#              以及 Q 项检查清单 quality.*
 SEED_CHECKS: tuple[SampleCount, ...] = (
     ("metric_definition", "SELECT COUNT(*) FROM metric_definition", 91),
-    ("rule_config", "SELECT COUNT(*) FROM rule_config", 66),
+    ("rule_config", "SELECT COUNT(*) FROM rule_config", 72),
 )
 
 EXPECTED_PDFS = 16

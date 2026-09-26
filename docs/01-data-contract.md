@@ -202,7 +202,7 @@ python scripts/dict_csv.py --import   # 读回来。先校验后写入，任何�
 | `audit_opinion` | 审计意见类型 | 文本 | text |  |  | 审计意见、审计意见类型 | 内部控制审计意见、审计费用、审计委员会 |
 | `accounting_policy_change` | 会计政策变更 | 文本 | text |  |  | 会计政策变更 | 会计估计变更、前期差错更正、会计政策和会计估计 |
 
-#### 钢铁专属（10 项）
+#### 钢铁专属（12 项）
 
 | 字段键 | 标准名称 | 类型 | 单位 | 派生 | 非经常 | 年报行名别名 | 排除词 |
 |---|---|---|---|:--:|:--:|---|---|
@@ -213,9 +213,11 @@ python scripts/dict_csv.py --import   # 读回来。先校验后写入，任何�
 | `steel_spread` | 吨钢原料差价 | 比率 | currency | ✓ |  | 吨钢原料差价 | 吨钢毛利、吨钢 EBITDA、吨钢成本 |
 | `steel_gross_profit_per_ton` | 吨钢毛利 | 比率 | currency | ✓ |  | 吨钢毛利 | 吨钢原料差价、吨钢 EBITDA、吨钢成本 |
 | `steel_ebitda_per_ton` | 吨钢 EBITDA | 比率 | currency | ✓ |  | 吨钢 EBITDA | 吨钢毛利、吨钢原料差价、EBITDA 利润率 |
-| `effective_capacity` | 有效产能 | 时点 | ton |  |  | 有效产能、钢材有效产能、粗钢有效产能 | 设计产能、产能利用率、产能置换 |
-| `capacity_utilization` | 产能利用率 | 比率 | percent | ✓ |  | 产能利用率 | 设计产能、有效产能、产能利用率目标 |
-| `crude_steel_capacity` | 粗钢产能 | 时点 | ton |  |  | 粗钢产能、钢铁产能 | 设计产能、有效产能 |
+| `effective_capacity` | 有效产能 | 时点 | ton |  |  | 有效产能 | 设计产能、产能利用率、产能置换、粗钢有效产能、钢材有效产能 |
+| `crude_steel_effective_capacity` | 粗钢有效产能 | 时点 | ton |  |  | 粗钢有效产能 | 设计产能、产能利用率、产能置换、有效产能 |
+| `steel_effective_capacity` | 钢材有效产能 | 时点 | ton |  |  | 钢材有效产能 | 设计产能、产能利用率、产能置换、有效产能 |
+| `capacity_utilization` | 产能利用率 | 比率 | percent | ✓ |  | 产能利用率 | 设计产能、有效产能、产能利用率目标、粗钢产能、钢材产能 |
+| `crude_steel_capacity` | 粗钢产能 | 时点 | ton |  |  | 粗钢产能、钢铁产能 | 设计产能、有效产能、粗钢有效产能 |
 
 #### 能源专属（5 项）
 
@@ -233,9 +235,9 @@ python scripts/dict_csv.py --import   # 读回来。先校验后写入，任何�
 |---|---|---|---|:--:|:--:|---|---|
 | `environmental_protection_expense` | 环保投入 | 期间 | currency |  |  | 环保投入、环保支出、环保费用 | — |
 
-合计 **89** 个字段。
+合计 **91** 个字段。
 
-#### 例句锚点（48/89 项已填，其中占位符句 48 项）
+#### 例句锚点（50/91 项已填，其中占位符句 50 项）
 
 | 字段键 | 例句 | 来源 |
 |---|---|---|
@@ -284,6 +286,8 @@ python scripts/dict_csv.py --import   # 读回来。先校验后写入，任何�
 | `steel_gross_profit_per_ton` | 本年度吨钢毛利为【数值】元/吨。 | 占位符句 |
 | `steel_ebitda_per_ton` | 本年度吨钢 EBITDA 为【数值】元/吨。 | 占位符句 |
 | `effective_capacity` | 报告期钢材有效产能为【数值】万吨。 | 占位符句 |
+| `crude_steel_effective_capacity` | 报告期粗钢有效产能为【数值】万吨。 | 占位符句 |
+| `steel_effective_capacity` | 报告期钢材有效产能为【数值】万吨。 | 占位符句 |
 | `capacity_utilization` | 本年度粗钢产能利用率为【数值】%。 | 占位符句 |
 | `audit_opinion` | 会计师事务所对公司本年度财务报告出具了【审计意见类型】。 | 占位符句 |
 | `accounting_policy_change` | 本年度因会计政策变更对比较数据进行追溯调整。 | 占位符句 |

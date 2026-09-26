@@ -77,14 +77,16 @@ steel_price_avg,钢材平均售价,,,industry,ratio,currency,positive_is_good,0,
 steel_spread,吨钢原料差价,吨钢原料差价,吨钢毛利|吨钢 EBITDA|吨钢成本,industry,ratio,currency,positive_is_good,0,1,steel,,504,本年度吨钢原料差价为【数值】元/吨。,synthetic_example,,⚠ 若只能得到「售价 − 原材料成本」，就只能叫原料差价。称为毛利会虚高约一倍——差的是一人工、制造费用与折旧
 steel_gross_profit_per_ton,吨钢毛利,吨钢毛利,吨钢原料差价|吨钢 EBITDA|吨钢成本,industry,ratio,currency,positive_is_good,0,1,steel,,505,本年度吨钢毛利为【数值】元/吨。,synthetic_example,,优先采用年报直接披露值；自算时分母用销量，成本须含材料/人工/制造费用/折旧
 steel_ebitda_per_ton,吨钢 EBITDA,吨钢 EBITDA,吨钢毛利|吨钢原料差价|EBITDA 利润率,industry,ratio,currency,positive_is_good,0,1,steel,,506,本年度吨钢 EBITDA 为【数值】元/吨。,synthetic_example,,交叉验证项，一律不影响 DCF
-effective_capacity,有效产能,有效产能|钢材有效产能|粗钢有效产能,设计产能|产能利用率|产能置换,industry,stock,ton,neutral,0,0,steel,,507,报告期钢材有效产能为【数值】万吨。,synthetic_example,,产能利用率的默认分母。优先取公司披露的有效产能，不是设计产能
-capacity_utilization,产能利用率,产能利用率,设计产能|有效产能|产能利用率目标,industry,ratio,percent,positive_is_good,0,1,steel,,508,本年度粗钢产能利用率为【数值】%。,synthetic_example,,交叉验证项。一体化钢企用粗钢口径，轧钢企业用钢材口径，两者不得混用
-crude_steel_capacity,粗钢产能,粗钢产能|钢铁产能,设计产能|有效产能,industry,stock,ton,neutral,0,0,steel,,509,,,,设计产能不是本字段；按 docs/03 产能利用率默认取有效产能
-coal_output,原煤产量,原煤产量|商品煤产量|煤炭产量,煤炭销量|原煤销量,industry,flow,ton,positive_is_good,0,0,energy,,520,,,,
-coal_sales_volume,商品煤销量,商品煤销量|煤炭销量|销售量,原煤产量|商品煤产量,industry,flow,ton,positive_is_good,0,0,energy,,521,,,,别名「销售量」与钢企共用，映射时须先按 project.industry 过滤字段
-coal_price_avg,吨煤平均售价,吨煤售价|煤炭平均售价,,industry,ratio,currency,positive_is_good,0,1,energy,,522,,,,
-ton_coal_gross_margin,吨煤毛利,吨煤毛利,吨煤原料差价|吨煤成本,industry,ratio,currency,positive_is_good,0,1,energy,,523,,,,交叉验证项。煤企是钢企的成本项，两者周期驱动因素相反，不得互为估值可比
-safety_production_expense,安全生产费用,安全生产费用|专项储备,,industry,flow,currency,neutral,0,0,energy,,524,,,,能源钢铁行业特有，须单列
+effective_capacity,有效产能,有效产能,设计产能|产能利用率|产能置换|粗钢有效产能|钢材有效产能,industry,stock,ton,neutral,0,0,steel,,507,报告期钢材有效产能为【数值】万吨。,synthetic_example,,产能利用率的默认分母。优先取公司披露的有效产能，不是设计产能。年报分别披露粗钢/钢材有效产能时，映射到下面两个专职字段，不要收到这里——收在一起就无法与产量配套，产能利用率会静默算错。
+crude_steel_effective_capacity,粗钢有效产能,粗钢有效产能,设计产能|产能利用率|产能置换|有效产能,industry,stock,ton,neutral,0,0,steel,effective_capacity,508,报告期粗钢有效产能为【数值】万吨。,synthetic_example,,产能利用率的分母，只能与同产品线的产量配套：粗钢产量。
+steel_effective_capacity,钢材有效产能,钢材有效产能,设计产能|产能利用率|产能置换|有效产能,industry,stock,ton,neutral,0,0,steel,effective_capacity,509,报告期钢材有效产能为【数值】万吨。,synthetic_example,,产能利用率的分母，只能与同产品线的产量配套：钢材产量。
+capacity_utilization,产能利用率,产能利用率,设计产能|有效产能|产能利用率目标|粗钢产能|钢材产能,industry,ratio,percent,positive_is_good,0,1,steel,,510,本年度粗钢产能利用率为【数值】%。,synthetic_example,分子分母必须同一产品线：粗钢产量 ÷ 粗钢有效产能，或钢材产量 ÷ 钢材有效产能。混用会得到大于 100% 或明显偏低的利用率，且不会报错。设计产能不进分母（签字文档 A-5）。,交叉验证项。一体化钢企用粗钢口径，轧钢企业用钢材口径，两者不得混用
+crude_steel_capacity,粗钢产能,粗钢产能|钢铁产能,设计产能|有效产能|粗钢有效产能,industry,stock,ton,neutral,0,0,steel,,511,,,,补充字段，**不得用作产能利用率的分母**（签字文档 A-5：设计产能只作补充，不进主指标）。产能利用率的分母一律取有效产能。
+coal_output,原煤产量,原煤产量|商品煤产量|煤炭产量,煤炭销量|原煤销量,industry,flow,ton,positive_is_good,0,0,energy,,520,,,本次参赛不启用（签字文档 A-9：研究案例选择钢铁，不选择煤炭）。字段保留是为了证明引擎按行业参数化、不硬编码；演示中始终显示「未找到」，不得当成缺失或 0。,
+coal_sales_volume,商品煤销量,商品煤销量|煤炭销量|销售量,原煤产量|商品煤产量,industry,flow,ton,positive_is_good,0,0,energy,,521,,,本次参赛不启用（签字文档 A-9：研究案例选择钢铁，不选择煤炭）。字段保留是为了证明引擎按行业参数化、不硬编码；演示中始终显示「未找到」，不得当成缺失或 0。,别名「销售量」与钢企共用，映射时须先按 project.industry 过滤字段
+coal_price_avg,吨煤平均售价,吨煤售价|煤炭平均售价,,industry,ratio,currency,positive_is_good,0,1,energy,,522,,,本次参赛不启用（签字文档 A-9：研究案例选择钢铁，不选择煤炭）。字段保留是为了证明引擎按行业参数化、不硬编码；演示中始终显示「未找到」，不得当成缺失或 0。,
+ton_coal_gross_margin,吨煤毛利,吨煤毛利,吨煤原料差价|吨煤成本,industry,ratio,currency,positive_is_good,0,1,energy,,523,,,本次参赛不启用（签字文档 A-9：研究案例选择钢铁，不选择煤炭）。字段保留是为了证明引擎按行业参数化、不硬编码；演示中始终显示「未找到」，不得当成缺失或 0。,交叉验证项。煤企是钢企的成本项，两者周期驱动因素相反，不得互为估值可比
+safety_production_expense,安全生产费用,安全生产费用|专项储备,,industry,flow,currency,neutral,0,0,energy,,524,,,本次参赛不启用（签字文档 A-9：研究案例选择钢铁，不选择煤炭）。字段保留是为了证明引擎按行业参数化、不硬编码；演示中始终显示「未找到」，不得当成缺失或 0。,能源钢铁行业特有，须单列
 environmental_protection_expense,环保投入,环保投入|环保支出|环保费用,,industry,flow,currency,neutral,0,0,,,525,,,,双碳/能耗双控相关
 audit_opinion,审计意见类型,审计意见|审计意见类型,内部控制审计意见|审计费用|审计委员会,disclosure,text,text,positive_is_good,0,0,,,600,会计师事务所对公司本年度财务报告出具了【审计意见类型】。,synthetic_example,,非标意见是最高优先级风险信号。文本型，不入 financial_fact
 accounting_policy_change,会计政策变更,会计政策变更,会计估计变更|前期差错更正|会计政策和会计估计,disclosure,text,text,neutral,0,0,,,601,本年度因会计政策变更对比较数据进行追溯调整。,synthetic_example,,触发 incomparable_reason = policy_change。会计估计变更与前期差错更正是另两件事，排除但不另立指标。文本型，不入 financial_fact
