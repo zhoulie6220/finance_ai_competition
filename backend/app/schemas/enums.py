@@ -92,9 +92,21 @@ class ExampleSource(StrEnum):
 
 
 class SignConvention(StrEnum):
+    """指标的经济方向：数值越大是好事还是坏事。
+
+    ⚠ 它描述的是**经济方向**，不是**列报符号**——资产减值类指标两者都要：
+    经济方向是「损失越大越坏」，而列报符号要看那一年年报是正数列示还是
+    「损失以负号填列」。后者记在 financial_fact.sign_basis 上，不是这里。
+    """
+
     POSITIVE_IS_GOOD = "positive_is_good"
     NEGATIVE_IS_GOOD = "negative_is_good"
     NEUTRAL = "neutral"
+    # 会计口径 v1.1 §二：资产减值损失的标准化列报为**损失额为正**。
+    # 2015 年正数列示 1,486,729,666.32 → 不变；
+    # 2024 年「损失以负号填列」-578,764,052.76 → 取反为 +578,764,052.76。
+    # 禁止用绝对值：允许转回的项目在新版列报里为正时，标准化应为负（表示净收益）。
+    LOSS_POSITIVE = "loss_positive"
 
 
 class SourceLocation(StrEnum):
@@ -153,24 +165,46 @@ class ClaimType(StrEnum):
 
 
 class MatchVerdict(StrEnum):
-    """主张—事实匹配的四态 + 部分支持。
+    """主张—事实匹配的判定。会计口径 v1.1 §A.2 的 s 标度。
 
-    `partial` 用于「方向一致但幅度明显偏弱」，避免把只兑现一半与完全兑现混为一谈。
+    三个**计分**态，构成 H / C 的等权平均：
+
+        supported     s = +1   同口径直接证据满足目标，或实质支持主张方向
+        neutral       s =  0   方向性主张对应的变化落在噪声区间内
+        contradicted  s = -1   直接证据超过阈值且方向相反，或明确数值目标未达成
+
+    三个**不计分**态，留在页面单列，理由必须写进 `reason`：
+
+        needs_review  —— 只有间接代理、口径不一致或来源冲突，尚未核清。**留在覆盖率分母**
+        unverifiable  —— 未披露直接指标，或主张目标不够具体。**不进分母**
+        incomparable  —— 并购/重组/政策变更/重述/周期/季节性导致不可比。不进分母、不扣分
+
+    ⚠ v1.1 明确删掉了旧稿的 `partial`（方向一致但幅度偏弱），并把 H、C 的取值域
+    从 [0,1] 改成 [-1,1]。旧定义下五个分项都是 0–1，中性证据只能取 0.5，于是
+    H=C=0.5 会算出 50 + 20×0.5 + 20×0.5 = 70 —— **正好压在「一致性较高」的分界线上**。
+    改成 [-1,1] 之后全中性得 50 分，才是诚实的。
     """
 
     SUPPORTED = "supported"
-    PARTIAL = "partial"
-    CONFLICTED = "conflicted"
-    INCOMPARABLE = "incomparable"   # 不进分母、不扣分
-    MISSING = "missing"             # 不推断为失败，转人工复核
+    NEUTRAL = "neutral"
+    CONTRADICTED = "contradicted"
+    NEEDS_REVIEW = "needs_review"
+    UNVERIFIABLE = "unverifiable"
+    INCOMPARABLE = "incomparable"
 
 
 class IndexGrade(StrEnum):
-    HIGH = "high"
-    MEDIUM = "medium"
-    LOW = "low"
-    # 覆盖率或观测数不足时不出分
-    INSUFFICIENT = "insufficient"
+    """分级线见 rule_config：index.grade_high_min=70、index.grade_low_max=45。
+
+    按**未四舍五入**的值分级。取 insufficient_evidence 时 `score` 必须为 NULL ——
+    绝不用 0 分或 50 分代替：页面一定会把那个数字渲染成一个大号分数，
+    人工复核的入口就形同虚设了。
+    """
+
+    HIGH = "high"                            # I >= 70
+    MEDIUM = "medium"                        # 45 <= I < 70
+    LOW = "low"                              # I < 45
+    INSUFFICIENT = "insufficient_evidence"   # 闸门四条件未全过，不出分
 
 
 class NormalizationStatus(StrEnum):

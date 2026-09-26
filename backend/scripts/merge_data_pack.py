@@ -201,17 +201,27 @@ def _precheck(con: sqlite3.Connection, plan: list[str]) -> str | None:
                 f"（跳过会静默丢掉这些行）。"
             )
 
-        if src_cols != dst_cols:
-            only_src = [c for c in src_cols if c not in dst_cols]
-            only_dst = [c for c in dst_cols if c not in src_cols]
-            detail = []
-            if only_src:
-                detail.append(f"数据包多出列 {only_src}")
-            if only_dst:
-                detail.append(f"schema 多出列 {only_dst}")
-            if not detail:  # 列名一样但顺序不同
-                detail.append("列顺序不同")
-            return f"表 {table} 的列与 schema.sql 不一致：{'；'.join(detail)}"
+        # 只比列名**集合**，不比顺序——本脚本按名字显式插入，INSERT 不依赖列顺序。
+        only_src = sorted(c for c in src_cols if c not in dst_cols)
+        if only_src:
+            # 数据包里有、schema 没定义 → 导入时这些列的数据会无声消失。硬失败。
+            return (
+                f"表 {table}：数据包有列 {only_src}，schema.sql 没有定义。"
+                f"跳过会静默丢掉这些列的数据，请先补 schema.sql。"
+            )
+
+        only_dst = sorted(c for c in dst_cols if c not in src_cols)
+        if only_dst:
+            # schema 新增的列（如 v1.1 要求的 sign_basis）在旧数据包里当然没有。
+            # 可空或有默认值就留空，不是问题；否则插入必然失败，要提前拦下。
+            unsafe = sorted(set(only_dst) - _defaulted_or_nullable(con, table))
+            if unsafe:
+                return (
+                    f"表 {table}：schema.sql 的列 {unsafe} 在数据包里没有，"
+                    f"且既非可空也无默认值——导入必然失败。给它们加默认值，"
+                    f"或让它们可空。"
+                )
+            print(f"  · {table}：schema 的列 {only_dst} 数据包里没有，将留空")
 
         existing = con.execute(f'SELECT COUNT(*) FROM main."{table}"').fetchone()[0]
         if existing:
@@ -251,9 +261,27 @@ def _depends_on(table: str) -> str:
     return "（未在 schema.sql 里找到该表）"
 
 
+def _defaulted_or_nullable(con: sqlite3.Connection, table: str) -> set[str]:
+    """目标表里「可空或有默认值」的列——这些列数据包不提供也能插进去。
+
+    其余的非空无默认列会让 INSERT 必然失败，要在导入前就拦下来，
+    而不是导到一半才报一堆 IntegrityError。
+    """
+    out: set[str] = set()
+    for row in con.execute(f'PRAGMA main.table_info("{table}")'):
+        _, name, _type, notnull, default, _pk = row
+        if not notnull or default is not None:
+            out.add(name)
+    return out
+
+
 def _copy_table(con: sqlite3.Connection, table: str) -> int:
-    """整表复制，返回写入行数。走正常 INSERT，让触发器和 CHECK 照常生效。"""
-    cols = _columns(con, "main", table) or []
+    """整表复制，返回写入行数。走正常 INSERT，让触发器和 CHECK 照常生效。
+
+    列清单取自**数据包**（源）而不是目标：目标多出来的列（schema 新增的可空列，
+    比如 v1.1 要求的 sign_basis）不写，让它们取自己的默认值。
+    """
+    cols = _columns(con, "src", table) or []
     collist = ", ".join(f'"{c}"' for c in cols)
     placeholders = ", ".join("?" * len(cols))
     rows = con.execute(f'SELECT {collist} FROM src."{table}"').fetchall()
