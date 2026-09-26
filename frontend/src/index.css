@@ -827,3 +827,7 @@ table.match-table td.msg {
   padding-left: 20px;
   color: #595959;
 }
+
+.page-hint-ok {
+  color: #389e0d;
+}

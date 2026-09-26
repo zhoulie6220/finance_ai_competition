@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { apiGet, useApi } from '../api/client'
 import type { FactDetail, PageDetail } from '../api/types'
@@ -203,6 +203,23 @@ function PageView({
     [page.text, highlight],
   )
 
+  const markRef = useRef<HTMLElement | null>(null)
+
+  // ★ 打开抽屉就**自动滚到命中的那句**。
+  //
+  // 没有这一步的话，「点击结论回到原文」只是把原文**打开**了，
+  // 但命中处在屏幕外面（实测第 63 页的利润表在第 1269 字，
+  // 而页首是资产负债表的尾部）。看的人得自己往下翻着找——
+  // 那就等于「回到原文」这件事没做完。
+  useEffect(() => {
+    if (!parts.matched) return
+    // 等一帧，确保 mark 已经渲染出来
+    const id = window.requestAnimationFrame(() => {
+      markRef.current?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+    })
+    return () => window.cancelAnimationFrame(id)
+  }, [page.page_id, parts.matched])
+
   return (
     <section className="drawer-section">
       <h4>年报原文</h4>
@@ -234,12 +251,21 @@ function PageView({
           本页未找到该事实的原文片段{page.next_page_id ? '，试试下一页' : ''}。
         </p>
       )}
+      {parts.matched && parts.offset > 200 && (
+        // 命中的句子可能在一千多字之后（实测第 63 页的利润表在第 1269 字，
+        // 而页首是资产负债表的尾部）。**告诉用户已经定位好了、不用自己找。**
+        <p className="page-hint page-hint-ok">
+          已定位到原文第 {parts.offset} 字处，已自动滚动过去。
+        </p>
+      )}
 
       <pre className="page-text">
         {parts.matched
           ? parts.nodes.map((node, i) =>
               node.hit ? (
-                <mark key={i}>{node.text}</mark>
+                <mark key={i} ref={markRef}>
+                  {node.text}
+                </mark>
               ) : (
                 <span key={i}>{node.text}</span>
               ),
@@ -265,8 +291,8 @@ interface Segment {
 function splitByHighlight(
   text: string,
   needle: string | null,
-): { nodes: Segment[]; matched: boolean } {
-  if (!needle || !text) return { nodes: [], matched: false }
+): { nodes: Segment[]; matched: boolean; offset: number } {
+  if (!needle || !text) return { nodes: [], matched: false, offset: -1 }
 
   let index = text.indexOf(needle)
   let length = needle.length
@@ -300,9 +326,10 @@ function splitByHighlight(
     }
   }
 
-  if (index < 0) return { nodes: [], matched: false }
+  if (index < 0) return { nodes: [], matched: false, offset: -1 }
 
   return {
+    offset: index,
     nodes: [
       { hit: false, text: text.slice(0, index) },
       { hit: true, text: text.slice(index, index + length) },
