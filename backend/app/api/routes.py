@@ -247,12 +247,20 @@ def narrative_index(
     页面据此显示「证据不足，不出分」，**绝不用 0 分或 50 分代替**。
     """
     _require_project(con, project_id)
-    from app.engine.index import GRADE_ACTIONS, compute_index
+    from app.engine.index import compute_index
+    from app.engine.mapping import (
+        map_index_to_scenarios,
+        parse_weights,
+    )
     from app.skills import matching
 
     data, diag = matching.project_index_input(con, project_id)
     result = compute_index(data)
-    action, valuation_action, user_hint = GRADE_ACTIONS[result.grade]
+    # 传导的文案**只在 mapping.py 里有一份**——散成两处的话，
+    # 改了一处另一处还是旧的，页面上就会同时出现两种说法。
+    adjustment = map_index_to_scenarios(
+        result.grade, weights_by_grade=_weights_from_rules(con)
+    )
 
     return {
         "project_id": project_id,
@@ -280,11 +288,49 @@ def narrative_index(
         "insufficient_reason": result.insufficient_reason,
         "formula": result.formula,
         "conclusion_boundary": result.conclusion_boundary,
-        "action": action,
-        "valuation_action": valuation_action,
-        "user_hint": user_hint,
+        "scenarios": {
+            # 不足以出分时 weights 是 null——**给一组「差不多的权重」
+            # 会让闸门形同虚设**：分数都没出，却已经在影响估值了
+            "weights": None if adjustment.weights is None else adjustment.weights.as_dict(),
+            "revenue_growth_ref": adjustment.revenue_growth_ref,
+            "requires_human_confirmation": adjustment.requires_human_confirmation,
+            "changes_valuation": adjustment.changes_valuation,
+            "notes": list(adjustment.notes),
+        },
+        "action": adjustment.action,
+        "valuation_action": adjustment.valuation_action,
+        "user_hint": adjustment.user_hint,
         "method_version": result.method_version,
     }
+
+
+def _weights_from_rules(con: sqlite3.Connection) -> dict[str, Any]:
+    """从 rule_config 读情景权重。
+
+    解析失败时**退回代码默认值并留痕**——不退回的话，一个手滑改坏的
+    参数会让整个指数接口 500；而不留痕的话，「参数没生效」和
+    「参数被改坏了」在页面上长得一样。
+    """
+    from decimal import Decimal, InvalidOperation
+
+    from app.engine.mapping import DEFAULT_WEIGHTS, parse_weights
+
+    rows = {
+        r["key"]: r["value"]
+        for r in con.execute(
+            "SELECT key, value FROM rule_config WHERE key LIKE 'mapping.%.weights'"
+        )
+    }
+    out = dict(DEFAULT_WEIGHTS)
+    for grade in ("high", "medium", "low"):
+        raw = rows.get(f"mapping.{grade}.weights")
+        if raw is None:
+            continue
+        try:
+            out[grade] = parse_weights(raw)          # type: ignore[index]
+        except (ValueError, InvalidOperation):
+            continue
+    return out
 
 
 def _dec(value: Any) -> str | None:

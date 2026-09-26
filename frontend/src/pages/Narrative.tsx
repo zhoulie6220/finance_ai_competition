@@ -196,8 +196,42 @@ function IndexCard({ data }: { data: NarrativeIndex }) {
             <span className="label">估值动作</span>
             {data.valuation_action}
           </div>
+          {data.scenarios.weights ? (
+            <div>
+              <span className="label">情景权重</span>
+              基准 {data.scenarios.weights.base} / 乐观{' '}
+              {data.scenarios.weights.optimistic} / 压力 {data.scenarios.weights.stress}
+              {data.scenarios.revenue_growth_ref && (
+                <span className="hint">
+                  　增长假设参照 {data.scenarios.revenue_growth_ref}
+                </span>
+              )}
+            </div>
+          ) : (
+            <div>
+              <span className="label">情景权重</span>
+              <span className="muted">
+                不提供 —— 不足以出分时不做任何由指数驱动的估值调整
+              </span>
+            </div>
+          )}
           <div className="hint">{data.user_hint}</div>
+          {data.scenarios.requires_human_confirmation && (
+            <div className="requires-confirm">
+              需人工确认后才重算，**不会自动写入估值**
+            </div>
+          )}
         </div>
+
+        {/* 约束说明随结果一起给出，不做折叠——它们划定了这条结论的边界 */}
+        <details className="scenario-notes" open>
+          <summary>传导的边界（这些参数**没有**被指数改动）</summary>
+          <ul>
+            {data.scenarios.notes.map((n, i) => (
+              <li key={i}>{n}</li>
+            ))}
+          </ul>
+        </details>
 
         <p className="conclusion-boundary">{data.conclusion_boundary}</p>
       </div>

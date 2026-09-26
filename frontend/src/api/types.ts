@@ -303,6 +303,16 @@ export interface NarrativeIndex {
   insufficient_reason: string | null
   formula: string
   conclusion_boundary: string
+  /** 指数 → 估值情景的传导。**没有目标价字段，也不该有。** */
+  scenarios: {
+    /** 不足以出分时是 null——给一组「差不多的权重」会让闸门形同虚设。 */
+    weights: { base: string; optimistic: string; stress: string } | null
+    revenue_growth_ref: string | null
+    requires_human_confirmation: boolean
+    changes_valuation: boolean
+    /** 每次传导都附带的约束说明，复核的人要看得见边界在哪。 */
+    notes: string[]
+  }
   action: string
   valuation_action: string
   user_hint: string

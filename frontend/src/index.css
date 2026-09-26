@@ -797,3 +797,33 @@ table.match-table td.msg {
   margin: 8px 0 0;
   padding-left: 20px;
 }
+
+/* ---------------------------------------------------------------- 传导边界 */
+
+.requires-confirm {
+  margin-top: 6px;
+  padding: 4px 8px;
+  background: #fff7e6;
+  border-left: 3px solid #ffd591;
+  color: #874d00;
+  font-size: 13px;
+}
+
+.scenario-notes {
+  margin: 12px 0 0;
+  padding: 10px 12px;
+  background: #fafafa;
+  border-radius: 4px;
+  font-size: 13px;
+}
+
+.scenario-notes summary {
+  cursor: pointer;
+  color: #595959;
+}
+
+.scenario-notes ul {
+  margin: 8px 0 0;
+  padding-left: 20px;
+  color: #595959;
+}
