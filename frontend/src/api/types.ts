@@ -209,6 +209,106 @@ export interface ChecksResponse {
   warnings: string[]
 }
 
+// ---------------------------------------------------------------- 叙事一致性
+
+export interface Claim {
+  claim_id: string
+  claim_text: string
+  claim_type: string
+  direction: string
+  period_norm: string | null
+  period_expr: string | null
+  magnitude_text: string | null
+  magnitude_value: string | null
+  magnitude_unit: string | null
+  verifiable: number
+  background_only: number
+  confidence: number
+  status: string
+  source_page: number
+  primary_metric: string | null
+  /** 该主题**被禁止的简化推断**。随主张一起展示，供人工复核对照。 */
+  forbidden_simplifications: string[]
+}
+
+export interface ClaimStats {
+  total: number
+  verifiable: number
+  background_only: number
+  validated: number
+  by_type: Record<string, number>
+}
+
+export interface ClaimsResponse {
+  project_id: string
+  stats: ClaimStats
+  claims: Claim[]
+}
+
+export interface ClaimMatch {
+  match_id: string
+  claim_id: string
+  metric_key: string
+  verdict: Verdict
+  reason: string
+  confidence: number
+  claim_period: string
+  fact_period: string
+  direction_claim: string | null
+  direction_actual: string | null
+  magnitude_target: string | null
+  magnitude_actual: string | null
+  relative_deviation: string | null
+  formula: string | null
+  inputs: string | null
+  claim_text: string
+  claim_type: string
+  source_page: number
+  verifiable: number
+  background_only: number
+}
+
+export interface MatchesResponse {
+  project_id: string
+  counts: Record<string, number>
+  /** 没跑过匹配时给出的说明。有数据时为 null。 */
+  hint: string | null
+  matches: ClaimMatch[]
+}
+
+export interface IndexComponents {
+  history: string | null
+  current: string | null
+  risk: string | null
+  template: string | null
+  quality: string | null
+}
+
+export interface NarrativeIndex {
+  project_id: string
+  status: 'scored' | 'insufficient_evidence'
+  grade: 'high' | 'medium' | 'low' | 'insufficient_evidence'
+  /** 字符串。闸门不过时是 null——**绝不用 0 或 50 代替**。 */
+  score: string | null
+  components: IndexComponents
+  coverage: string | null
+  counts: {
+    n: number
+    N: number
+    history_observations: number
+    current_observations: number
+    skipped_no_period: number
+    skipped_no_fact: number
+  }
+  insufficient_reason: string | null
+  formula: string
+  conclusion_boundary: string
+  action: string
+  valuation_action: string
+  user_hint: string
+  method_version: string
+}
+
 // ---------------------------------------------------------------- 任务事件
 
 export interface TaskEvent {
