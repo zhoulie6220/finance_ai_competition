@@ -117,7 +117,7 @@ def test_marker_never_leaks_into_a_value(con: sqlite3.Connection) -> None:
     """标记只能出现在 `description` 里。
 
     漏进 `value` 的话，读参数的地方会拿到一句带中文前缀的字符串——
-    `Decimal('⬜ 待会计确认（A-6）｜0.02')` 会抛异常，而
+    `Decimal('⬜ 待会计确认（问题 6）｜0.02')` 会抛异常，而
     `float()` 之类的地方可能**静默变成 0 或 NaN**。
     """
     bad = [
