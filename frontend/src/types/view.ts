@@ -140,7 +140,8 @@ export interface NarrativeResult {
   counts: Record<string, number>
   themes: ThemeSummary[]
   observations: NarrativeObservation[]
-  min_rel_change: string
+  /** 前瞻主张是否验下一年。来自 `rule_config.narrative.forward_verifies_next_year`。 */
+  forward_verifies_next_year?: boolean
   /** 为什么不出诊断指数。**必须显示**，否则用户会以为这个数就是全部。 */
   index_note?: string
   no_text?: boolean

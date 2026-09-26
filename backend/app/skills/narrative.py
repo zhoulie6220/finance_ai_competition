@@ -27,11 +27,10 @@ R 与 P 要风险段落与跨年文本相似度，Q 要 `engine/checks.py` 的�
 
 from __future__ import annotations
 
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal
 from typing import TYPE_CHECKING, Any
 
 from app.engine.narrative import (
-    DEFAULT_MIN_REL_CHANGE,
     INCOMPARABLE,
     MISSING,
     STATE_CN,
@@ -69,6 +68,18 @@ def _rule(con, key: str, fallback: str) -> str:
         "SELECT value FROM rule_config WHERE key=? AND industry=''", (key,)
     ).fetchone()
     return row["value"] if row else fallback
+
+
+def _rule_bool(con, key: str, fallback: bool) -> bool:
+    """读一个布尔型规则参数。
+
+    ⚠ 不能写成 `bool(_rule(...))`：SQLite 里存的是文本 `'0'`，
+    而 `bool('0')` 是 **True**——一个参数关掉了却照旧生效，且不报任何错。
+    同类的坑在 `file.is_scanned` 上翻过一次（见 CLAUDE.md 的 JSON 列那一节）。
+    """
+    return _rule(con, key, "1" if fallback else "0").strip().lower() not in (
+        "0", "false", "no", "",
+    )
 
 
 def _load_utterances(con, project_id: str) -> list[Utterance]:
@@ -289,18 +300,13 @@ def narrative_consistency(
             value={"project_id": pid, "observations": [], "no_text": True},
         )
 
-    claims = find_claims(utterances)
+    forward_next = _rule_bool(con, "narrative.forward_verifies_next_year", True)
+    claims = find_claims(utterances, forward_verifies_next_year=forward_next)
     if theme_key:
         claims = [c for c in claims if c.theme_key == theme_key]
 
-    raw = _rule(con, "narrative.min_rel_change", str(DEFAULT_MIN_REL_CHANGE))
-    try:
-        min_rel = Decimal(raw)
-    except (InvalidOperation, TypeError):
-        min_rel = DEFAULT_MIN_REL_CHANGE
-
     series = _metric_series(con, pid)
-    observations = verify_all(claims, series, min_rel_change=min_rel)
+    observations = verify_all(claims, series)
     verdict = summarize(observations)
 
     payload = [
@@ -344,18 +350,20 @@ def narrative_consistency(
             "counts": verdict.counts,
             "themes": themes,
             "observations": payload,
-            "min_rel_change": str(min_rel),
+            "forward_verifies_next_year": forward_next,
             "index_note": (
-                "诊断指数未出分：公式 I = 50 + 20H + 20C + 5R − 10P − 15Q 已登记在 "
-                "rule_config，其中 H（历史兑现度）与 C（当前一致性）由本次观测构成，"
+                "诊断指数未出分：公式 I = 50 + 20H + 20C + 5R − 10P − 15Q 已由会计口径"
+                "定下（accounting_signoff_v1.docx A-7 / docs/04-index-rules）。"
+                "其中 H（历史兑现度）与 C（当前一致性）由本次观测构成，"
                 "R（风险披露变化）、P（模板化惩罚）、Q（财务质量冲突）尚未接入"
                 "——Q 依赖 engine/checks.py 的勾稽结果。缺 30 分权重的构成项时出的分"
                 "与完整版长得一样，因此不出。"
             ),
         },
         formula=(
-            "主张方向（向好）与指标实际方向逐年比对："
-            f"相对变动 < {min_rel} 视为未变动；方向相反判冲突"
+            "主张方向（向好）与指标实际方向逐年比对：方向相反即判冲突，"
+            "不设幅度阈值（A-7：「20 个百分点」只适用于明确提出数值目标的主张）；"
+            "指标数值未变动时判不可比。前瞻主张验下一年。"
         ),
     )
 

@@ -106,15 +106,21 @@ python -m pip install -r requirements.lock.txt
 ```
 ├── TEAM.md                  分工、排期与上手提示（给人看）
 ├── CLAUDE.md                给 AI 读的仓库规则（队友的 AI 会自动加载它）
+├── 待会计确认.md            ★还没经过会计签字的 6 件事（12 个参数正在生效）
 ├── docs/                    设计规则手册
 │   ├── 00-scope.md              ✅ 系统能做什么、不做什么（适用范围与边界）
 │   ├── 01-data-contract.md      ✅ ★数据契约与字段字典
-│   ├── 02-accounting-rules.md   ✅ ★会计硬规则与校验清单（会计同学签字）
+│   ├── 02-accounting-rules.md   ✅ ★会计硬规则与校验清单
 │   ├── 03-valuation-rules.md    ✅ ★估值规则与周期正常化口径
-│   ├── 04-index-rules.md        ⬜ 诊断指数公式、阈值与传导映射
+│   ├── 04-index-rules.md        ✅ ★诊断指数：观测→指数→情景传导 + 参数出处清单
 │   ├── 05-assumptions-and-risks.md  ⬜ 主要假设、适用范围与风险因素
 │   ├── 06-demo-script.md        ⬜ 现场演示脚本与断网兜底流程
 │   └── 07-third-party-licenses.md   ✅ ★第三方名称/版本/来源/许可证/使用范围
+│
+│   ⚠ docs/ 下的 .md 是**从 Word 转写**的机读化落地记录，不是会计同学亲笔。
+│     两份源文件在仓库根目录：accounting_signoff_v1.docx（字段口径、EBIT、指数）、
+│     方案选择.docx（方向判断三态）。**冲突时以 Word 为准。**
+│     04 第六节列了「哪些参数有文档依据、哪些还是实现时拍的暂定值」。
 │
 ├── backend/
 │   ├── app/

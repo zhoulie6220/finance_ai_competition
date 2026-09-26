@@ -29,9 +29,13 @@
 
 ## 这里不算诊断指数
 
-本模块只出**逐条观测**（支持 / 冲突 / 不可比 / 缺失）与计数，不出分数。
-指数的公式、阈值、到估值情景的映射属会计口径，由 `docs/04-index-rules.md` 定，
-在那份手册落地之前 `index.py` 不该存在——凭空猜一个公式，猜完必返工。
+本模块只出**逐条观测**（支持 / 部分支持 / 冲突 / 不可比 / 缺失）与计数，不出分数。
+
+指数的公式与阈值**已经定下来了**（`accounting_signoff_v1.docx` A-7，
+机读版在 `rule_config.index.*`，人读版在 `docs/04-index-rules.md`）。
+本模块仍然不出分，原因是另一条：**五项构成里 R（风险披露变化）、P（模板化惩罚）、
+Q（财务质量冲突）还没有数据源**——Q 依赖 `engine/checks.py`。分母没变、权重照乘，
+只算得出两项时出的分，看起来和完整版**一模一样**，缺的是 30 分权重的构成项。
 """
 
 from __future__ import annotations
@@ -42,7 +46,15 @@ from decimal import Decimal
 
 from app.engine.ratios import period_gap
 
-#: 观测的四种状态。与项目设计的四态一致，也正好是前端那张对照表的四种配色。
+#: 观测的四种状态。正好是前端那张对照表的四种配色。
+#:
+#: ⚠ 规则里其实有**五种**：`方案选择.docx` 第 10 条还定义了 `partial`（部分支持，
+#: 「方向一致但幅度较弱」），`schemas/enums.py::MatchVerdict` 与
+#: `rule_config.index.direction.weak_verdict` 都留着它的位置。
+#: 本模块**产不出**这一态——判「幅度较弱」要拿实际幅度比一个目标幅度，
+#: 而当前只抽取方向性主张，没有数值目标（`index.direction.weak_ratio` 里写的
+#: 「无目标时取历史同类主张中位幅度」需要一个主张库）。等 LLM 抽取版一起做。
+#: 在这里硬凑一个阈值出来，就是把会计口径又一次偷偷定在代码里。
 SUPPORTED = "supported"
 CONFLICTED = "conflicted"
 INCOMPARABLE = "incomparable"
@@ -250,7 +262,11 @@ def _next_year(period: str) -> str:
         return period
 
 
-def find_claims(utterances: list[Utterance]) -> list[Claim]:
+def find_claims(
+    utterances: list[Utterance],
+    *,
+    forward_verifies_next_year: bool = True,
+) -> list[Claim]:
     """从句子流里认出可验证主张。
 
     三类句子会被跳过，**每一类都是实测踩出来的**：
@@ -262,6 +278,12 @@ def find_claims(utterances: list[Utterance]) -> list[Claim]:
     第 3 条尤其要留着：主张是「这家公司在 2024 年报里说了它产能满负荷」，
     一句话命中两次仍是**一条**主张。按命中次数计数会让词频高的公司显得主张更多，
     而那只是它话多。
+
+    `forward_verifies_next_year` 对应 `rule_config.narrative.forward_verifies_next_year`。
+    ⚠ 这个参数**以前是个死参数**：种子里声明了，但代码把「前瞻验下一年」写死了，
+    没人读它。于是把它改成 0 什么也不会发生——**看起来可配，改了不起作用**，
+    正是 `rule_config` 最不该出现的样子。现在真接上了。
+    置 False 时前瞻主张按当年验，只用于对照排查（会让所有未到期的计划判成冲突）。
     """
     out: list[Claim] = []
     seen: set[tuple[str, str, int]] = set()
@@ -291,7 +313,11 @@ def find_claims(utterances: list[Utterance]) -> list[Claim]:
                     matched=hit,
                     source_file=ut.source_file,
                     source_period=ut.period,
-                    verify_period=_next_year(ut.period) if ut.forward else ut.period,
+                    verify_period=(
+                        _next_year(ut.period)
+                        if (ut.forward and forward_verifies_next_year)
+                        else ut.period
+                    ),
                     forward=ut.forward,
                     metric=theme.metric,
                     expect=theme.expect,
@@ -303,18 +329,6 @@ def find_claims(utterances: list[Utterance]) -> list[Claim]:
 # ------------------------------------------------------------------ 验证
 
 
-#: 变动小于这个相对幅度就算「没动」，不参与判定。
-#:
-#: ⚠ **没有这一层，噪声会把结论淹掉。** 实测宝钢 2019 年毛利率从 10.8791%
-#: 走到 10.8350%，动了 0.04 个百分点，就被判成「管理层说降本增效，事实相悖」。
-#: 那种量级在会计上什么都不说明，而它和真正的背离（2018 年 14.99% → 10.88%）
-#: 在那张四态表里长得一模一样——评审一眼就会看出系统分不清噪声与信号。
-#:
-#: 这是**会计口径参数**，不是工程常数：多少算「动了」因行业而异。
-#: 当前值属暂定，已登记进 `rule_config` 待会计同学确认（tier='hard'）。
-DEFAULT_MIN_REL_CHANGE = Decimal("0.01")
-
-
 def _direction(
     prev: Decimal | None,
     curr: Decimal | None,
@@ -323,7 +337,6 @@ def _direction(
     prev_period: str,
     curr_period: str,
     unit: str,
-    min_rel_change: Decimal = DEFAULT_MIN_REL_CHANGE,
 ) -> tuple[str | None, str, str, dict[str, str]]:
     """比方向。返回 (up/down/flat/None, reason, actual, inputs)。
 
@@ -331,8 +344,20 @@ def _direction(
     （−100 → +50 算出来是 −150%，但那是扭亏，是变好），而叙事验证要的恰恰是方向。
     比率（毛利率）本来就该用百分点差，也不适用增长率。
 
-    判定用的是**相对变动**而非绝对变动，这样金额（百万元）与比率（%）可以共用
-    同一个阈值——绝对变动在两者之间没有可比性（10 个百万和 10 个百分点）。
+    ⚠ **只判方向，不判幅度。** 这是会计口径，依据 `accounting_signoff_v1.docx` A-7
+    与 `方案选择.docx` 第 10 条：
+
+        「20 个百分点」只适用于 MD&A 明确提出数值目标的情况。
+        对于「需求增长」「回款改善」等方向性表述，实际方向相反，直接标记为冲突。
+
+    这里**曾经有一道 `min_rel_change`（默认 1%）的闸门**，理由是宝钢 2019 年毛利率
+    从 10.8791% 走到 10.8350%，动了 0.04 个百分点就被判成「叙事相悖」，看着荒唐。
+    但那是**拿工程直觉改会计口径**——判据只认方向，幅度不在其中。闸门已删除，
+    `rule_config.narrative.min_rel_change` 同步清掉。
+
+    噪声该在「这句话够不够格被当成主张」那一层挡（词表与排除词），不在判定这一层：
+    把阈值放进判定，等于让一条真实的反向主张因为「动得不够多」而免于被记成冲突，
+    而它在界面上的样子与「数据缺失」一模一样。
     """
     inputs = {f"{prev_period} 年": str(prev), f"{curr_period} 年": str(curr)}
     formula = f"{label}：{prev_period} 年 {prev} → {curr_period} 年 {curr} {unit}"
@@ -350,24 +375,12 @@ def _direction(
     delta = curr - prev
     actual = f"{prev} → {curr}（{'+' if delta > 0 else ''}{delta} {unit}）"
 
-    if prev == 0:
-        # 基期为 0 时相对变动无定义，但方向本身仍然可判（0 → 正数就是上行）。
-        if delta > 0:
-            return "up", "", actual, inputs
-        if delta < 0:
-            return "down", "", actual, inputs
-        return "flat", "", actual, inputs
-
-    rel = abs(delta) / abs(prev)
-    if rel < min_rel_change:
-        # ⚠ 解释必须放在 `reason` 而不是 `actual` 里：`verify()` 在 reason 为空时
-        #   会填一句兜底文案，而那句兜底把具体幅度和阈值全盖掉了。
-        #   用户看到的会是「毛利率未变动」——**看不出它其实动了 0.41%**，
-        #   也就无从判断这个阈值定得合不合理。
+    if delta == 0:
+        # 数值没动就没有方向可判。**判成冲突是错的**：主张说的是「会变好」，
+        # 而它既没变好也没变坏。归入不可比，与「没有数据」区分开。
         return (
             "flat",
-            f"变动 {rel:.2%}（{actual}）低于重要性阈值 {min_rel_change:.0%}，"
-            "视为未变动，不足以判断主张是否兑现",
+            f"{label}未变动（{actual}），没有方向可判，不足以判断主张是否兑现",
             actual,
             inputs,
         )
@@ -380,7 +393,6 @@ def verify(
     series: dict[str, Decimal | None],
     *,
     prev_period: str | None = None,
-    min_rel_change: Decimal = DEFAULT_MIN_REL_CHANGE,
 ) -> Observation:
     """拿一个指标的逐年序列去验一条主张。
 
@@ -399,7 +411,6 @@ def verify(
         series.get(prev), series.get(period),
         label=claim.metric.label_cn,
         prev_period=prev, curr_period=period, unit=claim.metric.unit,
-        min_rel_change=min_rel_change,
     )
 
     if direction is None:
@@ -441,8 +452,6 @@ def verify(
 def verify_all(
     claims: list[Claim],
     series_by_metric: dict[str, dict[str, Decimal | None]],
-    *,
-    min_rel_change: Decimal = DEFAULT_MIN_REL_CHANGE,
 ) -> list[Observation]:
     """批量验证。同一个指标只取一次序列，由调用方传进来。"""
     out: list[Observation] = []
@@ -456,7 +465,7 @@ def verify_all(
                 )
             )
             continue
-        out.append(verify(claim, series, min_rel_change=min_rel_change))
+        out.append(verify(claim, series))
     return out
 
 
@@ -520,7 +529,9 @@ def summarize(observations: list[Observation]) -> Verdict:
 
     tail = (
         "\n（本结论由规则法得出：按措辞命中识别主张，再比对财务指标方向。"
-        "尚未接入 LLM 主张抽取，也不含诊断指数——指数公式待 docs/04 规则手册落地。）"
+        "判定只认方向、不设幅度阈值，依据 docs/04-index-rules A-7。"
+        "尚未接入 LLM 主张抽取；也不出诊断指数——R/P/Q 三项还没有数据源，"
+        "只算得出两项时出的分与完整版一模一样，看不出缺了东西。）"
     )
     return Verdict(total, counts, text=f"{lead}\n识别到 {total} 条可验证主张：{'，'.join(bits)}。{tail}",
                    headline=headline)

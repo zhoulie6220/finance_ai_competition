@@ -60,6 +60,16 @@ def test_forward_section_verifies_the_next_year() -> None:
     assert len(claims) == 1
     assert claims[0].verify_period == "2025", "前瞻段没有往后挪一年"
 
+    # 这个行为由 rule_config.narrative.forward_verifies_next_year 控制。
+    # ⚠ 它以前是个**死参数**：种子里声明了，代码却把行为写死了，没人读它，
+    #   于是改成 0 什么也不会发生——看起来可配、改了不起作用。
+    #   测试盯着「参数真的接上了」，否则下一次还会退化回去。
+    off = find_claims(
+        [Utterance(text="2025年将深入推进降本增效。", page_no=30, period="2024", forward=True)],
+        forward_verifies_next_year=False,
+    )
+    assert off[0].verify_period == "2024", "forward_verifies_next_year 没接上"
+
 
 def test_future_word_is_not_treated_as_negation() -> None:
     """「未来」不能被当成否定词。
@@ -139,24 +149,37 @@ def test_direction_up_supports_and_down_conflicts() -> None:
     assert down.state == CONFLICTED
 
 
-def test_tiny_move_is_not_a_conflict() -> None:
-    """微小变动不算冲突。
+def test_opposite_direction_conflicts_regardless_of_magnitude() -> None:
+    """方向相反就是冲突，**不看动了多少**。
 
-    ⚠ 这是实测翻过的车：宝钢 2019 年毛利率从 10.8791% 走到 10.8350%，
-    动了 0.04 个百分点，被判成「管理层说降本增效，事实相悖」。
-    那种量级在会计上什么都不说明，而它和真正的背离（14.99% → 10.88%）
-    在四态表里长得一模一样——评审一眼就会看出系统分不清噪声与信号。
+    ⚠ 这条规则改过一次，改回去的方向是「删功能」，所以留一段说明。
+
+    这里曾有一道 `min_rel_change`（默认 1%）的闸门，理由是宝钢 2019 年毛利率从
+    10.8791% 走到 10.8350%、动了 0.04 个百分点，被判成「管理层说降本增效，
+    事实相悖」看着荒唐。挡掉的动机成立，**但那是拿工程直觉改会计口径**：
+
+      · `accounting_signoff_v1.docx` A-7：方向性主张实际方向相反，直接标记为冲突
+      · `方案选择.docx` 第 10 条：「20 个百分点」只适用于明确提出数值目标的主张
+
+    判据只认方向，幅度不在其中。一条动了 0.04 个百分点的反向主张**仍然是反向
+    主张**；把它藏起来，它在界面上的样子与「数据缺失」一模一样，比误报更难发现。
+    噪声该在词表那一层挡（这句话够不够格被当成主张），不在判定这一层。
     """
     ob = verify(_claim("2019"), {"2018": Decimal("10.8791"), "2019": Decimal("10.8350")})
-    assert ob.state == INCOMPARABLE, "0.04 个百分点的变动被当成了冲突"
-    assert "阈值" in ob.reason
+    assert ob.state == CONFLICTED, "反向主张因为「动得不够多」被免于判冲突"
+    assert "下行" in ob.reason
 
 
-def test_threshold_is_configurable() -> None:
-    """阈值是参数，不是写死的常数——它是会计口径，得能调。"""
-    series = {"2018": Decimal("10.8791"), "2019": Decimal("10.8350")}
-    ob = verify(_claim("2019"), series, min_rel_change=Decimal("0.0001"))
-    assert ob.state == CONFLICTED, "阈值调小后，同样的数据应当能判出方向"
+def test_zero_change_is_incomparable_not_conflicted() -> None:
+    """数值没动就没有方向可判，归不可比，不是冲突。
+
+    主张说的是「会变好」，而它既没变好也没变坏——这与「方向相反」是两回事。
+    不设这道出口的话，delta 为 0 会落到 `up if delta > 0 else down` 的 else 分支里
+    被判成下行，凭空多出一处冲突。
+    """
+    ob = verify(_claim("2024"), {"2023": Decimal("10.8791"), "2024": Decimal("10.8791")})
+    assert ob.state == INCOMPARABLE
+    assert "未变动" in ob.reason
 
 
 def test_missing_year_is_reported_as_missing_not_incomparable() -> None:
