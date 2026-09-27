@@ -107,6 +107,7 @@ def extract_claims_llm(
     now: str | None = None,
     limit: int | None = None,
     section_ids: tuple[str, ...] | None = None,
+    only_missing: bool = False,
     client: LlmClient | None = None,
 ) -> LlmExtractionSummary:
     """用模型抽主张。
@@ -152,7 +153,10 @@ def extract_claims_llm(
 
     metric_keys = _metric_key_cheatsheet(con)
 
-    sections = _load_sections(con, project_id, limit=limit, section_ids=section_ids)
+    sections = _load_sections(
+        con, project_id, limit=limit, section_ids=section_ids,
+        only_missing=only_missing,
+    )
     rows: list[tuple[Any, ...]] = []
 
     for section in sections:
@@ -301,12 +305,27 @@ def _load_sections(
     *,
     limit: int | None,
     section_ids: tuple[str, ...] | None,
+    only_missing: bool,
 ) -> list[Any]:
+    """取要抽的章节。
+
+    ⚠ `only_missing` 是给批量跑用的：`limit` 取的是「前 N 段」，
+    而**不是「前 N 段还没抽过的」**。分批跑时如果不排除已抽过的，
+    每一批都会从头再来一遍——数据不会错（`INSERT OR IGNORE` 挡住了），
+    但**白花一遍调用的钱**，而且看起来「跑了很多批却没进展」。
+
+    判据是「这一章的章节下有没有 LLM 抽出来的主张」。
+    """
     clause = ""
     params: list[Any] = [project_id]
     if section_ids:
         clause = f" AND m.section_id IN ({','.join('?' * len(section_ids))})"
         params.extend(section_ids)
+    if only_missing:
+        clause += (
+            " AND NOT EXISTS (SELECT 1 FROM claim c"
+            " WHERE c.section_id = m.section_id AND c.extractor LIKE 'llm:%')"
+        )
     sql = (
         "SELECT m.section_id, m.heading, m.text, m.page_from, m.page_to,"
         " m.file_id, f.period"
