@@ -71,7 +71,10 @@ VARS = {"metric_keys": "revenue\noperating_cost", "period": "2024",
 def test_registry_loads_and_hashes():
     reg = PromptRegistry(PROMPTS_DIR)
     assert "claim_extract" in reg.keys()
-    assert reg.versions("claim_extract") == ("v1",)
+    # ⚠ **不要写死版本列表**：新增一个版本就会让这条测试红，
+    # 而「新增版本」是设计里明确鼓励的动作（改动一律新增版本号）。
+    # 该断言的是「v1 还在」（旧版本不许删），不是「只有 v1」。
+    assert "v1" in reg.versions("claim_extract")
     assert len(reg.registry_hash()) == 64
 
 
@@ -243,7 +246,10 @@ def test_every_attempt_is_recorded_including_failures():
     )
     assert len(track) == 2
     assert track[0].output == "坏的"          # 坏输出本身要留档
-    assert all(r.prompt_version == "v1" for r in track)
+    # 版本号**不写死**——只要求「落库的版本与注册表当前给的一致」。
+    # 写死 v1 的话，新增 v2 会让这条测试红，而那恰好是它不该管的事。
+    expected = PromptRegistry(PROMPTS_DIR).get("claim_extract").version
+    assert all(r.prompt_version == expected for r in track)
     assert all(len(r.prompt_hash) == 64 for r in track)
 
 

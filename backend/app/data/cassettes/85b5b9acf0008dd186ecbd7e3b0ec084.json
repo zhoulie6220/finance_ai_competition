@@ -1,0 +1,7 @@
+{
+  "cassette_id": "85b5b9acf0008dd186ecbd7e3b0ec084",
+  "model_version": "deepseek-flash",
+  "text": "{\n  \"claims\": [\n    {\n      \"text\": \"2015年销售商品坯材2214.83万吨\",\n      \"subject\": \"公司\",\n      \"period_expr\": \"2015年\",\n      \"direction\": \"unknown\",\n      \"magnitude_text\": \"2214.83万吨\",\n      \"metric_key\": \"steel_sales_volume\",\n      \"metric_note\": null,\n      \"claim_type\": \"demand\",\n      \"verifiable\": true,\n      \"confidence\": 0.9\n    },\n    {\n      \"text\": \"实现营业总收入1641.2亿元\",\n      \"subject\": \"公司\",\n      \"period_expr\": \"2015年\",\n      \"direction\": \"unknown\",\n      \"magnitude_text\": \"1641.2亿元\",\n      \"metric_key\": \"total_revenue\",\n      \"metric_note\": null,\n      \"claim_type\": \"other\",\n      \"verifiable\": true,\n      \"confidence\": 0.95\n    },\n    {\n      \"text\": \"利润总额18.5亿元\",\n      \"subject\": \"公司\",\n      \"period_expr\": \"2015年\",\n      \"direction\": \"unknown\",\n      \"magnitude_text\": \"18.5亿元\",\n      \"metric_key\": \"profit_before_tax\",\n      \"metric_note\": null,\n      \"claim_type\": \"other\",\n      \"verifiable\": true,\n      \"confidence\": 0.95\n    }\n  ]\n}",
+  "tokens_in": 1644,
+  "tokens_out": 310
+}

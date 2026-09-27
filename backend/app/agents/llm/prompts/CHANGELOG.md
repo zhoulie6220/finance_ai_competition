@@ -13,6 +13,28 @@
 
 ## claim_extract
 
+### v2 — 2026-09-27
+
+**修正 `claim_type` 的取值表。**
+
+v1 让模型从 `cost | demand | capacity | collection | product_mix | risk | other`
+里选，但 `claim.claim_type` 的 CHECK 约束只接受：
+
+    demand / order / capacity / collection / product_mix / risk / macro / other
+
+两个问题：
+
+1. **`cost` 不在允许列表里**——模型照 v1 返回 `cost`，INSERT 会被数据库拒绝。
+   而拒绝发生在整批写入的中途，前面写进去的回滚、后面的全没写。
+2. **少了 `order` 与 `macro`**——模型没有合适的选项时会挑一个「差不多」的，
+   而错分类不会报错，只会让主题统计和分项判定悄悄偏掉。
+
+v2 把取值表**逐字对齐数据库的 CHECK**，并明确「选不出来就填 other，不要自造」。
+
+> 教训：**prompt 里的枚举必须与数据库约束同源**。两边各写一份的话，
+> 改了一边另一边还是旧的，而错误要到写库那一刻才暴露——
+> 那时已经跑了几十次模型调用了。
+
 ### v1 — 2026-09-26
 
 初版。从 MD&A 段落抽可验证主张。
