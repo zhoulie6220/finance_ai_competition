@@ -1,0 +1,7 @@
+{
+  "cassette_id": "bd82a2d1f461bf42119416d47d6fb4a2",
+  "model_version": "deepseek-flash",
+  "text": "{\"claims\": [{\"text\": \"公司所处区域为钢材净流入区域，行业集中度高，供需格局有序。\", \"subject\": \"公司所处区域\", \"period_expr\": \"当前\", \"direction\": \"unknown\", \"magnitude_text\": null, \"metric_key\": null, \"metric_note\": \"区域钢材净流入量/区域供需格局，属行业供需指标，字段表中无对应键\", \"claim_type\": \"demand\", \"verifiable\": false, \"confidence\": 0.4}, {\"text\": \"随着中部崛起、长江经济带、“一带一路”、粤港澳大湾区等国家战略的深入推进，湖南及周边地区特别是广东、湖北、重庆等地工程机械、汽车、装备制造等制造业发展迅速，尤其是湖南大力实施“三高四新”美好蓝图，积极扩大有效投资，着力打造全国一流冶金基地、湖南省先进制造业高地、构建现代化产业体系，将持续为钢铁下游需求提供良好的支撑。\", \"subject\": \"钢铁下游需求\", \"period_expr\": \"未来（将持续）\", \"direction\": \"up\", \"magnitude_text\": null, \"metric_key\": null, \"metric_note\": \"下游需求支撑为定性判断，无量化指标，字段表中无对应键\", \"claim_type\": \"demand\", \"verifiable\": false, \"confidence\": 0.3}]}",
+  "tokens_in": 1773,
+  "tokens_out": 284
+}

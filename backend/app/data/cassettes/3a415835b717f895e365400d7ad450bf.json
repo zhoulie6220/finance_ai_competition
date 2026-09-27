@@ -1,0 +1,7 @@
+{
+  "cassette_id": "3a415835b717f895e365400d7ad450bf",
+  "model_version": "deepseek-flash",
+  "text": "{\"claims\": []}",
+  "tokens_in": 1568,
+  "tokens_out": 5
+}

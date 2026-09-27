@@ -1,0 +1,7 @@
+{
+  "cassette_id": "4dd8e31d6071bf4c1c26ef6150515dc0",
+  "model_version": "deepseek-flash",
+  "text": "{\"claims\": [{\"text\": \"生铁、钢坯、钢材、焦炭及副产品生产、销售；冶金机械、设备制造、销售；冶金技术咨询等\", \"subject\": \"华菱湘钢\", \"period_expr\": \"2023\", \"direction\": \"unknown\", \"magnitude_text\": null, \"metric_key\": null, \"metric_note\": \"这是主要业务描述，非量化指标\", \"claim_type\": \"other\", \"verifiable\": false, \"confidence\": 0.9}, {\"text\": \"钢材、钢坯、生铁及其他黑色金属产品的生产经营；热轧超薄带钢卷、冷轧板卷、镀锌板及相关产品的经营等\", \"subject\": \"华菱涟钢\", \"period_expr\": \"2023\", \"direction\": \"unknown\", \"magnitude_text\": null, \"metric_key\": null, \"metric_note\": \"这是主要业务描述，非量化指标\", \"claim_type\": \"other\", \"verifiable\": false, \"confidence\": 0.9}, {\"text\": \"黑色金属冶炼、加工及\", \"subject\": \"华菱子公司\", \"period_expr\": \"2023\", \"direction\": \"unknown\", \"magnitude_text\": null, \"metric_key\": null, \"metric_note\": \"这是主要业务描述，非量化指标\", \"claim_type\": \"other\", \"verifiable\": false, \"confidence\": 0.85}]}",
+  "tokens_in": 1851,
+  "tokens_out": 305
+}

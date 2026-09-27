@@ -1,0 +1,7 @@
+{
+  "cassette_id": "eba92329c54dc77f667b6f013726fff2",
+  "model_version": "deepseek-flash",
+  "text": "{\"claims\": [{\"text\": \"前五名客户销售额502.0亿元，占年度销售总额13.8%；其中前五名客户销售额中关联方销售额439.3亿元，占年度销售总额12.1%。\", \"subject\": \"公司\", \"period_expr\": \"报告期内\", \"direction\": \"unknown\", \"magnitude_text\": \"502.0亿元，占年度销售总额13.8%；关联方439.3亿元，占12.1%\", \"metric_key\": null, \"metric_note\": \"前五名客户销售额及占比、关联方销售额及占比，字段表中无对应键\", \"claim_type\": \"demand\", \"verifiable\": true, \"confidence\": 0.9}, {\"text\": \"前五名供应商采购额777.6亿元，占年度采购总额44.4%；其中前五名供应商采购额中关联方采购额192.4亿元，占年度采购总额11.0%。\", \"subject\": \"公司\", \"period_expr\": \"报告期内\", \"direction\": \"unknown\", \"magnitude_text\": \"777.6亿元，占年度采购总额44.4%；关联方192.4亿元，占11.0%\", \"metric_key\": null, \"metric_note\": \"前五名供应商采购额及占比、关联方采购额及占比，字段表中无对应键\", \"claim_type\": \"cost\", \"verifiable\": true, \"confidence\": 0.9}]}",
+  "tokens_in": 2293,
+  "tokens_out": 315
+}

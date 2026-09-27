@@ -1,0 +1,7 @@
+{
+  "cassette_id": "2d32f04a76ce10c9e23c81afd3bef46c",
+  "model_version": "deepseek-flash",
+  "text": "{\"claims\": [{\"text\": \"能源汽车用电工钢销量增长情况，压减粗钢产量政策、原料价格上涨的影响等\", \"subject\": \"公司电工钢业务\", \"period_expr\": \"2022年06月16日\", \"direction\": \"up\", \"magnitude_text\": null, \"metric_key\": null, \"metric_note\": \"新能源汽车用电工钢销量，字段表中无对应键名\", \"claim_type\": \"demand\", \"verifiable\": true, \"confidence\": 0.6}, {\"text\": \"电工钢产品竞争优势，压减粗钢产量政策影响等\", \"subject\": \"公司电工钢业务\", \"period_expr\": \"2022年07月07日\", \"direction\": \"unknown\", \"magnitude_text\": null, \"metric_key\": null, \"metric_note\": \"电工钢产品竞争优势，无对应量化指标\", \"claim_type\": \"product_mix\", \"verifiable\": false, \"confidence\": 0.3}, {\"text\": \"电工钢产品未来规划、技术壁垒，汽车板、镀锌板订单情况等\", \"subject\": \"公司电工钢、汽车板、镀锌板业务\", \"period_expr\": \"2022年07月13日\", \"direction\": \"unknown\", \"magnitude_text\": null, \"metric_key\": null, \"metric_note\": \"汽车板、镀锌板订单情况，字段表中无对应键名\", \"claim_type\": \"order\", \"verifiable\": false, \"confidence\": 0.3}, {\"text\": \"就公司2022年半年度业绩情况进行说明并对投资者所关心的问题进行解答\", \"subject\": \"公司\", \"period_expr\": \"2022年08月24日\", \"direction\": \"unknown\", \"magnitude_text\": null, \"metric_key\": null, \"metric_note\": \"2022年半年度业绩情况，未给出具体指标或方向\", \"claim_type\": \"other\", \"verifiable\": false, \"confidence\": 0.2}]}",
+  "tokens_in": 2483,
+  "tokens_out": 430
+}

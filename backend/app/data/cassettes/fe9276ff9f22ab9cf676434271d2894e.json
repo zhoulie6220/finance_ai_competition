@@ -1,0 +1,7 @@
+{
+  "cassette_id": "fe9276ff9f22ab9cf676434271d2894e",
+  "model_version": "deepseek-flash",
+  "text": "{\"claims\": [{\"text\": \"报告期，公司已投资衍生品报告期内公允价值的变动不重大。\", \"subject\": \"公司\", \"period_expr\": \"报告期\", \"direction\": \"flat\", \"magnitude_text\": \"不重大\", \"metric_key\": \"fair_value_gain_loss\", \"metric_note\": null, \"claim_type\": \"risk\", \"verifiable\": true, \"confidence\": 0.7}, {\"text\": \"公司开展的期货套期保值业务仅限与钢铁生产相关的产品，主要是为了规避大宗商品市场价格波动所带来的不利影响，有效管理生产成本，控制经营风险，保障经营利润，不进行投机性的交易，不会影响公司主营业务的正常发展。\", \"subject\": \"公司\", \"period_expr\": \"报告期\", \"direction\": \"unknown\", \"magnitude_text\": null, \"metric_key\": null, \"metric_note\": \"该句为套期保值业务范围与目的的定性描述，无对应财务指标\", \"claim_type\": \"risk\", \"verifiable\": false, \"confidence\": 0.4}, {\"text\": \"公司报告期不存在以投机为目的的衍生品投资。\", \"subject\": \"公司\", \"period_expr\": \"报告期\", \"direction\": \"flat\", \"magnitude_text\": null, \"metric_key\": null, \"metric_note\": \"该句为衍生品投资目的的定性声明，无对应财务指标\", \"claim_type\": \"risk\", \"verifiable\": false, \"confidence\": 0.4}]}",
+  "tokens_in": 2495,
+  "tokens_out": 324
+}

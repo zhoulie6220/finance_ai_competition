@@ -1,0 +1,7 @@
+{
+  "cassette_id": "37837d6729c1e39d2e5a30392df796d5",
+  "model_version": "deepseek-flash",
+  "text": "{\"claims\": [{\"text\": \"公司境外资产占比较低，截至披露日，公司控股的境外子公司包括地处新加坡的衡阳新加坡有限公司、湖南华菱湘潭钢铁（新加坡）有限公司和地处香港的华菱香港国际贸易有限公司；参股的境外子公司包括地处澳大利亚的GWRGroup Limited（金西资源）、WESTERNGOLDRESOURCESLIMITED（西部黄金）和地处新加坡的GLOBALOREPTE.LTD（环球铁矿石公司）。\", \"subject\": \"公司\", \"period_expr\": \"截至披露日\", \"direction\": \"unknown\", \"magnitude_text\": null, \"metric_key\": null, \"metric_note\": \"境外资产占比（境外资产占总资产比例）\", \"claim_type\": \"other\", \"verifiable\": false, \"confidence\": 0.4}, {\"text\": \"报告期内公司主要资产计量属性是否发生重大变化\", \"subject\": \"公司\", \"period_expr\": \"报告期内\", \"direction\": \"flat\", \"magnitude_text\": null, \"metric_key\": null, \"metric_note\": \"主要资产计量属性是否发生重大变化（会计政策变更）\", \"claim_type\": \"other\", \"verifiable\": false, \"confidence\": 0.3}, {\"text\": \"截至本报告期末，公司股权资产无受限情况，非股权类资产受限情况详见本报告附注之“五、（四）-1、所有权或使用权受到限制的资产”之描述。\", \"subject\": \"公司股权资产\", \"period_expr\": \"截至本报告期末\", \"direction\": \"flat\", \"magnitude_text\": null, \"metric_key\": null, \"metric_note\": \"受限资产情况（股权资产无受限）\", \"claim_type\": \"risk\", \"verifiable\": false, \"confidence\": 0.4}]}",
+  "tokens_in": 2020,
+  "tokens_out": 388
+}

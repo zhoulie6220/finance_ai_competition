@@ -1,0 +1,7 @@
+{
+  "cassette_id": "bdb9ece623ea803e83ffcecd5bb4a511",
+  "model_version": "deepseek-flash",
+  "text": "{\"claims\": [{\"text\": \"公司自主研发的新一代汽车高强钢、取向硅钢、高等级家电用钢、能源海工用钢、桥梁用钢等高端产品处于国际先进水平。\", \"subject\": \"公司\", \"period_expr\": \"报告期内\", \"direction\": \"unknown\", \"magnitude_text\": null, \"metric_key\": null, \"metric_note\": \"高端产品技术水平/竞争力，无对应财务或经营指标字段\", \"claim_type\": \"product_mix\", \"verifiable\": false, \"confidence\": 0.4}, {\"text\": \"公司宝山基地是国际第三家、国内首家入选“灯塔工厂”网络的钢铁企业。\", \"subject\": \"公司宝山基地\", \"period_expr\": \"报告期内\", \"direction\": \"unknown\", \"magnitude_text\": null, \"metric_key\": null, \"metric_note\": \"灯塔工厂入选资质，无对应字段\", \"claim_type\": \"other\", \"verifiable\": false, \"confidence\": 0.3}, {\"text\": \"主要环保指标实绩持续改善，全年无重大环境风险事件，四大基地和谐融入城市。\", \"subject\": \"公司\", \"period_expr\": \"全年\", \"direction\": \"improve\", \"magnitude_text\": null, \"metric_key\": null, \"metric_note\": \"主要环保指标（如排放量、环保投入），字段表无对应键\", \"claim_type\": \"risk\", \"verifiable\": false, \"confidence\": 0.4}]}",
+  "tokens_in": 2219,
+  "tokens_out": 325
+}

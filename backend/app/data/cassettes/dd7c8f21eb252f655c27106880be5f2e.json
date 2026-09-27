@@ -1,0 +1,7 @@
+{
+  "cassette_id": "dd7c8f21eb252f655c27106880be5f2e",
+  "model_version": "deepseek-flash",
+  "text": "{\"claims\": [{\"text\": \"报告期投资额(元)  上年同期投资额(元)  变动幅度\\n4,701,092,730.53  3,400,636,748.78  38.24%\", \"subject\": \"公司\", \"period_expr\": \"报告期\", \"direction\": \"up\", \"magnitude_text\": \"38.24%\", \"metric_key\": \"cfi\", \"metric_note\": null, \"claim_type\": \"other\", \"verifiable\": true, \"confidence\": 0.6}]}",
+  "tokens_in": 1634,
+  "tokens_out": 121
+}

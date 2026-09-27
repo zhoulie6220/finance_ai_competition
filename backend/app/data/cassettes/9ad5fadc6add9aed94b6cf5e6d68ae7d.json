@@ -1,0 +1,7 @@
+{
+  "cassette_id": "9ad5fadc6add9aed94b6cf5e6d68ae7d",
+  "model_version": "deepseek-flash",
+  "text": "{\"claims\": [{\"text\": \"报告期内，公司非公开发行人民币普通股(A股)募集配套资金总额为291,199,983.58元，扣除主承销商承销费后，公司募集资金专项账户收到认购款287,603,983.82元；扣除本次重组独立财务顾问及其他相关费用后，募集资金净额为人民币273,368,221.41元。\", \"subject\": \"公司\", \"period_expr\": \"报告期内\", \"direction\": \"unknown\", \"magnitude_text\": \"291,199,983.58元\", \"metric_key\": null, \"metric_note\": \"募集资金总额/募集资金净额，字段表中无对应指标\", \"claim_type\": \"other\", \"verifiable\": true, \"confidence\": 0.9}, {\"text\": \"报告期内，公司已使用募集资金218,523,294.14元,一是用于补充流动资金和偿还债务151,603,440.25元；二是转出至京唐公司募集资金专用账户用于铁前系统节能降耗综合改造项目136,149,157.84元，已使用66,919,853.89元。\", \"subject\": \"公司\", \"period_expr\": \"报告期内\", \"direction\": \"unknown\", \"magnitude_text\": \"218,523,294.14元\", \"metric_key\": null, \"metric_note\": \"募集资金使用金额，字段表中无对应指标\", \"claim_type\": \"other\", \"verifiable\": true, \"confidence\": 0.9}, {\"text\": \"截至2022年12月31日，募集资金累计产生利息收入277,617.54元，公司募集资金专用账户余额为0.00元，京唐公司募集资金专用账户余额为69,358,307.22元。\", \"subject\": \"公司\", \"period_expr\": \"截至2022年12月31日\", \"direction\": \"unknown\", \"magnitude_text\": \"277,617.54元\", \"metric_key\": \"interest_income\", \"metric_note\": null, \"claim_type\": \"other\", \"verifiable\": true, \"confidence\": 0.85}]}",
+  "tokens_in": 2253,
+  "tokens_out": 466
+}

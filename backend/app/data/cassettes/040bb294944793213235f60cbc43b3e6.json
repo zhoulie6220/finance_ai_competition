@@ -1,0 +1,7 @@
+{
+  "cassette_id": "040bb294944793213235f60cbc43b3e6",
+  "model_version": "deepseek-flash",
+  "text": "{\"claims\": [{\"text\": \"报告期投资额（元）  上年同期投资额（元）  变动幅度\\n8,354,793,173.08  8,246,468,884.69  1.31%\", \"subject\": \"公司\", \"period_expr\": \"报告期\", \"direction\": \"up\", \"magnitude_text\": \"1.31%\", \"metric_key\": null, \"metric_note\": \"投资额口径为本期在建工程投资额和母公司长期股权投资额之和，字段表中无对应指标，可用 cip 与长期股权投资合计近似\", \"claim_type\": \"other\", \"verifiable\": true, \"confidence\": 0.75}, {\"text\": \"注：投资额口径为本期在建工程投资额和母公司长期股权投资额之和。\", \"subject\": \"公司\", \"period_expr\": \"本期\", \"direction\": \"unknown\", \"magnitude_text\": null, \"metric_key\": null, \"metric_note\": \"投资额口径说明，非数值主张\", \"claim_type\": \"other\", \"verifiable\": false, \"confidence\": 0.4}]}",
+  "tokens_in": 2243,
+  "tokens_out": 242
+}

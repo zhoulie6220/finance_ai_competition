@@ -1,0 +1,7 @@
+{
+  "cassette_id": "a1c13dbd0bba538512da6ab7e160e1fc",
+  "model_version": "deepseek-flash",
+  "text": "{\"claims\": [{\"text\": \"华菱涟钢2250热轧板厂热处理二期工程项目和华菱涟钢工程机械用高强钢产线建设项目本年度实现的效益未达到预计效益，主要是受市场行情影响，相关产品价格较低，使得毛利率较低所致。\", \"subject\": \"华菱涟钢2250热轧板厂热处理二期工程项目和华菱涟钢工程机械用高强钢产线建设项目\", \"period_expr\": \"本年度\", \"direction\": \"deteriorate\", \"magnitude_text\": null, \"metric_key\": null, \"metric_note\": \"募投项目预计效益达成情况/项目毛利率，字段表中无对应指标\", \"claim_type\": \"other\", \"verifiable\": true, \"confidence\": 0.75}, {\"text\": \"截至2022年12月31日募集资金结余的金额为12,025.83万元，出现募集资金结余的原因系非公开发行募集资金项目尚未完工，募投项目建设需一定周期，公司根据项目的建设进度逐步支付投资款项，且部分款项要在项目投产后根据验收情况支付。\", \"subject\": \"公司募集资金\", \"period_expr\": \"截至2022年12月31日\", \"direction\": \"unknown\", \"magnitude_text\": \"12,025.83万元\", \"metric_key\": null, \"metric_note\": \"募集资金结余金额，字段表中无对应指标\", \"claim_type\": \"other\", \"verifiable\": true, \"confidence\": 0.8}, {\"text\": \"截至2022年12月31日，尚未使用的募集资金12,025.83万元以银行活期存款的形式留存在募集资金专户继续用于对应募投项目的建设。\", \"subject\": \"公司尚未使用的募集资金\", \"period_expr\": \"截至2022年12月31日\", \"direction\": \"unknown\", \"magnitude_text\": \"12,025.83万元\", \"metric_key\": null, \"metric_note\": \"尚未使用的募集资金金额，字段表中无对应指标\", \"claim_type\": \"other\", \"verifiable\": true, \"confidence\": 0.8}]}",
+  "tokens_in": 2035,
+  "tokens_out": 459
+}

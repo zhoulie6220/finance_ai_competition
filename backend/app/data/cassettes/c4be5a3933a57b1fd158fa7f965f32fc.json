@@ -1,0 +1,7 @@
+{
+  "cassette_id": "c4be5a3933a57b1fd158fa7f965f32fc",
+  "model_version": "deepseek-flash",
+  "text": "{\"claims\": [{\"text\": \"二是优化采购节奏，坚持低库存，应对原燃料价格下跌风险\", \"subject\": \"公司\", \"period_expr\": \"未来（展望期间）\", \"direction\": \"down\", \"magnitude_text\": null, \"metric_key\": \"inventory\", \"metric_note\": null, \"claim_type\": \"cost\", \"verifiable\": false, \"confidence\": 0.55}, {\"text\": \"三是继续强化对标挖潜工作，优化配煤配矿结构，进一步降低生产成本\", \"subject\": \"公司\", \"period_expr\": \"未来（展望期间）\", \"direction\": \"down\", \"magnitude_text\": null, \"metric_key\": \"operating_cost\", \"metric_note\": null, \"claim_type\": \"cost\", \"verifiable\": false, \"confidence\": 0.6}, {\"text\": \"环保部门加大对钢铁行业污染治理的监管力度，钢铁企业环保投入和运行成本升高，面临的环保挑战加大\", \"subject\": \"钢铁行业\", \"period_expr\": \"未来（展望期间）\", \"direction\": \"up\", \"magnitude_text\": null, \"metric_key\": \"environmental_protection_expense\", \"metric_note\": null, \"claim_type\": \"risk\", \"verifiable\": false, \"confidence\": 0.5}, {\"text\": \"一是建立健全绿色低碳循环发展的生产经营体系，即通过装备节能环保升级、先进技术推广应用，进一步提高资源能源利用效率，推进超低排放改造和污染物综合治理，持续降低碳排放强度\", \"subject\": \"公司\", \"period_expr\": \"未来（展望期间）\", \"direction\": \"down\", \"magnitude_text\": null, \"metric_key\": null, \"metric_note\": \"碳排放强度（单位产品碳排放量），字段表中无对应指标\", \"claim_type\": \"risk\", \"verifiable\": false, \"confidence\": 0.45}]}",
+  "tokens_in": 1746,
+  "tokens_out": 407
+}
