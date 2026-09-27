@@ -831,3 +831,20 @@ table.match-table td.msg {
 .page-hint-ok {
   color: #389e0d;
 }
+
+/* ---------------------------------------------------------------- 抽取法对照 */
+
+.extractor-compare {
+  margin: 0;
+}
+
+.extractor-compare summary {
+  cursor: pointer;
+  font-weight: 500;
+  margin-bottom: 8px;
+}
+
+.extractor-compare td.extractor-name {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+}

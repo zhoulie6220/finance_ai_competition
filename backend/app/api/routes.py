@@ -202,15 +202,45 @@ def narrative_claims(
     limit: int = Query(default=300, ge=1, le=2000),
     con: sqlite3.Connection = Depends(get_con),
 ) -> dict[str, Any]:
-    """主张—事实对照表。乙的叙事页主表用。"""
+    """主张—事实对照表。乙的叙事页主表用。
+
+    返回值里带 `by_extractor`——**这是「能和规则法对照」那条验收标准的落点**。
+    两种抽取法的条数、可验证数、主题分布并排给出，让「模型到底带来了什么」
+    看得见。不给的话，页面上只有一堆主张，没人分得清哪条是谁抽的。
+    """
     _require_project(con, project_id)
     from app.skills import narrative
 
     return {
         "project_id": project_id,
         "stats": narrative.claim_stats(con, project_id),
+        "by_extractor": _extractor_comparison(con, project_id),
         "claims": narrative.list_claims(con, project_id, theme=theme, limit=limit),
     }
+
+
+def _extractor_comparison(
+    con: sqlite3.Connection, project_id: str
+) -> list[dict[str, Any]]:
+    """两种抽取法的对照。
+
+    条数少不代表差**也不代表好**——LLM 版条数少于规则法（它更挑），
+    但可验证的比例更高、覆盖的主题更多。这两件事都不该由代码下结论，
+    页面上把数字并排放着，让人自己判。
+    """
+    rows = con.execute(
+        """
+        SELECT extractor,
+               COUNT(*) AS total,
+               SUM(CASE WHEN verifiable = 1 THEN 1 ELSE 0 END) AS verifiable,
+               SUM(CASE WHEN status = 'validated' THEN 1 ELSE 0 END) AS validated,
+               COUNT(DISTINCT claim_type) AS theme_count
+        FROM claim WHERE project_id = ?
+        GROUP BY extractor ORDER BY total DESC
+        """,
+        (project_id,),
+    ).fetchall()
+    return [dict(r) for r in rows]
 
 
 @router.get("/projects/{project_id}/narrative/matches")

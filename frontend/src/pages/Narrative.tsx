@@ -6,6 +6,7 @@ import type {
   ChecksResponse,
   ClaimMatch,
   ClaimsResponse,
+  ExtractorSummary,
   MatchesResponse,
   NarrativeIndex,
   Verdict,
@@ -97,6 +98,22 @@ export default function Narrative() {
               <MatchTable rows={visible} onOpenFact={setFactId} />
             </>
           )}
+        </AsyncBoundary>
+      </section>
+
+      <section className="panel">
+        <h3>
+          抽取法对照
+          <span className="subtitle">
+            规则法与模型的结果并存，不互相覆盖
+          </span>
+        </h3>
+        <AsyncBoundary
+          loading={claims.loading}
+          error={claims.error}
+          onRetry={claims.reload}
+        >
+          {claims.data && <ExtractorComparison rows={claims.data.by_extractor} />}
         </AsyncBoundary>
       </section>
 
@@ -432,6 +449,64 @@ function FactLinks({
       ))}
     </span>
   )
+}
+
+// ---------------------------------------------------------------- 抽取法对照
+
+/**
+ * 两种抽取法的并排对照。
+ *
+ * 这是**验收标准「能和规则法对照」的落点**。数字并排放着，
+ * 由人判「哪个更准」——**不由代码下结论**：
+ *
+ *   · 条数少不代表差，也不代表好（LLM 版更挑）
+ *   · 可验证比例高才是它的价值所在
+ *   · 主题数多说明它够得着规则法覆盖不到的东西
+ */
+function ExtractorComparison({ rows }: { rows: ExtractorSummary[] }) {
+  if (rows.length < 2) return null
+
+  return (
+    <details className="extractor-compare" open>
+      <summary>两种抽取法对照</summary>
+      <table className="plain-table">
+        <thead>
+          <tr>
+            <th>抽取法</th>
+            <th className="num">条数</th>
+            <th className="num">可验证</th>
+            <th className="num">可验证占比</th>
+            <th className="num">主题数</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r) => (
+            <tr key={r.extractor}>
+              <td className="extractor-name" title={r.extractor}>
+                {labelOf(r.extractor)}
+              </td>
+              <td className="num">{r.total}</td>
+              <td className="num">{r.verifiable}</td>
+              <td className="num">
+                {r.total > 0 ? `${Math.round((r.verifiable / r.total) * 100)}%` : '—'}
+              </td>
+              <td className="num">{r.theme_count}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <p className="hint">
+        两者的结果**并存、不互相覆盖**——同一句话两边都抽到时会有两条，
+        正是为了能像这样对照。「哪个更准」需要人看着原文判，系统不做裁定。
+      </p>
+    </details>
+  )
+}
+
+function labelOf(extractor: string): string {
+  if (extractor.startsWith('rule:')) return `规则法（${extractor.slice(5)}）`
+  if (extractor.startsWith('llm:')) return `模型（${extractor.slice(4)}）`
+  return extractor
 }
 
 // ---------------------------------------------------------------- 未判定

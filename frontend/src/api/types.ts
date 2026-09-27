@@ -239,9 +239,21 @@ export interface ClaimStats {
   by_type: Record<string, number>
 }
 
+/** 一种抽取法的概况。用来做「规则法 vs LLM」的并排对照。 */
+export interface ExtractorSummary {
+  /** `rule:claim_v1` 或 `llm:deepseek-chat@<prompt_hash>` */
+  extractor: string
+  total: number
+  verifiable: number
+  validated: number
+  theme_count: number
+}
+
 export interface ClaimsResponse {
   project_id: string
   stats: ClaimStats
+  /** **验收标准要求的「能和规则法对照」就落在这里。** */
+  by_extractor: ExtractorSummary[]
   claims: Claim[]
 }
 
