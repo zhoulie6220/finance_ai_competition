@@ -12,6 +12,7 @@ import type {
   Verdict,
 } from '../api/types'
 import AsyncBoundary from '../components/AsyncBoundary'
+import ErrorBoundary from '../components/ErrorBoundary'
 import EvidenceDrawer from '../components/EvidenceDrawer'
 import { CHECK, SEVERITY, VERDICT } from '../theme/colors'
 import { groupDigits } from '../format'
@@ -54,6 +55,7 @@ export default function Narrative() {
   }, [matches.data, filter])
 
   return (
+    <ErrorBoundary label="叙事一致性诊断">
     <div className="page">
       <header className="page-head">
         <h2>叙事一致性诊断</h2>
@@ -149,6 +151,7 @@ export default function Narrative() {
 
       <EvidenceDrawer factId={factId} onClose={() => setFactId(null)} />
     </div>
+    </ErrorBoundary>
   )
 }
 
@@ -463,8 +466,11 @@ function FactLinks({
  *   · 可验证比例高才是它的价值所在
  *   · 主题数多说明它够得着规则法覆盖不到的东西
  */
-function ExtractorComparison({ rows }: { rows: ExtractorSummary[] }) {
-  if (rows.length < 2) return null
+function ExtractorComparison({ rows }: { rows?: ExtractorSummary[] }) {
+  // ⚠ **必须容忍 undefined**：后端可能是旧版本、字段可能还没上。
+  // 崩溃的代价是整页白屏（实测发生过一次），而这块内容只是页面的一节。
+  // 少一节远好过整页打不开——尤其是演示的时候。
+  if (!rows || rows.length < 2) return null
 
   return (
     <details className="extractor-compare" open>
