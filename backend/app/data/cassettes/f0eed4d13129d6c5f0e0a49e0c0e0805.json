@@ -1,0 +1,7 @@
+{
+  "cassette_id": "f0eed4d13129d6c5f0e0a49e0c0e0805",
+  "model_version": "deepseek-flash",
+  "text": "{\"claims\": [{\"text\": \"2020年，我国企业复产水平稳步提升，工业生产持续稳定恢复，企业生产经营状况不断改善。\", \"subject\": \"我国企业\", \"period_expr\": \"2020年\", \"direction\": \"improve\", \"magnitude_text\": null, \"metric_key\": null, \"metric_note\": \"宏观层面工业生产恢复情况，无对应财务字段\", \"claim_type\": \"macro\", \"verifiable\": false, \"confidence\": 0.4}, {\"text\": \"2020年，我国经济社会发展情况好于预期，全年GDP101.6万亿元，增速2.3%；\", \"subject\": \"我国\", \"period_expr\": \"2020年\", \"direction\": \"up\", \"magnitude_text\": \"101.6万亿元，增速2.3%\", \"metric_key\": null, \"metric_note\": \"GDP总量及增速，属宏观经济指标，字段表无对应项\", \"claim_type\": \"macro\", \"verifiable\": true, \"confidence\": 0.9}, {\"text\": \"货物贸易进出口总值32.2\", \"subject\": \"我国\", \"period_expr\": \"2020年\", \"direction\": \"unknown\", \"magnitude_text\": \"32.2\", \"metric_key\": null, \"metric_note\": \"货物贸易进出口总值，属宏观贸易指标，字段表无对应项\", \"claim_type\": \"macro\", \"verifiable\": false, \"confidence\": 0.3}]}",
+  "tokens_in": 1616,
+  "tokens_out": 315
+}

@@ -318,3 +318,88 @@ def test_empty_claims_is_not_an_error(con: sqlite3.Connection) -> None:
     assert s.sections_attempted == 1
     assert s.sections_failed == 0
     assert s.claims_inserted == 0
+
+
+# ---------------------------------------------------------------- 主判据
+
+
+def test_claims_get_a_primary_indicator(con: sqlite3.Connection) -> None:
+    """★ 抽出来的主张**必须带 `claim_indicator`**，否则不参与判定。
+
+    第一版漏了这一步：770 条主张一条都没被判定，全落进「无主判据」，
+    而**不报任何错**。页面上看起来只是「模型抽了很多但不能判」，
+    实际是接线断了。
+
+    匹配读的是 `claim_indicator`，读不到就跳过——所以这一步不是可选的。
+    """
+    reply = _reply([{
+        "text": "2015年国内粗钢产量8.04亿吨，同比下降2.3%。",
+        "claim_type": "demand", "direction": "down", "verifiable": True,
+        "confidence": 0.9, "metric_key": "steel_sales_volume",
+    }])
+    extract_claims_llm(
+        con, "p1", client=make_client([reply], con), now="2026-09-27T00:00:00+00:00"
+    )
+    row = con.execute(
+        "SELECT ci.metric_key, ci.role, ci.matched_by FROM claim_indicator ci"
+        " JOIN claim c ON c.claim_id = ci.claim_id"
+    ).fetchone()
+    assert row is not None, "主张没有主判据——它不会参与任何判定"
+    assert row["metric_key"] == "steel_sales_volume"
+    assert row["role"] == "primary"
+
+
+def test_indicator_falls_back_to_the_theme_table(con: sqlite3.Connection) -> None:
+    """模型没给主判据时，**退回主题表的主判据**——复用规则层那一份映射。
+
+    不写这条兜底的话，模型少给一个字段，那条主张就静默不参与判定了。
+    """
+    reply = _reply([{
+        "text": "2015年国内粗钢产量8.04亿吨，同比下降2.3%。",
+        "claim_type": "demand", "direction": "down", "verifiable": True,
+        "confidence": 0.9, "metric_key": None,      # 模型没给
+    }])
+    extract_claims_llm(
+        con, "p1", client=make_client([reply], con), now="2026-09-27T00:00:00+00:00"
+    )
+    metric = con.execute("SELECT metric_key FROM claim_indicator").fetchone()[0]
+    assert metric == "steel_sales_volume"       # 需求与产销类的主判据
+
+
+def test_unknown_metric_falls_back_instead_of_failing(con: sqlite3.Connection) -> None:
+    """★ 模型给了个字典里没有的键——**退回主题表，不要让整批写库失败**。
+
+    `claim_indicator.metric_key` 有外键指向 `metric_definition`，
+    模型自造一个键名会违反外键——而拒绝发生在**整批写入的中途**，
+    前面写进去的回滚、后面的全没写。
+    """
+    reply = _reply([{
+        "text": "2015年国内粗钢产量8.04亿吨，同比下降2.3%。",
+        "claim_type": "demand", "direction": "down", "verifiable": True,
+        "confidence": 0.9, "metric_key": "made_up_metric_key",
+    }])
+    s = extract_claims_llm(
+        con, "p1", client=make_client([reply], con), now="2026-09-27T00:00:00+00:00"
+    )
+    assert s.claims_inserted == 1
+    metric = con.execute("SELECT metric_key FROM claim_indicator").fetchone()[0]
+    assert metric == "steel_sales_volume"
+
+
+def test_theme_without_a_metric_is_counted_not_dropped(con: sqlite3.Connection) -> None:
+    """主题表和模型都给不出主判据时，**如实计数**，不静默丢弃。
+
+    `other`/`macro`/`risk` 这几类在规则层的主题表里没有主判据，
+    所以它们不参与判定——但这件事要**看得见**，
+    否则「模型抽了很多却不能判」会被当成「模型抽得不准」。
+    """
+    reply = _reply([{
+        "text": "2015年国内粗钢产量8.04亿吨，同比下降2.3%。",
+        "claim_type": "macro", "direction": "down", "verifiable": True,
+        "confidence": 0.9, "metric_key": None,
+    }])
+    s = extract_claims_llm(
+        con, "p1", client=make_client([reply], con), now="2026-09-27T00:00:00+00:00"
+    )
+    assert s.no_metric == 1
+    assert "无主判据" in s.describe()

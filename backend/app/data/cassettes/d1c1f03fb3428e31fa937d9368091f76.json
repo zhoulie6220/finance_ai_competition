@@ -1,0 +1,7 @@
+{
+  "cassette_id": "d1c1f03fb3428e31fa937d9368091f76",
+  "model_version": "deepseek-flash",
+  "text": "{\"claims\":[{\"text\":\"完成7个信息系统的移植与覆盖，2018年基本完成宝武信息化整合任务\",\"subject\":\"公司\",\"period_expr\":\"2018年\",\"direction\":\"unknown\",\"magnitude_text\":\"7个信息系统\",\"metric_key\":null,\"metric_note\":\"信息化整合进度，非财务指标\",\"claim_type\":\"other\",\"verifiable\":true,\"confidence\":0.7},{\"text\":\"2018年公司预算安排固定资产投资123.9亿元\",\"subject\":\"公司\",\"period_expr\":\"2018年\",\"direction\":\"unknown\",\"magnitude_text\":\"123.9亿元\",\"metric_key\":\"capex\",\"metric_note\":null,\"claim_type\":\"capacity\",\"verifiable\":true,\"confidence\":0.85},{\"text\":\"主要是宝山基地一二烧结整合大修改造、取向硅钢产品结构优化、镀锡板产品结构优化、原料场“煤进仓、矿进棚”系列改造等一批重点项目，并投入一定资金用于技术改造项目\",\"subject\":\"公司\",\"period_expr\":\"2018年\",\"direction\":\"unknown\",\"magnitude_text\":null,\"metric_key\":null,\"metric_note\":\"固定资产投资具体项目构成，非单一财务指标\",\"claim_type\":\"capacity\",\"verifiable\":false,\"confidence\":0.4}]}",
+  "tokens_in": 2397,
+  "tokens_out": 260
+}

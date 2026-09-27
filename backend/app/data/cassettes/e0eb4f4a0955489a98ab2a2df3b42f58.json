@@ -1,0 +1,7 @@
+{
+  "cassette_id": "e0eb4f4a0955489a98ab2a2df3b42f58",
+  "model_version": "deepseek-flash",
+  "text": "{\n  \"claims\": [\n    {\n      \"text\": \"营业收入  289,093  246,169  17.4\",\n      \"subject\": \"公司\",\n      \"period_expr\": \"本期\",\n      \"direction\": \"up\",\n      \"magnitude_text\": \"17.4%\",\n      \"metric_key\": \"revenue\",\n      \"metric_note\": null,\n      \"claim_type\": \"other\",\n      \"verifiable\": true,\n      \"confidence\": 0.9\n    },\n    {\n      \"text\": \"营业成本  248,425  218,212  13.8\",\n      \"subject\": \"公司\",\n      \"period_expr\": \"本期\",\n      \"direction\": \"up\",\n      \"magnitude_text\": \"13.8%\",\n      \"metric_key\": \"operating_cost\",\n      \"metric_note\": null,\n      \"claim_type\": \"cost\",\n      \"verifiable\": true,\n      \"confidence\": 0.9\n    },\n    {\n      \"text\": \"销售费用  3,366  2,928  15.0\",\n      \"subject\": \"公司\",\n      \"period_expr\": \"本期\",\n      \"direction\": \"up\",\n      \"magnitude_text\": \"15.0%\",\n      \"metric_key\": \"selling_expense\",\n      \"metric_note\": null,\n      \"claim_type\": \"cost\",\n      \"verifiable\": true,\n      \"confidence\": 0.9\n    }\n  ]\n}",
+  "tokens_in": 1656,
+  "tokens_out": 310
+}

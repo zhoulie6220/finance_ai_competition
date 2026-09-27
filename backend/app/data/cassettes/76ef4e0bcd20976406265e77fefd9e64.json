@@ -1,0 +1,7 @@
+{
+  "cassette_id": "76ef4e0bcd20976406265e77fefd9e64",
+  "model_version": "deepseek-flash",
+  "text": "{\"claims\":[{\"text\":\"营业收入  291,594  305,081  -4.4\",\"subject\":\"公司\",\"period_expr\":\"本期\",\"direction\":\"down\",\"magnitude_text\":\"-4.4%\",\"metric_key\":\"revenue\",\"metric_note\":null,\"claim_type\":\"other\",\"verifiable\":true,\"confidence\":0.9},{\"text\":\"营业成本  259,871  259,423  0.2\",\"subject\":\"公司\",\"period_expr\":\"本期\",\"direction\":\"up\",\"magnitude_text\":\"0.2%\",\"metric_key\":\"operating_cost\",\"metric_note\":null,\"claim_type\":\"cost\",\"verifiable\":true,\"confidence\":0.9}]}",
+  "tokens_in": 1646,
+  "tokens_out": 143
+}

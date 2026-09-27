@@ -45,9 +45,20 @@ from app.db import dictionary
 # 不是从零写）」——期间归一化就是基线上现成的东西，不该再写一遍。
 # 自己重写一版的话，两边的期间口径会慢慢分叉，而分叉不会报错，
 # 只会让「同一个主张在两种抽取法下指向不同的年度」。
-from app.engine.claim_rules import extract_period_expr, resolve_period
+from app.engine.claim_rules import (
+    THEMES,
+    extract_period_expr,
+    resolve_period,
+)
 from app.parsing.claims import looks_like_table_row
 from app.skills.llm_log import make_sink
+
+#: claim_type → 该主题的主判据。**从规则层的主题表反查**，不另写一份。
+#: 两边各写一份的话，改了一边另一边还是旧的，而错配不会报错——
+#: 只会让一批主张悄无声息地落进「无主判据」、不参与任何判定。
+_THEME_PRIMARY: dict[str, str | None] = {
+    t.claim_type: t.primary_metric for t in THEMES if t.primary_metric
+}
 
 BACKEND_DIR = Path(__file__).resolve().parents[2]
 PROMPTS_DIR = BACKEND_DIR / "app" / "agents" / "llm" / "prompts"
@@ -78,6 +89,8 @@ class LlmExtractionSummary:
     not_in_source: int = 0
     #: 模型把表格行当成主张抽出来的条数 → 直接丢弃（规则层有同样的剔除器）
     table_rows: int = 0
+    #: 既没给有效主判据、主题表也兜不住，因而**不参与判定**的条数
+    no_metric: int = 0
     calls: int = 0
     tokens: int = 0
     warnings: list[str] = field(default_factory=list)
@@ -92,6 +105,8 @@ class LlmExtractionSummary:
             parts.append(f"已存在 {self.claims_skipped_existing} 条")
         if self.table_rows:
             parts.append(f"丢掉了 {self.table_rows} 条表格行（不是主张）")
+        if self.no_metric:
+            parts.append(f"无主判据 {self.no_metric} 条（不参与判定）")
         if self.not_in_source:
             parts.append(f"**原句在原文里找不到 {self.not_in_source} 条**")
         if self.sections_failed:
@@ -158,6 +173,9 @@ def extract_claims_llm(
         only_missing=only_missing,
     )
     rows: list[tuple[Any, ...]] = []
+    indicators: list[tuple[Any, ...]] = []
+    valid_metrics = _valid_metric_keys(con)
+    summary.no_metric = 0
 
     for section in sections:
         summary.sections_attempted += 1
@@ -214,8 +232,22 @@ def extract_claims_llm(
             if not in_source:
                 summary.not_in_source += 1
 
+            # ★ **归一化只做一次，算完传下去。**
+            #
+            # 同一段归一化逻辑现在有三个用处：算 claim_id、选主判据、落库。
+            # 三处各写一遍的话，它们会慢慢分叉——而分叉的后果是
+            # 「id 按 A 算、落库按 B 存」，同一个模型输出在重跑时算出不同的 id，
+            # 于是幂等失效、重复入库，**且不报错**。
+            claim_type = normalize_claim_type(raw.get("claim_type"))
+            metric = normalize_metric(
+                raw.get("metric_key"), claim_type, valid_metrics
+            )
+
+            claim_id = _claim_id(section["section_id"], text, claim_type, metric or "")
             rows.append(
                 _build_row(
+                    claim_id=claim_id,
+                    claim_type=claim_type,
                     section=section,
                     project_id=project_id,
                     report_period=section["period"] or "",
@@ -226,6 +258,26 @@ def extract_claims_llm(
                     prompt_version=prompt.version,
                     extractor=f"llm:{settings.model}@{prompt.sha256[:8]}",
                     now=stamp,
+                )
+            )
+
+            # ★ **主判据必须写进 `claim_indicator`。**
+            #
+            # 第一版漏了这一步——结果 770 条 LLM 主张**一条都没参与判定**：
+            # 匹配时读的是 `claim_indicator`，读不到就跳过，
+            # 于是它们全落进「无主判据」那一堆而**不报错**。
+            # 页面上看起来只是「模型抽了很多但不能判」，实际是接线断了。
+            if not metric:
+                summary.no_metric += 1
+                continue
+            indicators.append(
+                (
+                    f"ci-{claim_id}",
+                    claim_id,
+                    metric,
+                    "primary",
+                    max(0.0, min(1.0, confidence_of(raw))),
+                    f"llm:{settings.model}@{prompt.sha256[:8]}",
                 )
             )
 
@@ -247,6 +299,11 @@ def extract_claims_llm(
             after = con.execute(
                 "SELECT COUNT(*) FROM claim WHERE project_id = ?", (project_id,)
             ).fetchone()[0]
+            con.executemany(
+                "INSERT OR IGNORE INTO claim_indicator (id, claim_id, metric_key,"
+                " role, match_confidence, matched_by) VALUES (?,?,?,?,?,?)",
+                indicators,
+            )
         summary.claims_inserted = after - before
         summary.claims_skipped_existing = len(rows) - summary.claims_inserted
 
@@ -257,6 +314,49 @@ def extract_claims_llm(
 
 
 # ---------------------------------------------------------------- 内部
+
+
+def normalize_claim_type(raw: object) -> str:
+    """把模型给的主题归一到数据库允许的取值。
+
+    不认识就归一成 `other`，**不丢这条**——内容可能是有价值的，
+    只是主题分类没对上。丢掉的话，模型偶尔造一个新词就会静默少一条主张。
+    """
+    value = str(raw or "other")
+    return value if value in ALLOWED_CLAIM_TYPES else "other"
+
+
+def normalize_metric(
+    raw: object, claim_type: str, valid_metrics: set[str]
+) -> str | None:
+    """把模型给的主判据归一到字段字典里真实存在的键。
+
+    优先用模型选的（它读懂了那句话，比查表准）；
+    模型没给、或给了字典外的键时，**退回主题表的主判据**——
+    那条映射只有规则层那一份，反查即可，不另写。
+
+    返回 None 表示这一条**没有可用的主判据**，不参与判定。
+    """
+    value = str(raw or "")
+    if value in valid_metrics:
+        return value
+    return _THEME_PRIMARY.get(claim_type) or None
+
+
+def _valid_metric_keys(con: sqlite3.Connection) -> set[str]:
+    """字段字典里真实存在的 metric_key。
+
+    `claim_indicator.metric_key` 有外键指向 `metric_definition`——
+    模型自造一个键名就会违反外键，而拒绝发生在**整批写入的中途**。
+    """
+    return {r[0] for r in con.execute("SELECT metric_key FROM metric_definition")}
+
+
+def confidence_of(raw: dict) -> float:
+    try:
+        return float(raw.get("confidence") or 0.0)
+    except (TypeError, ValueError):
+        return 0.0
 
 
 def _validate_shape(data: dict) -> None:
@@ -380,6 +480,8 @@ def _locate_page(pages: dict[int, str], text: str, fallback: int | None) -> int 
 
 def _build_row(
     *,
+    claim_id: str,
+    claim_type: str,
     section: Any,
     project_id: str,
     report_period: str,
@@ -397,12 +499,6 @@ def _build_row(
     它们都是 NOT NULL 且有外键，从 section 行里取的话一旦查询没选那一列，
     就会填成 NULL 然后在写库时被拒（而且是在整批写入的中途）。
     """
-    claim_type = str(raw.get("claim_type") or "other")
-    if claim_type not in ALLOWED_CLAIM_TYPES:
-        # 不认识就归一成 other，**不丢这条**——内容可能是有价值的，
-        # 只是主题分类没对上。丢掉的话，模型偶尔造一个新词就会静默少一条主张。
-        claim_type = "other"
-
     direction = str(raw.get("direction") or "unknown")
     if direction not in ALLOWED_DIRECTIONS:
         direction = "unknown"
@@ -432,7 +528,7 @@ def _build_row(
     magnitude_text = raw.get("magnitude_text")
 
     return (
-        _claim_id(section["section_id"], text, claim_type, str(raw.get("metric_key") or "")),
+        claim_id,
         project_id,
         section["section_id"],
         text,
@@ -479,3 +575,52 @@ def _claim_id(section_id: str, text: str, claim_type: str, metric: str) -> str:
         f"{section_id}\x00{normalized}\x00{claim_type}\x00{metric}".encode("utf-8")
     ).hexdigest()
     return "cl-llm-" + digest[:12]
+
+
+# ---------------------------------------------------------------- 补齐
+
+
+def backfill_missing_indicators(con: sqlite3.Connection, project_id: str) -> int:
+    """给「有主张、没主判据」的 LLM 主张补上 `claim_indicator`。
+
+    ## 为什么需要它
+
+    第一版写 `claim` 时漏了 `claim_indicator`——结果 770 条 LLM 主张
+    **一条都没参与判定**：匹配时读的是 `claim_indicator`，读不到就跳过，
+    于是它们全落进「无主判据」那一堆，而**不报错**。
+    页面上看起来只是「模型抽了很多但不能判」，实际是接线断了。
+
+    ## 为什么是反查而不是重抽
+
+    模型当时选的 `metric_key` 没有存下来，重抽要再花一遍钱（实测约 3 元）。
+    而主题 → 主判据的映射就在规则层的主题表里，**反查是免费的**，
+    且得到的口径与规则法完全一致——反而更利于对照。
+
+    新抽取的会直接用模型给的 `metric_key`，不走这条兜底。
+    """
+    rows = con.execute(
+        """
+        SELECT c.claim_id, c.claim_type FROM claim c
+        WHERE c.project_id = ? AND c.extractor LIKE 'llm:%'
+          AND NOT EXISTS (
+              SELECT 1 FROM claim_indicator ci WHERE ci.claim_id = c.claim_id
+          )
+        """,
+        (project_id,),
+    ).fetchall()
+
+    payload = [
+        (f"ci-{r['claim_id']}", r["claim_id"], _THEME_PRIMARY[r["claim_type"]],
+         "primary", 0.5, "backfill:theme_rule")
+        for r in rows
+        if _THEME_PRIMARY.get(r["claim_type"])
+    ]
+    if not payload:
+        return 0
+    with con:
+        con.executemany(
+            "INSERT OR IGNORE INTO claim_indicator (id, claim_id, metric_key,"
+            " role, match_confidence, matched_by) VALUES (?,?,?,?,?,?)",
+            payload,
+        )
+    return len(payload)

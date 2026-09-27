@@ -1,0 +1,7 @@
+{
+  "cassette_id": "9e8040ce0e8eb70bd595453d9b3d9d61",
+  "model_version": "deepseek-flash",
+  "text": "{\"claims\":[{\"text\":\"2017年公司预算安排固定资产投资资金159亿元，主要用于宝山基地取向硅钢产品结构优化、镀锡板产品结构优化、原料场“煤进仓、矿进棚”系列项目改造；梅山基地外购焦及煤筒仓改造；东山基地1550冷轧工程和工厂站工程建设；青山基地条材厂大型分厂新增在线热处理钢轨生产线等重点项目。\",\"subject\":\"公司\",\"period_expr\":\"2017年\",\"direction\":\"unknown\",\"magnitude_text\":\"159亿元\",\"metric_key\":\"capex\",\"metric_note\":null,\"claim_type\":\"capacity\",\"verifiable\":true,\"confidence\":0.9},{\"text\":\"（4）坚持成本削减目标不动摇，提升成本竞争力。\",\"subject\":\"公司\",\"period_expr\":null,\"direction\":\"down\",\"magnitude_text\":null,\"metric_key\":\"operating_cost\",\"metric_note\":null,\"claim_type\":\"cost\",\"verifiable\":false,\"confidence\":0.4},{\"text\":\"不断挖掘新的降本项目和潜力点，推动成本削减向纵深开展，确保各项费用同比不反弹，指标不劣化，有效支撑公司整体经营业绩目标实现。\",\"subject\":\"公司\",\"period_expr\":\"同比\",\"direction\":\"flat\",\"magnitude_text\":null,\"metric_key\":null,\"metric_note\":\"各项费用同比不反弹，涉及销售费用、管理费用、财务费用等多项费用指标，无法对应单一字段\",\"claim_type\":\"cost\",\"verifiable\":true,\"confidence\":0.6},{\"text\":\"（6）发挥品种竞争优势，巩固市场引领地位。\",\"subject\":\"公司\",\"period_expr\":null,\"direction\":\"improve\",\"magnitude_text\":null,\"metric_key\":null,\"metric_note\":\"品种钢市场占有率\",\"claim_type\":\"product_mix\",\"verifiable\":false,\"confidence\":0.3},{\"text\":\"持续优化产品结构，确保并提高品种钢市场占有率；\",\"subject\":\"公司\",\"period_expr\":null,\"direction\":\"up\",\"magnitude_text\":null,\"metric_key\":null,\"metric_note\":\"品种钢市场占有率\",\"claim_type\":\"product_mix\",\"verifiable\":true,\"confidence\":0.7}]}",
+  "tokens_in": 2355,
+  "tokens_out": 455
+}

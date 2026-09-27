@@ -1,0 +1,7 @@
+{
+  "cassette_id": "99a94903f1cc6d0c8e85cb42bec68f0b",
+  "model_version": "deepseek-flash",
+  "text": "{\"claims\":[{\"text\":\"营业收入  304,779  289,093  5.4\",\"subject\":\"公司\",\"period_expr\":\"本期\",\"direction\":\"up\",\"magnitude_text\":\"5.4%\",\"metric_key\":\"revenue\",\"metric_note\":null,\"claim_type\":\"other\",\"verifiable\":true,\"confidence\":0.9},{\"text\":\"营业成本  259,085  248,425  4.3\",\"subject\":\"公司\",\"period_expr\":\"本期\",\"direction\":\"up\",\"magnitude_text\":\"4.3%\",\"metric_key\":\"operating_cost\",\"metric_note\":null,\"claim_type\":\"cost\",\"verifiable\":true,\"confidence\":0.9},{\"text\":\"销售费用  3,493  3,366  3.8\",\"subject\":\"公司\",\"period_expr\":\"本期\",\"direction\":\"up\",\"magnitude_text\":\"3.8%\",\"metric_key\":\"selling_expense\",\"metric_note\":null,\"claim_type\":\"cost\",\"verifiable\":true,\"confidence\":0.9},{\"text\":\"管理费用  5,927  5,425  9.3\",\"subject\":\"公司\",\"period_expr\":\"本期\",\"direction\":\"up\",\"magnitude_text\":\"9.3%\",\"metric_key\":\"admin_expense\",\"metric_note\":null,\"claim_type\":\"cost\",\"verifiable\":true,\"confidence\":0.9},{\"text\":\"研发费用  7,031  4,207  67.1\",\"subject\":\"公司\",\"period_expr\":\"本期\",\"direction\":\"up\",\"magnitude_text\":\"67.1%\",\"metric_key\":\"rd_expense\",\"metric_note\":null,\"claim_type\":\"cost\",\"verifiable\":true,\"confidence\":0.9}]}",
+  "tokens_in": 1689,
+  "tokens_out": 347
+}

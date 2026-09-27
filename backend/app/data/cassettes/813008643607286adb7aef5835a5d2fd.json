@@ -1,0 +1,7 @@
+{
+  "cassette_id": "813008643607286adb7aef5835a5d2fd",
+  "model_version": "deepseek-flash",
+  "text": "{\"claims\":[{\"text\":\"2019年本公司完成股权投资项目15亿元，较去年同期下降0.8亿元。\",\"subject\":\"公司\",\"period_expr\":\"2019年\",\"direction\":\"down\",\"magnitude_text\":\"15亿元，较去年同期下降0.8亿元\",\"metric_key\":null,\"metric_note\":\"对外股权投资金额（投资活动现金流出/股权投资额），字段表中无对应键\",\"claim_type\":\"other\",\"verifiable\":true,\"confidence\":0.9},{\"text\":\"2019年，公司完成固定资产投资168.6亿元。\",\"subject\":\"公司\",\"period_expr\":\"2019年\",\"direction\":\"unknown\",\"magnitude_text\":\"168.6亿元\",\"metric_key\":null,\"metric_note\":\"固定资产投资额，字段表中无对应键（capex为购建固定资产、无形资产和其他长期资产支付的现金，口径不同）\",\"claim_type\":\"other\",\"verifiable\":true,\"confidence\":0.85},{\"text\":\"东山基地新建三高炉系统项目：扩建烧结机、焦炉、高炉、转炉、连铸、热轧、冷轧及相应配套公辅设施等，建成后年新增铁水402万吨、钢水360万吨、热轧产品450万吨、冷轧产品166万吨。\",\"subject\":\"东山基地新建三高炉系统项目\",\"period_expr\":\"建成后\",\"direction\":\"up\",\"magnitude_text\":\"年新增铁水402万吨、钢水360万吨、热轧产品450万吨、冷轧产品166万吨\",\"metric_key\":null,\"metric_note\":\"新增产能（铁水/钢水/热轧/冷轧），字段表中steel_output等为产量口径，无新增产能键\",\"claim_type\":\"capacity\",\"verifiable\":true,\"confidence\":0.8},{\"text\":\"主体工程打桩施工收尾，进入土建施工阶段。\",\"subject\":\"东山基地新建三高炉系统项目\",\"period_expr\":\"2019年\",\"direction\":\"unknown\",\"magnitude_text\":null,\"metric_key\":null,\"metric_note\":\"项目建设进度，无对应财务指标\",\"claim_type\":\"capacity\",\"verifiable\":false,\"confidence\":0.4}]}",
+  "tokens_in": 2033,
+  "tokens_out": 443
+}
