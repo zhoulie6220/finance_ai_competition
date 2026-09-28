@@ -1194,6 +1194,143 @@ CREATE TABLE dataset_eval (
 );
 
 -- =============================================================================
+-- 九·二、人工录入：会计口径 gap_closure_v1.0 的 Q2 / R / P
+--
+-- 这三张表**不是给程序写的，是给人填的**。指数出不了分，卡的就是它们。
+--
+-- 共同的设计原则：**状态枚举写进 CHECK 约束**。
+-- 「未填」和「填了 0」在数值上长得一样，但含义完全相反——
+-- 会计口径 §七 明确列为禁止事项：「不用『年报没有披露』填 0」。
+-- 所以每个字段都分得开：pending（还没填）/ unavailable_disclosure（年报确实没有）
+-- / validated（核对过）/ needs_review（有冲突待查）。
+-- =============================================================================
+
+-- Q2：应收账款账龄（会计口径 §2.3 的录入表）。
+--
+-- Q2 判定要两个条件同时成立：DSO 同比增加 > 10 天，**且**
+-- 账龄 1 年以上的占比同比增加 > 0.5 个百分点。
+-- 所以每年需要三个数：应收账款账面余额、1年以上余额、营业收入。
+CREATE TABLE q2_aging (
+  id              TEXT PRIMARY KEY,
+  project_id      TEXT NOT NULL REFERENCES project(project_id) ON DELETE CASCADE,
+  period          TEXT NOT NULL,
+  scope           TEXT NOT NULL DEFAULT 'consolidated'
+                  CHECK (scope IN ('consolidated','parent')),
+
+  -- ⚠ 一律用**账面余额（gross）**，不是净额——会计口径 §2.1 明确。
+  -- 只有净额时必须把 status 落 proxy_net，且不得与账面余额的结果混列。
+  receivable_gross TEXT,          -- 应收账款账面余额
+  over_one_year    TEXT,          -- 账龄「1年以上」的账面余额
+  revenue          TEXT,          -- 营业收入（算 DSO 的分母）
+
+  -- 回链：会计抄录时记下页码与原文，证据链的终点
+  source_page     INTEGER,
+  source_text     TEXT,
+
+  status          TEXT NOT NULL DEFAULT 'pending'
+                  CHECK (status IN ('pending','validated','proxy_net',
+                                    'unavailable_disclosure','needs_review')),
+  note            TEXT,
+  reviewer        TEXT,
+  reviewed_at     TEXT,
+  created_at      TEXT NOT NULL,
+
+  UNIQUE (project_id, period, scope),
+
+  -- ★ 判为 validated 就必须三个数齐备。缺一个而标 validated，
+  --   会让 Q2 拿 NULL 去算，算出 NULL 然后被当成「未触发」。
+  CHECK (status <> 'validated'
+         OR (receivable_gross IS NOT NULL
+             AND over_one_year IS NOT NULL
+             AND revenue IS NOT NULL)),
+  -- 不可得与待核查必须写明原因
+  CHECK (status NOT IN ('unavailable_disclosure','needs_review')
+         OR (note IS NOT NULL AND length(trim(note)) > 0))
+);
+
+CREATE INDEX ix_q2_project ON q2_aging(project_id, period);
+
+-- R：四项风险披露检查（会计口径 §3.2 / §3.3）。
+--
+-- 四项固定：需求与钢价 / 原燃料成本 / 环保与产能 / 流动性与回款。
+-- 每项要「明确风险对象 + 说明作用路径 + 给出可核验证据」**三项齐全**才计 1 分。
+--
+-- ⚠ 会计口径点名禁止用风险词频计分：「披露充分不代表风险小」。
+--   所以这里存的是人工判断，没有任何词频字段。
+CREATE TABLE risk_disclosure_check (
+  id           TEXT PRIMARY KEY,
+  project_id   TEXT NOT NULL REFERENCES project(project_id) ON DELETE CASCADE,
+  period       TEXT NOT NULL,
+  item         TEXT NOT NULL
+               CHECK (item IN ('demand_price','fuel_cost',
+                               'environment_capacity','liquidity_collection')),
+
+  applicable   INTEGER NOT NULL DEFAULT 1 CHECK (applicable IN (0,1)),
+  risk_object  TEXT,              -- 风险对象
+  impact_path  TEXT,              -- 对收入/成本/现金流/产能/估值的作用路径
+  evidence     TEXT,              -- 可核验的指标、金额、期间、事件或措施
+  mitigation   TEXT,              -- 缓释措施
+
+  conclusion   TEXT NOT NULL DEFAULT 'pending'
+               CHECK (conclusion IN ('pending','sufficient','insufficient',
+                                     'not_applicable','needs_review')),
+  source_page  INTEGER,
+  reviewer     TEXT,
+  reviewed_at  TEXT,
+  created_at   TEXT NOT NULL,
+
+  UNIQUE (project_id, period, item),
+
+  -- ★ 判为「披露充分」必须三要素齐全。少一样就标 sufficient 的话，
+  --   R 的分子会虚高——而虚高的分子不会报错，只会让指数偏高。
+  CHECK (conclusion <> 'sufficient'
+         OR (risk_object IS NOT NULL AND length(trim(risk_object)) > 0
+             AND impact_path IS NOT NULL AND length(trim(impact_path)) > 0
+             AND evidence IS NOT NULL AND length(trim(evidence)) > 0)),
+  -- ★ 「不适用」必须附业务范围证据（会计口径 §3.3）：
+  --   「缺少风险章节不是『不适用』，而是 insufficient」
+  CHECK (conclusion <> 'not_applicable'
+         OR (evidence IS NOT NULL AND length(trim(evidence)) > 0))
+);
+
+CREATE INDEX ix_risk_project ON risk_disclosure_check(project_id, period);
+
+-- P：实质经营表述的人工确认（会计口径 §4.2）。
+--
+-- ⚠ P **只能人工定**：「模型只能提出候选，不能自动定P」。
+--   所以这张表没有自动填充的入口，只能由人逐条写。
+--
+-- 「拟、力争、计划」本身不等于问题；只有**同时缺少对象、期间、指标或
+-- 结果责任**时，才可能被标为 p_penalty。
+CREATE TABLE p_confirmation (
+  id               TEXT PRIMARY KEY,
+  claim_id         TEXT NOT NULL REFERENCES claim(claim_id) ON DELETE CASCADE,
+
+  is_substantive   INTEGER NOT NULL CHECK (is_substantive IN (0,1)),
+  is_template      INTEGER CHECK (is_template IN (0,1)),
+  -- JSON 数组：['object','period','metric','result','owner'] 中缺哪些
+  missing_elements TEXT,
+
+  conclusion       TEXT NOT NULL DEFAULT 'pending'
+                   CHECK (conclusion IN ('pending','p_penalty',
+                                         'no_penalty','needs_review')),
+  reviewer         TEXT,
+  reviewed_at      TEXT,
+  created_at       TEXT NOT NULL,
+
+  UNIQUE (claim_id),
+
+  -- ★ 非 pending 的判定必须留复核人。会计口径 §4.2：
+  --   「复核人和日期」是必填字段，还有「两人意见不一致时由第三人裁定」。
+  --   不留名的话，「谁确认的」这件事就查不到了。
+  CHECK (conclusion = 'pending'
+         OR (reviewer IS NOT NULL AND length(trim(reviewer)) > 0))
+);
+
+CREATE INDEX ix_p_claim ON p_confirmation(claim_id);
+CREATE INDEX ix_p_conclusion ON p_confirmation(conclusion);
+
+-- =============================================================================
 -- 十、视图：让不可信数据在 SQL 层就进不来
 -- =============================================================================
 

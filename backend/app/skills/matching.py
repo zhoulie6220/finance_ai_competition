@@ -449,66 +449,154 @@ def project_index_input(
     )
 
 
-def _risk_component(con: sqlite3.Connection, project_id: str) -> Any:
-    """R：风险披露充分度。
+def _load_q2_aging(con: sqlite3.Connection, project_id: str) -> list[Any]:
+    """读会计按 §2.3 抄进来的账龄数据。"""
+    from decimal import Decimal, InvalidOperation
 
-    v1.1 固定四项：需求及钢价 ｜ 原燃料成本 ｜ 环保及产能约束 ｜ 流动性及回款。
-    每项要「说明具体风险对象、作用路径，且给出指标或事件依据」才算通过。
+    from app.engine.q2 import AgingYear
 
-    ⚠ **不以风险词频计分**——披露得充分不代表风险小，词频高恰恰可能是套话。
+    rows = con.execute(
+        "SELECT period, receivable_gross, over_one_year, revenue, status"
+        " FROM q2_aging WHERE project_id = ? ORDER BY period",
+        (project_id,),
+    ).fetchall()
 
-    本批数据没有对风险披露段落做结构化标注（`mdna_section.kind` 只有
-    business_review 与 outlook 两类），所以四项无法逐项核验 →
-    如实标未核验，**不拿词频或段落长度凑一个数**。
+    def dec(raw: Any) -> Decimal | None:
+        if raw is None:
+            return None
+        try:
+            return Decimal(str(raw))
+        except InvalidOperation:
+            return None
+
+    return [
+        AgingYear(
+            period=r["period"],
+            receivable_gross=dec(r["receivable_gross"]),
+            over_one_year=dec(r["over_one_year"]),
+            revenue=dec(r["revenue"]),
+            status=r["status"],
+        )
+        for r in rows
+    ]
+
+
+def _load_risk_items(con: sqlite3.Connection, project_id: str) -> list[Any]:
+    """读 R 的四项检查记录。
+
+    ⚠ **没录入的项要补成 pending，不能只返回已录入的那几条。**
+    只返回已录入的话，四项里填了一项、那一项恰好是 sufficient，
+    R 就会算出 1/1 = 100% —— 而实际是有三项根本没核。
+    比例看起来完美，恰恰因为大部分没做。
     """
-    from app.engine.index import RatioComponent
+    from app.engine.attestation import RISK_ITEMS, RiskItemResult
 
-    return RatioComponent(
-        name="risk_shift",
-        label_cn="风险披露充分度 R",
-        numerator=None,
-        denominator=4,
-        verified=False,
-        note=(
-            "四项风险检查（需求及钢价、原燃料成本、环保及产能约束、流动性及回款）"
-            "需要逐项判断「是否说明风险对象、作用路径并给出依据」，"
-            "而本批数据没有对风险段落做结构化标注。按 v1.1 不以词频计分。"
-        ),
-    )
+    rows = {
+        r["item"]: r
+        for r in con.execute(
+            "SELECT item, applicable, conclusion, risk_object, impact_path,"
+            " evidence FROM risk_disclosure_check WHERE project_id = ?",
+            (project_id,),
+        )
+    }
+    out = []
+    for key, _label in RISK_ITEMS:
+        r = rows.get(key)
+        if r is None:
+            out.append(
+                RiskItemResult(item=key, applicable=True, conclusion="pending")
+            )
+        else:
+            out.append(
+                RiskItemResult(
+                    item=key,
+                    applicable=bool(r["applicable"]),
+                    conclusion=r["conclusion"],
+                    risk_object=r["risk_object"],
+                    impact_path=r["impact_path"],
+                    evidence=r["evidence"],
+                )
+            )
+    return out
+
+
+def _load_p_confirmations(con: sqlite3.Connection, project_id: str) -> list[Any]:
+    """读 P 的人工确认记录。
+
+    ⚠ 分母是「**进入审查的实质经营表述**」，而那批表述由人判定。
+    所以这里只看 `p_confirmation` 表里已有的记录——
+    人工还没开始审的主张**不在这张表里**，也就不会被误算成
+    「已确认无问题」。这一点和 R 不同：R 的项是固定的四项，
+    没录就是没核；P 的候选是流动的，没录就是还没审到。
+
+    会计口径 §4.4 要求「所有进入指数的实质经营表述必须完成逐条确认」，
+    所以只要还有记录是 `pending`，P 就不完整。
+    """
+    import json
+
+    from app.engine.attestation import PConfirmation
+
+    rows = con.execute(
+        "SELECT p.claim_id, p.is_substantive, p.conclusion, p.is_template,"
+        " p.missing_elements, p.reviewer"
+        " FROM p_confirmation p JOIN claim c ON c.claim_id = p.claim_id"
+        " WHERE c.project_id = ?",
+        (project_id,),
+    ).fetchall()
+
+    out = []
+    for r in rows:
+        try:
+            missing = tuple(json.loads(r["missing_elements"] or "[]"))
+        except (ValueError, TypeError):
+            missing = ()
+        out.append(
+            PConfirmation(
+                claim_id=r["claim_id"],
+                is_substantive=bool(r["is_substantive"]),
+                conclusion=r["conclusion"],
+                is_template=None if r["is_template"] is None else bool(r["is_template"]),
+                missing_elements=missing,
+                reviewer=r["reviewer"],
+            )
+        )
+    return out
+
+
+def _risk_component(con: sqlite3.Connection, project_id: str) -> Any:
+    """R：四项风险披露检查（会计口径 §3.2）。
+
+    数据从 `risk_disclosure_check` 读——**那是人工填的**，
+    会计口径点名禁止用风险词频代替：「披露充分不代表风险小」。
+    没录入的项按 `pending` 计，让 R 变成「未核验」而不是「全通过」。
+    """
+    from app.engine.attestation import risk_component
+
+    return risk_component(_load_risk_items(con, project_id))
 
 
 def _template_component(con: sqlite3.Connection, project_id: str) -> Any:
-    """P：缺乏可验证性的实质表述占比。
+    """P：缺乏可验证性的实质表述占比（会计口径 §4.2）。
 
-    v1.1 定义：P = 经人工确认「缺乏可验证对象、期间或结果」的实质表述数 /
-    去重后的实质经营表述总数。**排除标题、法律声明与一般背景介绍**。
-
-    「经人工确认」是关键词——本系统的规则法只能初判，所以如实标未核验。
+    ⚠ P **只能人工定**：「模型只能提出候选，不能自动定P」。
+    表是空的时候返回「未核验」，不返回 0。
     """
-    from app.engine.index import RatioComponent
+    from app.engine.attestation import template_component
 
-    return RatioComponent(
-        name="template_penalty",
-        label_cn="缺乏可验证性 P",
-        numerator=None,
-        denominator=None,
-        verified=False,
-        note=(
-            "P 的分母需要「去重后的实质经营表述总数」，且分子要求"
-            "**经人工确认**。规则法只能初判，不能代替人工确认。"
-        ),
-    )
+    return template_component(_load_p_confirmations(con, project_id))
 
 
 def _quality_component(con: sqlite3.Connection, project_id: str) -> Any:
-    """Q：财务质量冲突。
+    """Q：三项固定检查的汇总（会计口径 §4.3）。
 
-    三项固定检查里的 Q1、Q3 在有数据的年份可以算；Q2 缺账龄明细，
-    **必然核验不完** → Q 不完整 → 闸门不过 → 不出分。
+    Q1、Q3 由程序从财务事实算；**Q2 需要人工抄进来的账龄数据**。
+    Q2 只要有一个年度判不了，Q 就是「不完整」——按 §五
+    「Q状态 incomplete，不假设未触发」。
 
-    这是正确且诚实的结果，不拿代理指标顶替。
+    三项合起来算一个比例：已确认触发的项数 / 已核验的适用项数。
     """
     from app.engine.quality import build_checklist
+    from app.engine.q2 import judge_q2, to_component as q2_component
 
     cfo = _series(con, project_id, "cfo")
     ni = _series(con, project_id, "net_income")
@@ -527,16 +615,62 @@ def _quality_component(con: sqlite3.Connection, project_id: str) -> Any:
         if now_days is not None and before is not None:
             inventory_days_gap = now_days - before
 
+    # ---- Q2：从人工抄录的账龄数据判定 --------------------------------
+    aging = _load_q2_aging(con, project_id)
+    q2_outcomes = [
+        judge_q2(aging[i - 1], aging[i]) for i in range(1, len(aging))
+    ]
+    q2_comp = q2_component(q2_outcomes)
+
+    # ---- Q1 / Q3：从财务事实算 ---------------------------------------
     checklist = build_checklist(
         cfo_by_year=cfo,
         net_income_by_year=ni,
         years=years,
-        receivable_days_gap=None,
-        aging_share_gap=None,      # 无数据源 → Q2 必然未核验完成
+        receivable_days_gap=None,      # 归 Q2 管，不重复计
+        aging_share_gap=None,
         inventory_days_gap=inventory_days_gap,
-        sales_volume_change=None,  # 钢材销量在库中 0 行
+        sales_volume_change=None,      # 钢材销量在库中 0 行
     )
-    return checklist.to_component()
+    base = checklist.to_component()
+
+    # ---- 三项合一 -----------------------------------------------------
+    items = list(checklist.applicable)
+    verified = [i for i in items if i.verified]
+    triggered = [i for i in verified if i.triggered]
+
+    # Q2 也算一项：判得了就进分母，判不了就让整体不完整
+    if q2_comp.verified:
+        verified_count = len(verified) + 1
+        triggered_count = len(triggered) + q2_comp.numerator
+        q2_ok = True
+    else:
+        verified_count = len(verified)
+        triggered_count = len(triggered)
+        q2_ok = False
+
+    notes = [n for n in (base.note, q2_comp.note) if n]
+    if q2_outcomes and not q2_ok:
+        notes.append(
+            f"Q2 的 {len(q2_outcomes)} 个比较年度里有判不了的——"
+            f"按 §五 Q 不完整，不假设未触发"
+        )
+    elif not q2_outcomes:
+        notes.append(
+            "Q2 尚无账龄数据（`q2_aging` 表为空）——"
+            "请会计按 `scripts/export_input_templates.py` 导出的模板逐年抄录"
+        )
+
+    from app.engine.index import RatioComponent
+
+    return RatioComponent(
+        name="quality_conflict",
+        label_cn="财务质量冲突 Q",
+        numerator=triggered_count,
+        denominator=verified_count,
+        verified=base.verified and q2_ok and verified_count > 0,
+        note="；".join(notes),
+    )
 
 
 def _series(
