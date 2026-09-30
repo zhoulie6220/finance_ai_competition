@@ -271,6 +271,22 @@ CREATE TABLE financial_fact (
   restated       INTEGER NOT NULL DEFAULT 0 CHECK (restated IN (0,1)),
   restatement_note TEXT,
 
+  -- 列报符号的依据（会计口径 v1.1 §二）。value_millions 存的是**标准化之后**的值，
+  -- 这一列说明它为什么被取反：
+  --   loss_positive   正数即损失（旧式列报）      —— normalized = raw
+  --   loss_negative   「损失以负号填列」          —— normalized = -raw
+  --   not_applicable  该指标与符号无关
+  --
+  -- ⚠ 不许按年份硬编码：「资产减值损失」2015 年正数列示损失，2024 年改成
+  -- 「损失以负号填列」，符号相反。必须看该表表头、行注与利润勾稽来定；定不下来
+  -- 就置 NULL 并把 status 落 needs_review，不许猜。也不许用绝对值——允许转回的
+  -- 项目在新版列报里为正时，标准化应为负，表示净收益。
+  -- （另外：「符号统一」与「跨期经济可比」是两回事。新金融工具准则前后的
+  --   资产减值 / 信用减值分类不同，还须另作重分类桥接。）
+  sign_basis     TEXT
+                 CHECK (sign_basis IS NULL OR sign_basis IN
+                        ('loss_positive','loss_negative','not_applicable')),
+
   comparable     INTEGER NOT NULL DEFAULT 1 CHECK (comparable IN (0,1)),
   -- ⚠ 取值必须与 normalization_year.incomparable_reason 完全一致，也与
   --   app/schemas/enums.py::IncomparableReason 一致。这三处曾经分叉：
@@ -331,7 +347,13 @@ CREATE TABLE fact_observation (
 
   value_raw       TEXT NOT NULL,               -- 原样文本，如 '12,345,678,901.23'
   raw_unit        TEXT,                        -- '元' / '万元' / '百万元'
-  value_millions  TEXT,                        -- 换算后；换算失败时为 NULL
+  value_millions  TEXT,                        -- 换算并标准化符号后；失败时为 NULL
+  -- 该次观测的列报符号依据。同一笔事实在不同年报表里符号可能相反，
+  -- 所以依据记在**观测**这一层，由交叉校验决定采纳哪一条。
+  -- 取值含义见 financial_fact.sign_basis 上的注释。
+  sign_basis      TEXT
+                  CHECK (sign_basis IS NULL OR sign_basis IN
+                         ('loss_positive','loss_negative','not_applicable')),
 
   source_file_id  TEXT NOT NULL REFERENCES file(file_id),
   source_page     INTEGER NOT NULL,
@@ -460,6 +482,17 @@ CREATE TABLE claim (
 
 CREATE INDEX ix_claim_project ON claim(project_id, claim_type);
 
+-- ⚠ claim_id 必须是**确定性**的：'cl-' + sha1(project_id|section_id|句子序号|归一化文本)[:12]。
+--
+-- 抽取重跑一次就会往表里再插一份，n 和 N 同时翻倍，指数整体偏移——**而且不报错**。
+-- 确定性主键让重跑插到同一行上（配 INSERT OR IGNORE），这是防重复的**唯一**可靠手段。
+--
+-- 为什么不加唯一索引：v1.1 §A.2 明确允许「同一句涉及不同指标可拆分」，所以
+-- (project_id, section_id, claim_text) 不是自然键，加了会误杀合法主张。
+-- 而把 period_expr / object 这些可空列拼进去也不行——SQLite 的唯一索引里
+-- NULL 互不相等，只要有一列是 NULL，索引就形同虚设。那种「看起来有约束、
+-- 实际拦不住」的保险比没有更糟。
+
 -- 一条主张可对应多个候选指标
 CREATE TABLE claim_indicator (
   id               TEXT PRIMARY KEY,
@@ -484,15 +517,16 @@ CREATE TABLE claim_match (
   magnitude_target TEXT,
   magnitude_actual TEXT,
   relative_deviation TEXT,
-  -- 方向判断分四态 + 部分支持：
-  --   实际方向与主张相反              -> conflicted（直接冲突）
-  --   方向一致但幅度明显偏弱          -> partial（部分支持）
-  --   方向一致且幅度达标              -> supported
-  --   并购/重述/季节性等导致不可比    -> incomparable（不进分母，不扣分）
-  --   找不到对应财务指标              -> missing（不推断为失败，转人工复核）
+  -- 判定标度见会计口径 v1.1 §A.2（枚举在 app/schemas/enums.py::MatchVerdict）。
+  -- 三个**计分**态，构成 H、C 的等权平均：supported=+1 / neutral=0 / contradicted=-1。
+  -- 三个**不计分**态，页面单列，理由必须写进 reason：
+  --   needs_review 只有间接代理、口径不一致或来源冲突，尚未核清 —— 留在覆盖率分母
+  --   unverifiable 未披露直接指标，或主张目标不够具体           —— 不进分母
+  --   incomparable 并购/重述/季节性等导致不可比                  —— 不进分母、不扣分
+  -- ⚠ 旧稿的 partial（方向一致但幅度偏弱）已删除：现在按噪声区间判 neutral。
   verdict         TEXT NOT NULL
-                  CHECK (verdict IN ('supported','partial','conflicted',
-                                     'incomparable','missing')),
+                  CHECK (verdict IN ('supported','neutral','contradicted',
+                                     'needs_review','unverifiable','incomparable')),
   reason          TEXT NOT NULL,                   -- 中文理由，页面直接展示
   confidence      REAL NOT NULL CHECK (confidence >= 0 AND confidence <= 1),
   formula         TEXT,
@@ -516,24 +550,53 @@ CREATE TABLE diagnosis_run (
   project_id          TEXT NOT NULL REFERENCES project(project_id) ON DELETE CASCADE,
   task_id             TEXT,
   rule_config_version INTEGER NOT NULL,            -- 引用规则版本 → 可复现
+
+  -- N：已到验证期、对象和目标可识别、且属于本期预定研究范围的**去重**主张数。
   observation_count   INTEGER NOT NULL,
-  -- 进入分母的有效观测 = supported + partial + conflicted。
-  -- incomparable 与 missing 既不计入分母也不扣分，只在页面单列。
+  -- n：其中已完成同口径验证、拿到 supported / neutral / contradicted 的条数。
+  -- needs_review 的留在 N 里；unverifiable 与 incomparable 不进 N。
   comparable_count    INTEGER NOT NULL,
-  incomparable_count  INTEGER NOT NULL,            -- 不扣分
-  missing_count       INTEGER NOT NULL,            -- 不推断失败
-  partial_count       INTEGER NOT NULL DEFAULT 0,  -- 方向一致但幅度偏弱
+  -- H、C 各自的计分观测数。v1.1 闸门要求**各至少 1 条**——全是本期主张就只展示
+  -- C，不输出完整指数。这是结构性条件，不是可配置参数，所以下面有 CHECK。
+  history_count       INTEGER NOT NULL DEFAULT 0,
+  current_count       INTEGER NOT NULL DEFAULT 0,
+  -- 不计分态分开计数，页面单列
+  neutral_count       INTEGER NOT NULL DEFAULT 0,
+  needs_review_count  INTEGER NOT NULL DEFAULT 0,
+  unverifiable_count  INTEGER NOT NULL DEFAULT 0,
+  incomparable_count  INTEGER NOT NULL DEFAULT 0,
+  -- R / P / Q 三个分项是否**可计算且核验完成**。
+  -- v1.1：适用项未核完则 Q 不完整，**不得当作未触发**——所以这里必须是显式的
+  -- 就绪标志，而不是靠「计数为 0」暗示。也正因为如此，本数据缺账龄明细时
+  -- Q 直接判不就绪，闸门不过、不出分，不能拿代理指标顶替。
+  risk_ready          INTEGER NOT NULL DEFAULT 0 CHECK (risk_ready IN (0,1)),
+  template_ready      INTEGER NOT NULL DEFAULT 0 CHECK (template_ready IN (0,1)),
+  quality_ready       INTEGER NOT NULL DEFAULT 0 CHECK (quality_ready IN (0,1)),
+
   coverage            REAL CHECK (coverage IS NULL OR (coverage >= 0 AND coverage <= 1)),
   score               TEXT,                        -- 0–100 Decimal 字符串；证据不足时为 NULL
   grade               TEXT NOT NULL
-                      CHECK (grade IN ('high','medium','low','insufficient')),
+                      CHECK (grade IN ('high','medium','low','insufficient_evidence')),
   confidence          REAL CHECK (confidence IS NULL OR (confidence >= 0 AND confidence <= 1)),
   insufficient_reason TEXT,
   -- 审慎表述模板，模板生成而非 LLM 生成。禁止输出「虚假披露」等超证据结论。
   conclusion_boundary TEXT NOT NULL,
   created_at          TEXT NOT NULL,
-  -- ★ 证据不足时不得出分
-  CHECK (grade <> 'insufficient' OR score IS NULL)
+
+  -- ★ 证据不足时不得出分，出分时必须证据充足。两个方向都要卡住：
+  -- 只卡第一个方向的话，grade='high' 配 score=NULL 这种半截状态照样能写进去。
+  CHECK (grade <> 'insufficient_evidence' OR score IS NULL),
+  CHECK (grade =  'insufficient_evidence' OR (
+           score IS NOT NULL
+       AND history_count >= 1        -- 闸门：H、C 各至少一条
+       AND current_count >= 1
+       AND risk_ready     = 1        -- 闸门：R、P、Q 均可算且核验完成
+       AND template_ready = 1
+       AND quality_ready  = 1
+  )),
+  -- 证据不足必须写明原因，否则页面只能显示一个光秃秃的「不出分」
+  CHECK (grade <> 'insufficient_evidence'
+         OR (insufficient_reason IS NOT NULL AND length(trim(insufficient_reason)) > 0))
 );
 
 -- 构成项与触发证据 —— 页面据此展示「这个分是怎么来的」
@@ -1164,6 +1227,143 @@ CREATE TABLE dataset_eval (
 );
 
 -- =============================================================================
+-- 九·二、人工录入：会计口径 gap_closure_v1.0 的 Q2 / R / P
+--
+-- 这三张表**不是给程序写的，是给人填的**。指数出不了分，卡的就是它们。
+--
+-- 共同的设计原则：**状态枚举写进 CHECK 约束**。
+-- 「未填」和「填了 0」在数值上长得一样，但含义完全相反——
+-- 会计口径 §七 明确列为禁止事项：「不用『年报没有披露』填 0」。
+-- 所以每个字段都分得开：pending（还没填）/ unavailable_disclosure（年报确实没有）
+-- / validated（核对过）/ needs_review（有冲突待查）。
+-- =============================================================================
+
+-- Q2：应收账款账龄（会计口径 §2.3 的录入表）。
+--
+-- Q2 判定要两个条件同时成立：DSO 同比增加 > 10 天，**且**
+-- 账龄 1 年以上的占比同比增加 > 0.5 个百分点。
+-- 所以每年需要三个数：应收账款账面余额、1年以上余额、营业收入。
+CREATE TABLE q2_aging (
+  id              TEXT PRIMARY KEY,
+  project_id      TEXT NOT NULL REFERENCES project(project_id) ON DELETE CASCADE,
+  period          TEXT NOT NULL,
+  scope           TEXT NOT NULL DEFAULT 'consolidated'
+                  CHECK (scope IN ('consolidated','parent')),
+
+  -- ⚠ 一律用**账面余额（gross）**，不是净额——会计口径 §2.1 明确。
+  -- 只有净额时必须把 status 落 proxy_net，且不得与账面余额的结果混列。
+  receivable_gross TEXT,          -- 应收账款账面余额
+  over_one_year    TEXT,          -- 账龄「1年以上」的账面余额
+  revenue          TEXT,          -- 营业收入（算 DSO 的分母）
+
+  -- 回链：会计抄录时记下页码与原文，证据链的终点
+  source_page     INTEGER,
+  source_text     TEXT,
+
+  status          TEXT NOT NULL DEFAULT 'pending'
+                  CHECK (status IN ('pending','validated','proxy_net',
+                                    'unavailable_disclosure','needs_review')),
+  note            TEXT,
+  reviewer        TEXT,
+  reviewed_at     TEXT,
+  created_at      TEXT NOT NULL,
+
+  UNIQUE (project_id, period, scope),
+
+  -- ★ 判为 validated 就必须三个数齐备。缺一个而标 validated，
+  --   会让 Q2 拿 NULL 去算，算出 NULL 然后被当成「未触发」。
+  CHECK (status <> 'validated'
+         OR (receivable_gross IS NOT NULL
+             AND over_one_year IS NOT NULL
+             AND revenue IS NOT NULL)),
+  -- 不可得与待核查必须写明原因
+  CHECK (status NOT IN ('unavailable_disclosure','needs_review')
+         OR (note IS NOT NULL AND length(trim(note)) > 0))
+);
+
+CREATE INDEX ix_q2_project ON q2_aging(project_id, period);
+
+-- R：四项风险披露检查（会计口径 §3.2 / §3.3）。
+--
+-- 四项固定：需求与钢价 / 原燃料成本 / 环保与产能 / 流动性与回款。
+-- 每项要「明确风险对象 + 说明作用路径 + 给出可核验证据」**三项齐全**才计 1 分。
+--
+-- ⚠ 会计口径点名禁止用风险词频计分：「披露充分不代表风险小」。
+--   所以这里存的是人工判断，没有任何词频字段。
+CREATE TABLE risk_disclosure_check (
+  id           TEXT PRIMARY KEY,
+  project_id   TEXT NOT NULL REFERENCES project(project_id) ON DELETE CASCADE,
+  period       TEXT NOT NULL,
+  item         TEXT NOT NULL
+               CHECK (item IN ('demand_price','fuel_cost',
+                               'environment_capacity','liquidity_collection')),
+
+  applicable   INTEGER NOT NULL DEFAULT 1 CHECK (applicable IN (0,1)),
+  risk_object  TEXT,              -- 风险对象
+  impact_path  TEXT,              -- 对收入/成本/现金流/产能/估值的作用路径
+  evidence     TEXT,              -- 可核验的指标、金额、期间、事件或措施
+  mitigation   TEXT,              -- 缓释措施
+
+  conclusion   TEXT NOT NULL DEFAULT 'pending'
+               CHECK (conclusion IN ('pending','sufficient','insufficient',
+                                     'not_applicable','needs_review')),
+  source_page  INTEGER,
+  reviewer     TEXT,
+  reviewed_at  TEXT,
+  created_at   TEXT NOT NULL,
+
+  UNIQUE (project_id, period, item),
+
+  -- ★ 判为「披露充分」必须三要素齐全。少一样就标 sufficient 的话，
+  --   R 的分子会虚高——而虚高的分子不会报错，只会让指数偏高。
+  CHECK (conclusion <> 'sufficient'
+         OR (risk_object IS NOT NULL AND length(trim(risk_object)) > 0
+             AND impact_path IS NOT NULL AND length(trim(impact_path)) > 0
+             AND evidence IS NOT NULL AND length(trim(evidence)) > 0)),
+  -- ★ 「不适用」必须附业务范围证据（会计口径 §3.3）：
+  --   「缺少风险章节不是『不适用』，而是 insufficient」
+  CHECK (conclusion <> 'not_applicable'
+         OR (evidence IS NOT NULL AND length(trim(evidence)) > 0))
+);
+
+CREATE INDEX ix_risk_project ON risk_disclosure_check(project_id, period);
+
+-- P：实质经营表述的人工确认（会计口径 §4.2）。
+--
+-- ⚠ P **只能人工定**：「模型只能提出候选，不能自动定P」。
+--   所以这张表没有自动填充的入口，只能由人逐条写。
+--
+-- 「拟、力争、计划」本身不等于问题；只有**同时缺少对象、期间、指标或
+-- 结果责任**时，才可能被标为 p_penalty。
+CREATE TABLE p_confirmation (
+  id               TEXT PRIMARY KEY,
+  claim_id         TEXT NOT NULL REFERENCES claim(claim_id) ON DELETE CASCADE,
+
+  is_substantive   INTEGER NOT NULL CHECK (is_substantive IN (0,1)),
+  is_template      INTEGER CHECK (is_template IN (0,1)),
+  -- JSON 数组：['object','period','metric','result','owner'] 中缺哪些
+  missing_elements TEXT,
+
+  conclusion       TEXT NOT NULL DEFAULT 'pending'
+                   CHECK (conclusion IN ('pending','p_penalty',
+                                         'no_penalty','needs_review')),
+  reviewer         TEXT,
+  reviewed_at      TEXT,
+  created_at       TEXT NOT NULL,
+
+  UNIQUE (claim_id),
+
+  -- ★ 非 pending 的判定必须留复核人。会计口径 §4.2：
+  --   「复核人和日期」是必填字段，还有「两人意见不一致时由第三人裁定」。
+  --   不留名的话，「谁确认的」这件事就查不到了。
+  CHECK (conclusion = 'pending'
+         OR (reviewer IS NOT NULL AND length(trim(reviewer)) > 0))
+);
+
+CREATE INDEX ix_p_claim ON p_confirmation(claim_id);
+CREATE INDEX ix_p_conclusion ON p_confirmation(conclusion);
+
+-- =============================================================================
 -- 十、视图：让不可信数据在 SQL 层就进不来
 -- =============================================================================
 
@@ -1208,6 +1408,47 @@ LEFT JOIN financial_fact f
   AND f.period     = CAST(fy.value AS TEXT)
   AND f.scope      = p.base_scope
   AND f.is_primary = 1;
+
+-- v_fact_grid 的**不限定主公司**版本，供「指标 × 年度」网格页与可比公司使用。
+--
+-- 为什么必须另开一个视图：上面那个硬编码了 `f.is_primary = 1`，而库里
+-- 华菱、首钢的全部事实都是 is_primary = 0（那是主公司标记，不是「有没有数据」
+-- 标记）。于是对这两个项目，v_fact_grid 会返回 273 行**每格都是 not_found**
+-- 的空网格——页面上看起来像「年报没披露」，而且不报任何错。
+--
+-- 与 v_fact_grid 的唯一差别：去掉 is_primary 谓词，并把 company_id / is_primary
+-- 加进选择列，让调用方自己决定按哪家公司过滤。
+-- v_fact_grid 保持原样不动——test_schema_integrity.py 引用了它。
+CREATE VIEW v_fact_grid_company AS
+SELECT
+  p.project_id,
+  f.company_id,
+  f.is_primary,
+  md.metric_key,
+  md.label_cn,
+  md.statement,
+  md.unit_kind,
+  CAST(fy.value AS TEXT) AS period,
+  f.fact_id,
+  f.value_millions,
+  f.raw_unit,
+  f.unit,
+  f.scope,
+  f.source_file,
+  f.source_page,
+  f.source_printed_page,
+  f.confidence,
+  COALESCE(f.status, 'not_found') AS status,
+  COALESCE(f.comparable, 1) AS comparable,
+  f.incomparable_reason
+FROM project p
+CROSS JOIN metric_definition md
+CROSS JOIN json_each(p.fiscal_years) fy
+LEFT JOIN financial_fact f
+  ON  f.project_id = p.project_id
+  AND f.metric_key = md.metric_key
+  AND f.period     = CAST(fy.value AS TEXT)
+  AND f.scope      = p.base_scope;
 
 -- 诊断指数只读已验证事实
 CREATE VIEW v_match_evidence AS

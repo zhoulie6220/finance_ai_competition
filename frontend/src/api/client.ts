@@ -1,89 +1,184 @@
 /**
- * REST 客户端。
+ * 取数工具。**前端所有数据都从这里来**——不在浏览器里做任何业务计算。
  *
- * **前端不做任何业务计算。** 这个文件只负责取数与转发，同比、比率、估值一律
- * 由后端 `app/engine/` 算好返回——赛事要求「计算可复算、过程可追溯」，
- * 而浏览器里算的东西没法审计。
- *
- * 请求一律用**相对路径**：开发时 Vite 把它们代理给后端（见 vite.config.ts），
- * 于是不受跨域与主机名写法的影响。要直连别的地址就设 VITE_API_BASE。
+ * 赛事硬要求「计算可复算、过程可追溯」，浏览器里跑的算术无法审计，
+ * 而且动态语言的浮点结果没法复现。所以这里只负责把后端的字符串搬过来，
+ * 展示层只做格式化（`format.ts`），不做算术。
  */
 
-import type {
-  EventHistoryResponse,
-  ProjectListResponse,
-  TaskListResponse,
-  TaskResponse,
-  ValidationErrorResponse,
-} from '../types/contract'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
-const BASE = import.meta.env.VITE_API_BASE ?? ''
+const BASE = '/api'
 
-/** 后端返回的错误。带上 `detail`，页面直接显示它——**后端已经把它写成中文了**。 */
 export class ApiError extends Error {
   readonly status: number
-  /** 逐字段的校验问题。422 时非空。 */
-  readonly issues: ValidationErrorResponse['detail']
+  readonly detail: string
 
-  constructor(status: number, message: string, issues: ValidationErrorResponse['detail'] = []) {
-    super(message)
+  constructor(status: number, detail: string) {
+    super(detail)
     this.name = 'ApiError'
     this.status = status
-    this.issues = issues
+    this.detail = detail
   }
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, {
-    headers: { 'Content-Type': 'application/json' },
-    ...init,
+/** 拼查询串，跳过 null / undefined / 空串。 */
+function withQuery(path: string, params?: Record<string, unknown>): string {
+  if (!params) return path
+  const search = new URLSearchParams()
+  for (const [key, value] of Object.entries(params)) {
+    if (value === null || value === undefined || value === '') continue
+    search.set(key, String(value))
+  }
+  const qs = search.toString()
+  return qs ? `${path}?${qs}` : path
+}
+
+export async function apiGet<T>(
+  path: string,
+  params?: Record<string, unknown>,
+  signal?: AbortSignal,
+): Promise<T> {
+  const res = await fetch(BASE + withQuery(path, params), {
+    headers: { Accept: 'application/json' },
+    signal,
   })
 
   if (!res.ok) {
-    // 后端已经把所有报错都写成了中文（见 app/api/errors.py），
-    // 这里不要自己编一句「请求失败」把它盖掉——那句话没有信息量。
-    let detail = `HTTP ${res.status}`
-    let issues: ValidationErrorResponse['detail'] = []
+    // 后端写的中文 detail 是给人看的（「这笔事实定位不到原文页，多半是
+    // source_page 与 page_no 对不上」）。原样抛出去展示，不要再包一层
+    // 「请求失败」把它盖掉——那等于把唯一有用的信息扔了。
+    let detail = `请求失败（HTTP ${res.status}）`
     try {
       const body = await res.json()
-      if (Array.isArray(body?.detail)) {
-        issues = body.detail
-        detail = body.detail.map((i: { msg: string }) => i.msg).join('；')
-      } else if (typeof body?.detail === 'string') {
-        detail = body.detail
-      }
+      if (body && typeof body.detail === 'string') detail = body.detail
     } catch {
-      /* 响应体不是 JSON，保留 HTTP 状态码 */
+      // 响应体不是 JSON（比如网关的 HTML 错误页），用兜底文案
     }
-    throw new ApiError(res.status, detail, issues)
+    throw new ApiError(res.status, detail)
   }
-  return res.json() as Promise<T>
+
+  return (await res.json()) as T
 }
 
-export interface CreateTaskBody {
-  input: string
-  project_id?: string | null
-  skill?: string | null
-  /** false = 后台执行，进度走 SSE。这是页面上要用的模式。 */
-  sync?: boolean
+// ---------------------------------------------------------------- hooks
+
+export interface ApiState<T> {
+  data: T | null
+  loading: boolean
+  error: string | null
+  reload: () => void
 }
 
-export const api = {
-  listProjects: () => request<ProjectListResponse>('/api/projects'),
+/**
+ * 取数 hook。
+ *
+ * ⚠ **带请求序号守卫**：先发的请求可能后到（网络抖动、后端某条 SQL 慢），
+ * 如果不加守卫，过期响应会覆盖掉更新的那份——屏幕上显示的是错数据，
+ * 而且**不报任何错**。这是很难查的一类 bug，因为它在本地几乎复现不出来。
+ */
+export function useApi<T>(
+  path: string | null,
+  params?: Record<string, unknown>,
+): ApiState<T> {
+  const [data, setData] = useState<T | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [nonce, setNonce] = useState(0)
+  const seq = useRef(0)
 
-  createTask: (body: CreateTaskBody) =>
-    request<TaskResponse>('/api/tasks', { method: 'POST', body: JSON.stringify(body) }),
+  const key = withQuery(path ?? '', params)
 
-  getTask: (taskId: string) => request<TaskResponse>(`/api/tasks/${encodeURIComponent(taskId)}`),
+  useEffect(() => {
+    if (!path) {
+      setData(null)
+      setLoading(false)
+      setError(null)
+      return
+    }
 
-  listTasks: (limit = 20) => request<TaskListResponse>(`/api/tasks?limit=${limit}`),
+    const ticket = ++seq.current
+    const controller = new AbortController()
+    setLoading(true)
+    setError(null)
 
-  /**
-   * 已经发出的历史事件。
-   *
-   * 页面刷新后先拉一次这个再订阅实时流：否则从「打开页面」到「第一条事件到达」
-   * 之间是空白的，用户会以为没反应。
-   */
-  eventHistory: (taskId: string) =>
-    request<EventHistoryResponse>(`/api/tasks/${encodeURIComponent(taskId)}/events/history`),
+    apiGet<T>(path, params, controller.signal)
+      .then((body) => {
+        if (ticket !== seq.current) return // 过期响应，丢掉
+        setData(body)
+        setLoading(false)
+      })
+      .catch((err: unknown) => {
+        if (controller.signal.aborted) return
+        if (ticket !== seq.current) return
+        setError(err instanceof Error ? err.message : String(err))
+        setData(null)
+        setLoading(false)
+      })
+
+    return () => controller.abort()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key, nonce])
+
+  const reload = useCallback(() => setNonce((n) => n + 1), [])
+  return { data, loading, error, reload }
+}
+
+/**
+ * SSE 订阅。
+ *
+ * ⚠ **StrictMode 在开发模式下会双挂载 effect**，于是一条连接会开两次、
+ * 事件也会来两遍。用 ref 守卫：只保留最后一次建立的连接，并在清理时关掉。
+ * 不处理的话，开发时时间线会出现重复步骤，而生产环境又不会——很难查。
+ */
+export function useSse(
+  path: string | null,
+  onEvent: (event: string, data: unknown) => void,
+): { connected: boolean; error: string | null } {
+  const [connected, setConnected] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const handler = useRef(onEvent)
+  handler.current = onEvent
+
+  useEffect(() => {
+    if (!path) return
+    const source = new EventSource(BASE + path)
+    let closed = false
+
+    source.onopen = () => {
+      if (!closed) setConnected(true)
+    }
+    source.onerror = () => {
+      if (!closed) {
+        setConnected(false)
+        // EventSource 会自动重连。这里只是把状态如实报出来，
+        // 不主动 close——现场演示时断一下能自愈比直接放弃好。
+        setError('事件流断开，正在重连…')
+      }
+    }
+
+    const forward = (name: string) => (ev: MessageEvent) => {
+      if (closed) return
+      setError(null)
+      try {
+        handler.current(name, JSON.parse(ev.data))
+      } catch {
+        handler.current(name, ev.data)
+      }
+    }
+    const onStep = forward('step')
+    const onDone = forward('done')
+    source.addEventListener('step', onStep as EventListener)
+    source.addEventListener('done', onDone as EventListener)
+
+    return () => {
+      closed = true
+      source.removeEventListener('step', onStep as EventListener)
+      source.removeEventListener('done', onDone as EventListener)
+      source.close()
+      setConnected(false)
+    }
+  }, [path])
+
+  return { connected, error }
 }

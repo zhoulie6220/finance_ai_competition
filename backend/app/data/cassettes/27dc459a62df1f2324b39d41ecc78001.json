@@ -1,0 +1,7 @@
+{
+  "cassette_id": "27dc459a62df1f2324b39d41ecc78001",
+  "model_version": "deepseek-flash",
+  "text": "{\"claims\": [{\"text\": \"公司报告期不存在衍生品投资。\", \"subject\": \"公司\", \"period_expr\": \"报告期\", \"direction\": \"flat\", \"magnitude_text\": null, \"metric_key\": null, \"metric_note\": \"衍生品投资规模（原文未在字段表中，应为衍生品投资余额/发生额）\", \"claim_type\": \"risk\", \"verifiable\": true, \"confidence\": 0.85}]}",
+  "tokens_in": 2543,
+  "tokens_out": 100
+}

@@ -239,62 +239,60 @@ python scripts/dict_csv.py --import   # 读回来。先校验后写入，任何�
 
 #### 例句锚点（50/91 项已填，其中占位符句 50 项）
 
-| 字段键 | 例句 | 来源 | 出处 |
-|---|---|---|---|
-| `total_revenue` | 本年度营业总收入为【数值】元。 | 占位符句 | — |
-| `revenue` | 本报告期实现营业收入【数值】元，同比【上升/下降】【数值】%。 | 占位符句 | — |
-| `operating_cost` | 本报告期营业成本为【数值】元。 | 占位符句 | — |
-| `gross_profit` | 本年度实现毛利【数值】元，毛利率为【数值】%。 | 占位符句 | — |
-| `finance_expense` | 本年度财务费用为【数值】元。 | 占位符句 | — |
-| `interest_expense` | 本年度利息费用为【数值】元。 | 占位符句 | — |
-| `interest_income` | 本年度利息收入为【数值】元。 | 占位符句 | — |
-| `operating_profit` | 本年度营业利润为【数值】元。 | 占位符句 | — |
-| `profit_before_tax` | 本年度利润总额为【数值】元。 | 占位符句 | — |
-| `net_income` | 本报告期实现净利润【数值】元。 | 占位符句 | — |
-| `net_income_parent` | 归属于母公司股东的净利润为【数值】元。 | 占位符句 | — |
-| `non_gaap_net_income` | 扣除非经常性损益后的净利润为【数值】元。 | 占位符句 | — |
-| `non_recurring_gain_loss` | 归属于上市公司股东的非经常性损益为【数值】元。 | 占位符句 | — |
-| `government_grant` | 本年度计入当期损益的政府补助为【数值】元。 | 占位符句 | — |
-| `asset_disposal_gain_loss` | 本年度资产处置收益为【数值】元。 | 占位符句 | — |
-| `impairment_loss` | 本年度确认资产减值损失【数值】元。 | 占位符句 | — |
-| `credit_impairment_loss` | 本年度确认信用减值损失【数值】元。 | 占位符句 | — |
-| `goodwill_impairment` | 本年度计提商誉减值损失【数值】元。 | 占位符句 | — |
-| `fair_value_gain_loss` | 本年度公允价值变动收益为【数值】元。 | 占位符句 | — |
-| `investment_income` | 本年度投资收益为【数值】元。 | 占位符句 | — |
-| `total_assets` | 报告期末资产总额为【数值】元。 | 占位符句 | — |
-| `total_liabilities` | 报告期末负债总额为【数值】元。 | 占位符句 | — |
-| `equity_parent` | 报告期末归属于母公司股东的权益为【数值】元。 | 占位符句 | — |
-| `accounts_receivable` | 期末应收账款账面余额为【数值】元。 | 占位符句 | — |
-| `notes_and_ar` | 期末应收票据及应收账款为【数值】元。 | 占位符句 | — |
-| `inventory` | 期末存货账面余额为【数值】元。 | 占位符句 | — |
-| `contract_liabilities` | 期末合同负债为【数值】元。 | 占位符句 | — |
-| `accounts_payable` | 期末应付账款为【数值】元。 | 占位符句 | — |
-| `ppe` | 期末固定资产账面价值为【数值】元。 | 占位符句 | — |
-| `goodwill` | 期末商誉账面价值为【数值】元。 | 占位符句 | — |
-| `cfo` | 经营活动产生的现金流量净额为【数值】元。 | 占位符句 | — |
-| `cfi` | 投资活动产生的现金流量净额为【数值】元。 | 占位符句 | — |
-| `cff` | 筹资活动产生的现金流量净额为【数值】元。 | 占位符句 | — |
-| `capex` | 本年度购建固定资产、无形资产和其他长期资产支付的现金为【数值】元。 | 占位符句 | — |
-| `cash_end` | 期末现金及现金等价物余额为【数值】元。 | 占位符句 | — |
-| `cash_net_increase` | 现金及现金等价物净增加额为【数值】元。 | 占位符句 | — |
-| `eps_basic` | 本年度基本每股收益为【数值】元/股。 | 占位符句 | — |
-| `eps_diluted` | 本年度稀释每股收益为【数值】元/股。 | 占位符句 | — |
-| `steel_output` | 本年度钢材产量为【数值】万吨。 | 占位符句 | — |
-| `crude_steel_output` | 本年度粗钢产量为【数值】万吨。 | 占位符句 | — |
-| `steel_sales_volume` | 本年度钢材销量为【数值】万吨。 | 占位符句 | — |
-| `steel_spread` | 本年度吨钢原料差价为【数值】元/吨。 | 占位符句 | — |
-| `steel_gross_profit_per_ton` | 本年度吨钢毛利为【数值】元/吨。 | 占位符句 | — |
-| `steel_ebitda_per_ton` | 本年度吨钢 EBITDA 为【数值】元/吨。 | 占位符句 | — |
-| `effective_capacity` | 报告期钢材有效产能为【数值】万吨。 | 占位符句 | — |
-| `crude_steel_effective_capacity` | 报告期粗钢有效产能为【数值】万吨。 | 占位符句 | — |
-| `steel_effective_capacity` | 报告期钢材有效产能为【数值】万吨。 | 占位符句 | — |
-| `capacity_utilization` | 本年度粗钢产能利用率为【数值】%。 | 占位符句 | — |
-| `audit_opinion` | 会计师事务所对公司本年度财务报告出具了【审计意见类型】。 | 占位符句 | — |
-| `accounting_policy_change` | 本年度因会计政策变更对比较数据进行追溯调整。 | 占位符句 | — |
+| 字段键 | 例句 | 来源 |
+|---|---|---|
+| `total_revenue` | 本年度营业总收入为【数值】元。 | 占位符句 |
+| `revenue` | 本报告期实现营业收入【数值】元，同比【上升/下降】【数值】%。 | 占位符句 |
+| `operating_cost` | 本报告期营业成本为【数值】元。 | 占位符句 |
+| `gross_profit` | 本年度实现毛利【数值】元，毛利率为【数值】%。 | 占位符句 |
+| `finance_expense` | 本年度财务费用为【数值】元。 | 占位符句 |
+| `interest_expense` | 本年度利息费用为【数值】元。 | 占位符句 |
+| `interest_income` | 本年度利息收入为【数值】元。 | 占位符句 |
+| `operating_profit` | 本年度营业利润为【数值】元。 | 占位符句 |
+| `profit_before_tax` | 本年度利润总额为【数值】元。 | 占位符句 |
+| `net_income` | 本报告期实现净利润【数值】元。 | 占位符句 |
+| `net_income_parent` | 归属于母公司股东的净利润为【数值】元。 | 占位符句 |
+| `non_gaap_net_income` | 扣除非经常性损益后的净利润为【数值】元。 | 占位符句 |
+| `non_recurring_gain_loss` | 归属于上市公司股东的非经常性损益为【数值】元。 | 占位符句 |
+| `government_grant` | 本年度计入当期损益的政府补助为【数值】元。 | 占位符句 |
+| `asset_disposal_gain_loss` | 本年度资产处置收益为【数值】元。 | 占位符句 |
+| `impairment_loss` | 本年度确认资产减值损失【数值】元。 | 占位符句 |
+| `credit_impairment_loss` | 本年度确认信用减值损失【数值】元。 | 占位符句 |
+| `goodwill_impairment` | 本年度计提商誉减值损失【数值】元。 | 占位符句 |
+| `fair_value_gain_loss` | 本年度公允价值变动收益为【数值】元。 | 占位符句 |
+| `investment_income` | 本年度投资收益为【数值】元。 | 占位符句 |
+| `total_assets` | 报告期末资产总额为【数值】元。 | 占位符句 |
+| `total_liabilities` | 报告期末负债总额为【数值】元。 | 占位符句 |
+| `equity_parent` | 报告期末归属于母公司股东的权益为【数值】元。 | 占位符句 |
+| `accounts_receivable` | 期末应收账款账面余额为【数值】元。 | 占位符句 |
+| `notes_and_ar` | 期末应收票据及应收账款为【数值】元。 | 占位符句 |
+| `inventory` | 期末存货账面余额为【数值】元。 | 占位符句 |
+| `contract_liabilities` | 期末合同负债为【数值】元。 | 占位符句 |
+| `accounts_payable` | 期末应付账款为【数值】元。 | 占位符句 |
+| `ppe` | 期末固定资产账面价值为【数值】元。 | 占位符句 |
+| `goodwill` | 期末商誉账面价值为【数值】元。 | 占位符句 |
+| `cfo` | 经营活动产生的现金流量净额为【数值】元。 | 占位符句 |
+| `cfi` | 投资活动产生的现金流量净额为【数值】元。 | 占位符句 |
+| `cff` | 筹资活动产生的现金流量净额为【数值】元。 | 占位符句 |
+| `capex` | 本年度购建固定资产、无形资产和其他长期资产支付的现金为【数值】元。 | 占位符句 |
+| `cash_end` | 期末现金及现金等价物余额为【数值】元。 | 占位符句 |
+| `cash_net_increase` | 现金及现金等价物净增加额为【数值】元。 | 占位符句 |
+| `eps_basic` | 本年度基本每股收益为【数值】元/股。 | 占位符句 |
+| `eps_diluted` | 本年度稀释每股收益为【数值】元/股。 | 占位符句 |
+| `steel_output` | 本年度钢材产量为【数值】万吨。 | 占位符句 |
+| `crude_steel_output` | 本年度粗钢产量为【数值】万吨。 | 占位符句 |
+| `steel_sales_volume` | 本年度钢材销量为【数值】万吨。 | 占位符句 |
+| `steel_spread` | 本年度吨钢原料差价为【数值】元/吨。 | 占位符句 |
+| `steel_gross_profit_per_ton` | 本年度吨钢毛利为【数值】元/吨。 | 占位符句 |
+| `steel_ebitda_per_ton` | 本年度吨钢 EBITDA 为【数值】元/吨。 | 占位符句 |
+| `effective_capacity` | 报告期钢材有效产能为【数值】万吨。 | 占位符句 |
+| `crude_steel_effective_capacity` | 报告期粗钢有效产能为【数值】万吨。 | 占位符句 |
+| `steel_effective_capacity` | 报告期钢材有效产能为【数值】万吨。 | 占位符句 |
+| `capacity_utilization` | 本年度粗钢产能利用率为【数值】%。 | 占位符句 |
+| `audit_opinion` | 会计师事务所对公司本年度财务报告出具了【审计意见类型】。 | 占位符句 |
+| `accounting_policy_change` | 本年度因会计政策变更对比较数据进行追溯调整。 | 占位符句 |
 
-> 仍有 **41** 个字段没有例句锚点。占位符句必须在上传真实年报后逐条替换为原文，并把 `example_source` 改为 `annual_report`、同时填上 `example_file` 与 `example_page`——在此之前它不能作为任何结论的证据。
->
-> 当前 50 条仍是带【数值】占位符的标准句，**不得在界面或报告里当成年报原文展示**。
+> 仍有 **41** 个字段没有例句锚点。占位符句必须在上传真实年报后逐条替换为原文，并把 `example_source` 改为 `annual_report`——在此之前它不能作为任何结论的证据。
 
 <!-- END GENERATED: metrics -->
 

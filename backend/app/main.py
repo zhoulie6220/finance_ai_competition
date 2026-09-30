@@ -2,13 +2,34 @@
 
     uvicorn app.main:app --reload
 
-**本文件只做装配，不写业务。** 路由在 `app/api/routes_*.py`，编排在
-`app/agents/orchestrator.py`，计算在 `app/engine/`。把业务塞进 main.py 的代价是
+**本文件只做装配，不写业务。** 路由在 `app/api/routes_*.py` 与 `app/api/routes.py`，
+编排在 `app/agents/orchestrator.py`，计算在 `app/engine/`。把业务塞进 main.py 的代价是
 它很快会变成所有人都要改的文件，而所有人都在改的文件必然冲突。
+
+**前端只通过 REST + SSE 取数，不在浏览器里做任何业务计算。** 这条不是风格偏好：
+赛事的硬要求是「计算可复算、过程可追溯」，浏览器里跑的算术无法审计——
+动态语言的浮点结果没法复现，评审也没法核。所以所有数字都从这里出，
+且金额一律是字符串。
 
 启动时会做一次**自检**：数据库在不在、种子数据全不全、Skill 注册上没有。
 不自检的话，问题会推迟到用户点下第一个按钮时才暴露，而那时的报错信息
 （一句 500）跟真正的原因（库是空的）离得很远。
+
+## ⚠ 两套路由的注册顺序是有讲究的，不要随意调换
+
+本文件同时挂了两组路由：
+
+    app.api.router          hb-wip 分支的 REST 接口（项目、事实、原文、勾稽、叙事、规则参数）
+    api/routes_*.py         主干的任务编排接口（/api/tasks + SSE 时间线、/api/tools、
+                            /api/skills、/api/meta、项目与文件登记）
+
+**`GET /api/projects` 两组都注册了，而且返回形状不同**——前者是裸数组，
+后者是 `{projects: [...]}`。FastAPI 按注册顺序取第一个命中，**不报错、不提示**，
+所以先注册的那一组赢。这里刻意让 `app.api.router` 先注册：消费它的是现在
+真正在跑的前端（`frontend/src/api/client.ts` 取的就是裸数组）。
+
+`/api/tasks` 只有主干那一组（hb-wip 的内联版本被 `routes_tasks.py` 取代，
+后者多了 retry / tool-calls / events/history 三个端点）。
 """
 
 from __future__ import annotations
@@ -24,12 +45,13 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.agents.state import SystemClock
+from app.api import router as api_router
 from app.api.errors import validation_exception_handler
 from app.api.events import EventBus
 from app.config import get_settings
 from app.db.session import connect
 
-APP_VERSION = "0.1.0"
+APP_VERSION = "0.3.0"
 
 
 @asynccontextmanager
@@ -44,6 +66,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.started_at = SystemClock().now()
 
     _startup_selfcheck(settings)
+    _report_data_state()
 
     # Skill 与 Tool 在 import 时注册。显式 import 一次，让「注册」这件事
     # 在启动路径上可见，而不是藏在一串间接 import 的副作用里。
@@ -86,6 +109,32 @@ def _startup_selfcheck(settings) -> None:
         con.close()
 
 
+def _report_data_state() -> None:
+    """启动时说一句话，把「库是空的」和「没配密钥」当场讲清楚。
+
+    这两种状态都不会让服务起不来（自检只管种子表），但会让页面显示空白或
+    功能不可用。不主动说，排查就得从头猜——而这两种恰恰是最容易被当成
+    「前端坏了」的。
+    """
+    from app.agents.llm.settings import LlmSettings
+    from app.db import repository
+
+    con = connect()
+    try:
+        counts = repository.db_counts(con)
+        n = counts.get("financial_fact", 0)
+    finally:
+        con.close()
+
+    settings = LlmSettings.from_env()
+    print(f"[启动] 财务事实 {n} 条；模型：{settings.describe()}")
+    if n == 0:
+        print(
+            "[启动] ⚠ 库里没有财务事实。重建之后需要导回数据包：\n"
+            "        python scripts/merge_data_pack.py --source <数据包>/backend/var/finance.db"
+        )
+
+
 def create_app() -> FastAPI:
     settings = get_settings()
 
@@ -109,6 +158,10 @@ def create_app() -> FastAPI:
         # SSE 断线重连时浏览器会带 Last-Event-ID，必须放行
         expose_headers=["Last-Event-ID"],
     )
+
+    # ⚠ 顺序即优先级，见模块 docstring。先把 hb-wip 的 REST 路由挂上，
+    #   它的 `GET /api/projects` 才是生效的那一个。
+    app.include_router(api_router)
 
     from app.api.routes_meta import router as meta_router
     from app.api.routes_projects import router as projects_router

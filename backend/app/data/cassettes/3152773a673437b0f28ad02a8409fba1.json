@@ -1,0 +1,7 @@
+{
+  "cassette_id": "3152773a673437b0f28ad02a8409fba1",
+  "model_version": "deepseek-flash",
+  "text": "```json\n{\n  \"claims\": [\n    {\n      \"text\": \"首钢智新迁安电磁材料有限公司\",\n      \"subject\": \"首钢智新迁安电磁材料有限公司\",\n      \"period_expr\": \"2022年\",\n      \"direction\": \"unknown\",\n      \"magnitude_text\": null,\n      \"metric_key\": null,\n      \"metric_note\": \"该句仅为子公司名称，未包含可验证的经营指标或方向性表述\",\n      \"claim_type\": \"other\",\n      \"verifiable\": false,\n      \"confidence\": 0.9\n    },\n    {\n      \"text\": \"北京首钢冷轧薄板有限公司\",\n      \"subject\": \"北京首钢冷轧薄板有限公司\",\n      \"period_expr\": \"2022年\",\n      \"direction\": \"unknown\",\n      \"magnitude_text\": null,\n      \"metric_key\": null,\n      \"metric_note\": \"该句仅为子公司名称，未包含可验证的经营指标或方向性表述\",\n      \"claim_type\": \"other\",\n      \"verifiable\": false,\n      \"confidence\": 0.9\n    },\n    {\n      \"text\": \"北京首钢钢贸投资管理有限公司\",\n      \"subject\": \"北京首钢钢贸投资管理有限公司\",\n      \"period_expr\": \"2022年\",\n      \"direction\": \"unknown\",\n      \"magnitude_text\": null,\n      \"metric_key\": null,\n      \"metric_note\": \"该句仅为子公司名称，未包含可验证的经营指标或方向性表述\",\n      \"claim_type\": \"other\",\n      \"verifiable\": false,\n      \"confidence\": 0.9\n    }\n  ]\n}\n```",
+  "tokens_in": 2014,
+  "tokens_out": 354
+}

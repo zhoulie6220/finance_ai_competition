@@ -1,0 +1,7 @@
+{
+  "cassette_id": "abb5285563d9300434fb997a24127aff",
+  "model_version": "deepseek-flash",
+  "text": "{\n  \"claims\": [\n    {\n      \"text\": \"公司品种钢销量不断提升，占比已由2016年的32%增加到2022年的60%。\",\n      \"subject\": \"公司\",\n      \"period_expr\": \"2016年至2022年\",\n      \"direction\": \"up\",\n      \"magnitude_text\": \"由2016年的32%增加到2022年的60%\",\n      \"metric_key\": null,\n      \"metric_note\": \"品种钢销量占比（品种钢销量/钢材总销量），字段表中无对应键名\",\n      \"claim_type\": \"product_mix\",\n      \"verifiable\": true,\n      \"confidence\": 0.95\n    },\n    {\n      \"text\": \"公司已与150余家世界500强企业建立了业务联系和战略伙伴关系\",\n      \"subject\": \"公司\",\n      \"period_expr\": \"报告期\",\n      \"direction\": \"unknown\",\n      \"magnitude_text\": \"150余家\",\n      \"metric_key\": null,\n      \"metric_note\": \"世界500强客户数量，字段表中无对应键名\",\n      \"claim_type\": \"other\",\n      \"verifiable\": true,\n      \"confidence\": 0.7\n    },\n    {\n      \"text\": \"公司下属16项产品再获“金杯”。\",\n      \"subject\": \"公司\",\n      \"period_expr\": \"2022年4月（2021年度冶金产品实物质量品牌培育产品名单）\",\n      \"direction\": \"unknown\",\n      \"magnitude_text\": \"16项\",\n      \"metric_key\": null,\n      \"metric_note\": \"获冶金产品实物质量“金杯”产品数量，字段表中无对应键名\",\n      \"claim_type\": \"other\",\n      \"verifiable\": true,\n      \"confidence\": 0.75\n    }\n  ]\n}",
+  "tokens_in": 2590,
+  "tokens_out": 386
+}

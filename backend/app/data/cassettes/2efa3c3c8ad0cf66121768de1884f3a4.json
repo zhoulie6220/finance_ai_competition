@@ -1,0 +1,7 @@
+{
+  "cassette_id": "2efa3c3c8ad0cf66121768de1884f3a4",
+  "model_version": "deepseek-flash",
+  "text": "{\"claims\":[{\"text\":\"2017年公司完成股权投资项目95.4亿元，较去年增加75.7亿元。\",\"subject\":\"公司\",\"period_expr\":\"2017年\",\"direction\":\"up\",\"magnitude_text\":\"95.4亿元，较去年增加75.7亿元\",\"metric_key\":null,\"metric_note\":\"对外股权投资额（长期股权投资/投资支付的现金），字段表中无对应键\",\"claim_type\":\"other\",\"verifiable\":true,\"confidence\":0.9},{\"text\":\"2017年，公司完成固定资产投资109.9亿元。\",\"subject\":\"公司\",\"period_expr\":\"2017年\",\"direction\":\"unknown\",\"magnitude_text\":\"109.9亿元\",\"metric_key\":null,\"metric_note\":\"固定资产投资额（购建固定资产、无形资产和其他长期资产支付的现金近似，但口径不同）\",\"claim_type\":\"capacity\",\"verifiable\":true,\"confidence\":0.85},{\"text\":\"项目于2017年7月底投运。\",\"subject\":\"一二期混匀料场BA、BB和副料场OA、OB封闭改造项目\",\"period_expr\":\"2017年7月底\",\"direction\":\"unknown\",\"magnitude_text\":null,\"metric_key\":null,\"metric_note\":\"项目投运时间，无对应财务指标\",\"claim_type\":\"capacity\",\"verifiable\":true,\"confidence\":0.8},{\"text\":\"目前现有烧结机已拆除完毕，新烧结桩基施工完，主厂房基础和平台框架施工中。\",\"subject\":\"一二烧结整合大修改造项目\",\"period_expr\":\"目前（报告期内）\",\"direction\":\"unknown\",\"magnitude_text\":null,\"metric_key\":null,\"metric_note\":\"项目建设进度，无对应财务指标\",\"claim_type\":\"capacity\",\"verifiable\":true,\"confidence\":0.7}]}",
+  "tokens_in": 1955,
+  "tokens_out": 367
+}

@@ -1,0 +1,7 @@
+{
+  "cassette_id": "bd4fe9090033d3382721dfd82d715421",
+  "model_version": "deepseek-flash",
+  "text": "{\n  \"claims\": [\n    {\n      \"text\": \"公司已经从上市初期400万吨精品棒线材生产企业，转型成为拥有2170万吨高端板材产能的技术领先、绿色低碳的科技公司。\",\n      \"subject\": \"公司\",\n      \"period_expr\": \"报告期内\",\n      \"direction\": \"unknown\",\n      \"magnitude_text\": \"2170万吨\",\n      \"metric_key\": null,\n      \"metric_note\": \"高端板材产能，字段表中无对应键名（steel_effective_capacity 为钢材有效产能，口径不完全一致）\",\n      \"claim_type\": \"capacity\",\n      \"verifiable\": true,\n      \"confidence\": 0.7\n    },\n    {\n      \"text\": \"2022年8月份，智新电磁建成全球首条面向新能源汽车的高牌号无取向电工钢生产线，2023年4月份，建成世界首条具备100%薄规格、高磁感取向电工钢专业化生产线。\",\n      \"subject\": \"智新电磁\",\n      \"period_expr\": \"2022年8月、2023年4月\",\n      \"direction\": \"up\",\n      \"magnitude_text\": \"100%薄规格\",\n      \"metric_key\": null,\n      \"metric_note\": \"电工钢生产线建成投产情况，字段表中无对应键名\",\n      \"claim_type\": \"capacity\",\n      \"verifiable\": true,\n      \"confidence\": 0.75\n    }\n  ]\n}",
+  "tokens_in": 2078,
+  "tokens_out": 308
+}

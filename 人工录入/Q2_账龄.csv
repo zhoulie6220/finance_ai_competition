@@ -1,0 +1,18 @@
+﻿project_id,period,scope,receivable_gross,over_one_year,revenue,source_page,source_text,status,note,reviewer
+↑ 项目编号，不要改,↑ 年度，不要改,↑ 口径，固定 consolidated（会计口径 §2.1 要求合并报表）,↑ 应收账款**账面余额**（gross），单位：元,↑ 账龄「1年以上」的账面余额，单位：元,↑ 营业收入，单位：元,↑ 年报页码,↑ 原文片段（那几行的原文，便于复核）,↑ pending / validated / proxy_net / unavailable_disclosure / needs_review,↑ 非 validated 时必填：为什么,↑ 复核人
+p-000932,2022,consolidated,,,,,,pending,,
+p-000932,2023,consolidated,,,,,,pending,,
+p-000932,2024,consolidated,,,,,,pending,,
+p-000959,2022,consolidated,,,,,,pending,,
+p-000959,2023,consolidated,,,,,,pending,,
+p-000959,2024,consolidated,,,,,,pending,,
+p-600019,2015,consolidated,,,,,,pending,,
+p-600019,2016,consolidated,,,,,,pending,,
+p-600019,2017,consolidated,,,,,,pending,,
+p-600019,2018,consolidated,,,,,,pending,,
+p-600019,2019,consolidated,,,,,,pending,,
+p-600019,2020,consolidated,,,,,,pending,,
+p-600019,2021,consolidated,,,,,,pending,,
+p-600019,2022,consolidated,,,,,,pending,,
+p-600019,2023,consolidated,,,,,,pending,,
+p-600019,2024,consolidated,,,,,,pending,,

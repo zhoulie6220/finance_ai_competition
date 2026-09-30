@@ -42,25 +42,36 @@ def connect(db_path: str | Path | None = None) -> sqlite3.Connection:
     - `busy_timeout`     遇到写锁时等待而非立刻报错，避免并发下随机失败
     - `synchronous=NORMAL`  WAL 模式下的推荐值，兼顾安全与速度
     - `row_factory=sqlite3.Row`  便于按列名取值
+    - `check_same_thread=False`  允许连接被「换一个线程」使用，见下
 
     不传 `db_path` 时取 `settings.data_root / finance.db`。**这一点很重要**：
     `.env` 里 `DATA_ROOT` 是可配的，如果这里写死 `DEFAULT_DB_PATH`，
     改 `DATA_ROOT` 就只会影响文件读写、不影响数据库——两半数据落在不同地方，
     而两边都不会报错。测试也正是靠它把库指到临时目录。
+
+    ⚠ **为什么必须关掉线程检查**
+
+    FastAPI 把同步的接口函数丢进**线程池**执行，而同一个请求的依赖注入
+    与接口函数**不保证落在同一个线程**。于是会出现：
+
+        依赖里 connect()          → 线程 A
+        接口函数用这条连接查询     → 线程 B    ✗ ProgrammingError
+
+    实测表现是**随机 500，刷新一下又好了**——因为下次请求恰好分到同一个线程。
+    这种「偶发、重试能过」的错误最难查，也最容易在演示当天出现。
+
+    关掉检查是安全的，前提是**每条连接只属于一个请求、不会有两处同时用它**。
+    本项目的所有连接都用 `with con:` 包住写入、请求结束即 close，
+    没有任何一处把连接存下来跨请求复用。**不要打破这个前提**——
+    真出现两个线程同时用一条连接，SQLite 的行为是未定义的。
     """
     path = Path(db_path) if db_path is not None else default_db_path()
     path.parent.mkdir(parents=True, exist_ok=True)
 
-    # ⚠ check_same_thread=False 是必须的，理由不是「为了省事」：
-    #   FastAPI 把**同步**路由与同步依赖都丢进线程池执行，而且不保证是同一个线程。
-    #   于是「依赖里建的连接，在路由里用」会随机撞上
-    #   `SQLite objects created in a thread can only be used in that same thread`。
-    #   dev 环境常常侥幸不复现，上线后每个同步接口都可能间歇性 500。
-    #
-    #   这样安全的前提是**一条连接只归一个请求/一个任务所有**（本项目的做法：
-    #   `app/api/deps.py` 每个请求开一条，后台任务各开一条）。
-    #   一旦有人把一条连接跨请求共享、或多协程交错使用，这条保护就没了——
-    #   那时会出现事务边界错乱，且**不会报错**。改这里之前请先确认这一点。
+    # check_same_thread=False 的理由见 docstring。安全前提是**一条连接只归
+    # 一个请求/一个任务所有**——本项目的做法是 `app/api/deps.py` 每个请求开一条、
+    # 后台任务各开一条。一旦有人把连接跨请求共享或多协程交错使用，这条保护就没了，
+    # 那时会出现事务边界错乱且**不会报错**。改这里之前请先确认这一点。
     con = sqlite3.connect(path, check_same_thread=False)
     con.row_factory = sqlite3.Row
 

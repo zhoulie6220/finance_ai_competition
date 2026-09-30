@@ -1,0 +1,7 @@
+{
+  "cassette_id": "22a49ba85136858cc9108cc37e05c3a7",
+  "model_version": "deepseek-flash",
+  "text": "{\"claims\": [{\"text\": \"公司、京唐公司、智新电磁、冷轧公司均为高新技术企业，2022年研发投入53.86亿元，占营业收入\", \"subject\": \"公司\", \"period_expr\": \"2022年\", \"direction\": \"unknown\", \"magnitude_text\": \"53.86亿元\", \"metric_key\": \"rd_expense\", \"metric_note\": null, \"claim_type\": \"cost\", \"verifiable\": true, \"confidence\": 0.85}]}",
+  "tokens_in": 1593,
+  "tokens_out": 109
+}

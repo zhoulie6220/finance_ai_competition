@@ -1,0 +1,7 @@
+{
+  "cassette_id": "ba400639c214008c273de2c31a60b216",
+  "model_version": "deepseek-flash",
+  "text": "{\"claims\": [{\"text\": \"在绿色低碳方面，公司响应国家超低排放、打响“蓝天保卫战”的要求，持续加大环保投入，对炼铁、炼钢、烧结、焦化等关键工序进行超低排放、效能提升改造，减少污染物排放。\", \"subject\": \"公司\", \"period_expr\": \"本期\", \"direction\": \"up\", \"magnitude_text\": null, \"metric_key\": \"environmental_protection_expense\", \"metric_note\": null, \"claim_type\": \"cost\", \"verifiable\": true, \"confidence\": 0.6}, {\"text\": \"同时，公司加快绿色低碳转型步伐，推进工序余热余压余能及蒸汽回收发电，减少化石能源消耗；\", \"subject\": \"公司\", \"period_expr\": \"本期\", \"direction\": \"down\", \"magnitude_text\": null, \"metric_key\": null, \"metric_note\": \"化石能源消耗量/综合能耗\", \"claim_type\": \"cost\", \"verifiable\": false, \"confidence\": 0.4}, {\"text\": \"公司所处区域为钢材净流入区域，行业集中度高，供需格局有序。\", \"subject\": \"公司所处区域\", \"period_expr\": \"本期\", \"direction\": \"unknown\", \"magnitude_text\": null, \"metric_key\": null, \"metric_note\": \"区域钢材净流入量/区域行业集中度\", \"claim_type\": \"macro\", \"verifiable\": false, \"confidence\": 0.3}]}",
+  "tokens_in": 2163,
+  "tokens_out": 325
+}

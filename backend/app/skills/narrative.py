@@ -1,449 +1,338 @@
-"""Skill · 叙事一致性：管理层说的话，财务事实认不认。
+"""规则法主张抽取的编排与落库。
 
-这是这个项目和「AI 财报摘要工具」的分界线。摘要工具把 MD&A 读一遍、总结成一段话，
-读起来很像那么回事，但**没有一句能核对**——它说的「公司强调降本增效」，
-你没法问它兑现了没有。这里的每一步都能：
+**这一层持有数据库连接**，`app/engine/claim_rules.py` 与
+`app/parsing/claims.py` 都是纯文本处理、零 IO。
 
-    原句（哪一年年报第几页）→ 命中哪类主题 → 拿哪个指标验 → 那个指标从多少走到多少
+## 为什么强调「规则法基线」
 
-## 数据从哪来
+甲的阶段二要做 LLM 版主张抽取，原话是「在规则法基线上叠，不是从零写」。
+基线的作用有两个：
 
-`mdna_section`（`scripts/parse_mdna.py` 落的正文）+ `v_fact_verified`（财务事实）。
-两边都不在本文件里解析、计算：句子切分在 `app.parsing.mdna`，
-方向判定在 `app.engine.narrative`。**本文件只做取数与组织。**
+1. **兜底**：模型不可用（没配密钥、断网、超时）时系统仍然能出主张，
+   而不是整条链路瘫掉。现场演示时这一点很实际。
+2. **对照**：LLM 版的结果要和规则版并排看，分歧点进人工复核。
+   没有基线就没法判断模型到底带来了什么。
 
-## 为什么不给分数
+## 确定性 claim_id
 
-`rule_config` 里有完整的指数公式与五项构成（H 历史兑现度 / C 当前一致性 /
-R 风险披露变化 / P 模板化惩罚 / Q 财务质量冲突）。这里只算得出 H 和 C：
-R 与 P 要风险段落与跨年文本相似度，Q 要 `engine/checks.py` 的勾稽结果，
-那个还没写。
+`cl-` + sha1(project_id|section_id|句子序号|归一化文本)[:12]。
 
-**只算得出两项的时候就出分，是最糟的选择**：分母没变、权重照乘，
-分数看起来和完整版一模一样，而它其实缺了足足 30 分权重的构成项。
-所以这里出**观测与计数**，把分数留给 `engine/index.py`——
-等五项齐全、且 `docs/04` 经会计签字后再开。
+重跑一次会往表里再插一份，n 和 N 同时翻倍、指数整体偏移——**而且不报错**。
+确定性主键让重跑插到同一行上（配 INSERT OR IGNORE），这是防重复的**唯一**
+可靠手段。
+
+为什么不加唯一索引：v1.1 §A.2 明确允许「同一句涉及不同指标可拆分」，
+所以 (project_id, section_id, claim_text) 不是自然键，加了会误杀合法主张。
+而把可空列拼进去也不行——SQLite 里 NULL 互不相等，只要有一列是 NULL，
+索引就形同虚设，那比没有更糟。
 """
 
 from __future__ import annotations
 
-from decimal import Decimal
-from typing import TYPE_CHECKING, Any
+import hashlib
+import sqlite3
+from dataclasses import dataclass, field
+from typing import Any
 
-from app.engine.narrative import (
-    INCOMPARABLE,
-    MISSING,
-    STATE_CN,
-    THEMES,
-    Claim,
-    Observation,
-    Utterance,
-    find_claims,
-    summarize,
-    verify_all,
+from app.engine.claim_rules import (
+    Magnitude,
+    extract_direction,
+    extract_magnitude,
+    extract_period_expr,
+    is_pending,
+    match_theme,
+    resolve_period,
 )
-from app.engine.ratios import gross_margin
-from app.parsing.mdna import Section, paragraphs
-from app.skills.base import PlannedStep, SkillRequest, StepOutcome, tool_result
-from app.skills.facts import _read_series, _resolve_project
-from app.tools.registry import ToolOutcome, tool
+from app.parsing.claims import iter_sentences
 
-if TYPE_CHECKING:
-    from app.agents.orchestrator import StepContext
+EXTRACTOR = "rule:claim_v1"
+# 规则法没有提示词，但这一列 NOT NULL——如实写「无」，
+# 不要填一个看起来像 prompt 版本号的假值。
+PROMPT_VERSION = "rule:none"
 
-#: 叙事验证要用到的指标。**在这里写死是有意的**：
-#: 主题表（`engine.narrative._THEMES`）里每个主题指向哪个指标是会计口径的一部分，
-#: 从数据库里现查一遍反而会让人以为它是可配置的。
-_METRICS = ("revenue", "operating_cost", "cfo")
-
-
-def _rule(con, key: str, fallback: str) -> str:
-    """读一个规则参数。读不到就用默认值——**并让调用方知道是默认值**。
-
-    `rule_config` 是 docs/04 的机读版本，改数据不改代码。这里读不到通常意味着
-    库是旧的（没跑 `init_db.py`），那时用默认值继续比直接报错更有用，
-    但绝不能装作它是确认过的取值——所以取默认值时调用方会在结论里写出来。
-    """
-    row = con.execute(
-        "SELECT value FROM rule_config WHERE key=? AND industry=''", (key,)
-    ).fetchone()
-    return row["value"] if row else fallback
+# 规则的置信度：按「命中主题词数 + 是否有方向 + 是否有数值」给一个档。
+# **不用模型给的分**——规则法的确定性恰恰是它的价值，编一个模型式的
+# 小数反而让人以为它经过校准。
+_CONFIDENCE_BASE = 0.5
+_CONFIDENCE_WITH_DIRECTION = 0.7
+_CONFIDENCE_WITH_MAGNITUDE = 0.8
 
 
-def _rule_bool(con, key: str, fallback: bool) -> bool:
-    """读一个布尔型规则参数。
+@dataclass
+class ExtractionSummary:
+    """一次抽取的结果。**如实报告跳过了什么**，不只报成功的数。"""
 
-    ⚠ 不能写成 `bool(_rule(...))`：SQLite 里存的是文本 `'0'`，
-    而 `bool('0')` 是 **True**——一个参数关掉了却照旧生效，且不报任何错。
-    同类的坑在 `file.is_scanned` 上翻过一次（见 CLAUDE.md 的 JSON 列那一节）。
-    """
-    return _rule(con, key, "1" if fallback else "0").strip().lower() not in (
-        "0", "false", "no", "",
+    project_id: str
+    sections_scanned: int = 0
+    sentences_scanned: int = 0
+    claims_inserted: int = 0
+    claims_skipped_existing: int = 0
+    by_theme: dict[str, int] = field(default_factory=dict)
+    unverifiable: int = 0
+    pending: int = 0
+    warnings: list[str] = field(default_factory=list)
+
+    def describe(self) -> str:
+        parts = [
+            f"扫描 {self.sections_scanned} 段 / {self.sentences_scanned} 句",
+            f"写入 {self.claims_inserted} 条主张",
+        ]
+        if self.claims_skipped_existing:
+            parts.append(f"已存在 {self.claims_skipped_existing} 条")
+        parts.append(f"不可验证 {self.unverifiable} 条")
+        if self.pending:
+            parts.append(f"未到期 {self.pending} 条")
+        return "；".join(parts)
+
+
+def extract_and_store(
+    con: sqlite3.Connection,
+    project_id: str,
+    *,
+    now: str,
+) -> ExtractionSummary:
+    """抽取主张并落库。幂等：重复跑不会产生重复主张。"""
+    summary = ExtractionSummary(project_id=project_id)
+
+    known_periods = tuple(
+        r[0]
+        for r in con.execute(
+            "SELECT DISTINCT period FROM file WHERE project_id = ? AND period IS NOT NULL",
+            (project_id,),
+        )
     )
 
-
-def _load_utterances(con, project_id: str) -> list[Utterance]:
-    """把 MD&A 正文取出来，切成带页码的句子。
-
-    ⚠ `mdna_section` 是**按页存**的（一段跨几页就几行，`page_from = page_to`），
-    所以页码在这里是精确的。若当初按整段存，这一步就只能给全段盖一个起始页，
-    证据面板上每一句的页码都会指向同一页——而用户真的会翻过去看。
-    """
-    rows = con.execute(
-        "SELECT s.heading, s.kind, s.page_from, s.text, f.period, f.rel_path"
-        " FROM mdna_section s JOIN file f ON f.file_id = s.file_id"
-        " WHERE f.project_id=?"
-        " ORDER BY f.period, s.page_from",
+    sections = con.execute(
+        """
+        SELECT m.section_id, m.text, m.page_from, m.file_id, f.period
+        FROM mdna_section m
+        JOIN file f ON f.file_id = m.file_id
+        WHERE f.project_id = ?
+        ORDER BY f.period, m.page_from, m.section_id
+        """,
         (project_id,),
     ).fetchall()
 
-    out: list[Utterance] = []
-    for r in rows:
-        sec = Section(
-            heading=r["heading"], kind=r["kind"],
-            page_from=r["page_from"], page_to=r["page_from"],
-            lines=tuple((r["page_from"], ln) for ln in r["text"].split("\n")),
-        )
-        # 只留文件名，不带目录。`samples/主公司年报-宝钢股份600019/宝钢股份：2019年年度报告.pdf`
-        # 里的目录名是本地磁盘的布局，对用户没有意义，还占掉证据面板一整行。
-        fname = r["rel_path"].rsplit("/", 1)[-1]
-        for p in paragraphs(sec):
-            out.append(
-                Utterance(
-                    text=p.display,
-                    page_no=p.page_no,
-                    period=r["period"],
-                    forward=r["kind"] == "outlook",
-                    source_file=fname,
+    rows: list[tuple[Any, ...]] = []
+    indicators: list[tuple[Any, ...]] = []
+
+    for section in sections:
+        summary.sections_scanned += 1
+        for sentence in iter_sentences(section["text"] or ""):
+            summary.sentences_scanned += 1
+            match = match_theme(sentence.text)
+            if match is None:
+                continue
+
+            direction, modality_only = extract_direction(sentence.text)
+            magnitude = extract_magnitude(sentence.text)
+
+            # 只提了主题词、没有方向也没有数值 → 不是主张，是背景叙述。
+            # 放进 claim 表会让 N 虚高、覆盖率虚高，而页面上一堆「主张」
+            # 根本判定不了。
+            if direction == "unknown" and magnitude is None:
+                continue
+
+            period = resolve_period(
+                sentence.text,
+                section["period"],
+                # 取自 rule_config，这里给默认值；调用方可以覆盖
+                forward_verifies_next_year=True,
+            )
+            if is_pending(period, known_periods):
+                summary.pending += 1
+
+            verifiable = match.usable and period is not None
+            if not verifiable:
+                summary.unverifiable += 1
+
+            claim_id = _claim_id(
+                project_id, section["section_id"], sentence.index, sentence.text
+            )
+            rows.append(
+                (
+                    claim_id,
+                    project_id,
+                    section["section_id"],
+                    sentence.text,            # 原句，不改写
+                    None,                     # subject：规则法不拆，留给 LLM 版
+                    None,                     # action
+                    None,                     # object
+                    extract_period_expr(sentence.text),   # 原文里的期间表述，原样保留
+                    period,
+                    direction,
+                    magnitude.raw if magnitude else None,
+                    str(magnitude.value) if magnitude else None,
+                    magnitude.unit if magnitude else None,
+                    match.rule.claim_type,
+                    1 if verifiable else 0,
+                    # v1.1 与 docs/01 的硬约束：不可验证的主张必须标
+                    # background_only，**不得进入评分**
+                    0 if verifiable else 1,
+                    _confidence(direction, magnitude, modality_only),
+                    section["file_id"],
+                    section["page_from"],
+                    sentence.text,            # source_text = 原句
+                    EXTRACTOR,
+                    PROMPT_VERSION,
+                    "validated" if verifiable else "needs_review",
+                    now,
                 )
             )
+            if match.usable and match.rule.primary_metric:
+                indicators.append(
+                    (
+                        f"ci-{claim_id}",
+                        claim_id,
+                        match.rule.primary_metric,
+                        "primary",
+                        _confidence(direction, magnitude, modality_only),
+                        EXTRACTOR,
+                    )
+                )
+            summary.by_theme[match.rule.label_cn] = (
+                summary.by_theme.get(match.rule.label_cn, 0) + 1
+            )
+
+    if not rows:
+        summary.warnings.append(
+            "没有抽出任何主张。先确认 mdna_section 里有正文——"
+            "空库或未导入数据包时会走到这里。"
+        )
+        return summary
+
+    with con:
+        before = con.execute(
+            "SELECT COUNT(*) FROM claim WHERE project_id = ?", (project_id,)
+        ).fetchone()[0]
+        con.executemany(
+            "INSERT OR IGNORE INTO claim (claim_id, project_id, section_id,"
+            " claim_text, subject, action, object, period_expr, period_norm,"
+            " direction, magnitude_text, magnitude_value, magnitude_unit,"
+            " claim_type, verifiable, background_only, confidence,"
+            " source_file_id, source_page, source_text, extractor,"
+            " prompt_version, status, created_at)"
+            " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            rows,
+        )
+        con.executemany(
+            "INSERT OR IGNORE INTO claim_indicator (id, claim_id, metric_key,"
+            " role, match_confidence, matched_by) VALUES (?,?,?,?,?,?)",
+            indicators,
+        )
+        after = con.execute(
+            "SELECT COUNT(*) FROM claim WHERE project_id = ?", (project_id,)
+        ).fetchone()[0]
+
+    summary.claims_inserted = after - before
+    summary.claims_skipped_existing = len(rows) - summary.claims_inserted
+    return summary
+
+
+def _claim_id(
+    project_id: str, section_id: str, sentence_index: int, text: str
+) -> str:
+    """确定性 id。见模块开头的说明——防重跑重复靠的是它，不是唯一索引。"""
+    normalized = " ".join(text.split())
+    digest = hashlib.sha1(
+        f"{project_id}\x00{section_id}\x00{sentence_index}\x00{normalized}".encode(
+            "utf-8"
+        )
+    ).hexdigest()
+    return "cl-" + digest[:12]
+
+
+def _confidence(
+    direction: str, magnitude: Magnitude | None, modality_only: bool
+) -> float:
+    """规则法的置信度。**是规则档位，不是校准过的概率。**
+
+    意向表述（「力争」「计划」）降一档——v1.1 明确它们不是保证承诺，
+    拿它们当实打实的承诺去验证会夸大冲突。
+    """
+    if magnitude is not None:
+        score = _CONFIDENCE_WITH_MAGNITUDE
+    elif direction != "unknown":
+        score = _CONFIDENCE_WITH_DIRECTION
+    else:
+        score = _CONFIDENCE_BASE
+    if modality_only:
+        score -= 0.2
+    return round(max(0.0, min(1.0, score)), 2)
+
+
+# ---------------------------------------------------------------- 查询
+
+
+def list_claims(
+    con: sqlite3.Connection,
+    project_id: str,
+    *,
+    theme: str | None = None,
+    limit: int = 500,
+) -> list[dict[str, Any]]:
+    """主张列表，带主题规则里那份「禁止的简化推断」，供页面展示。"""
+    params: list[Any] = [project_id]
+    clause = ""
+    if theme:
+        clause = " AND c.claim_type = ?"
+        params.append(theme)
+    params.append(limit)
+
+    rows = con.execute(
+        f"""
+        SELECT c.claim_id, c.claim_text, c.claim_type, c.direction, c.period_norm,
+               c.period_expr, c.magnitude_text, c.magnitude_value, c.magnitude_unit,
+               c.verifiable, c.background_only, c.confidence, c.status,
+               c.source_page, c.source_file_id, c.extractor,
+               ci.metric_key AS primary_metric
+        FROM claim c
+        LEFT JOIN claim_indicator ci
+          ON ci.claim_id = c.claim_id AND ci.role = 'primary'
+        WHERE c.project_id = ?{clause}
+        ORDER BY c.period_norm, c.claim_type, c.claim_id
+        LIMIT ?
+        """,
+        params,
+    ).fetchall()
+
+    from app.engine.claim_rules import THEMES
+
+    forbidden_by_type = {t.claim_type: t.forbidden for t in THEMES}
+    out: list[dict[str, Any]] = []
+    for r in rows:
+        item = dict(r)
+        item["forbidden_simplifications"] = list(
+            forbidden_by_type.get(r["claim_type"], ())
+        )
+        out.append(item)
     return out
 
 
-def _metric_series(con, project_id: str) -> dict[str, dict[str, Decimal | None]]:
-    """取出验证要用的指标序列。**毛利率是派生的**，年报里没有这一行。"""
-    raw: dict[str, dict[str, Decimal]] = {}
-    for key in _METRICS:
-        points, _, _ = _read_series(con, project_id, key)
-        raw[key] = {p["period"]: Decimal(p["value"]) for p in points}
-
-    rev, cost = raw["revenue"], raw["operating_cost"]
-    gm: dict[str, Decimal | None] = {}
-    for year in set(rev) | set(cost):
-        if year not in rev or year not in cost:
-            # ⚠ 缺一个就置 None，**不要跳过这个键**。
-            #   跳过的后果是 verify() 用 `.get()` 拿到 None，判成「缺失」——
-            #   结论一样，但「这一年没披露」和「我没查它」在调查报告里分不出来。
-            gm[year] = None
-            continue
-        r = gross_margin(rev[year] - cost[year], rev[year])
-        gm[year] = r.value if r.ok else None
-
-    return {"revenue": rev, "operating_cost": cost, "cfo": raw["cfo"], "gross_margin": gm}
-
-
-def _claim_payload(c: Claim) -> dict[str, Any]:
-    """一条主张的形状。前端 `types/view.ts` 里有对应定义，改这里要同步。"""
-    return {
-        "theme_key": c.theme_key,
-        "theme_label": c.theme_label,
-        "text": c.text,
-        "page_no": c.page_no,
-        "source_file": c.source_file,
-        "matched": c.matched,
-        "source_period": c.source_period,
-        "verify_period": c.verify_period,
-        "forward": c.forward,
-        "metric_key": c.metric.key,
-        "metric_label": c.metric.label_cn,
-        "metric_unit": c.metric.unit,
-        "basis_cn": THEMES[c.theme_key].basis_cn,
+def claim_stats(con: sqlite3.Connection, project_id: str) -> dict[str, Any]:
+    """抽取概况。页面首屏用。"""
+    row = con.execute(
+        """
+        SELECT COUNT(*) AS total,
+               SUM(CASE WHEN verifiable = 1 THEN 1 ELSE 0 END) AS verifiable,
+               SUM(CASE WHEN background_only = 1 THEN 1 ELSE 0 END) AS background_only,
+               SUM(CASE WHEN status = 'validated' THEN 1 ELSE 0 END) AS validated
+        FROM claim WHERE project_id = ?
+        """,
+        (project_id,),
+    ).fetchone()
+    by_type = {
+        r[0]: r[1]
+        for r in con.execute(
+            "SELECT claim_type, COUNT(*) FROM claim WHERE project_id = ?"
+            " GROUP BY claim_type",
+            (project_id,),
+        )
     }
-
-
-def _obs_payload(ob: Observation, src: dict[str, Any] | None) -> dict[str, Any]:
-    d = _claim_payload(ob.claim)
-    d.update(
-        {
-            "state": ob.state,
-            "state_cn": ob.state_cn,
-            "reason": ob.reason,
-            "formula": ob.formula,
-            "inputs": ob.inputs,
-            "actual": ob.actual,
-            # 财务那一侧的出处。只有句子出处、没有数字出处的对照表，
-            # 用户能核对「管理层真这么说了」，却核对不了「数字真的是这样」——
-            # 而这张表的全部意义就是把两者摆在一起。
-            "metric_source": src or {},
-        }
-    )
-    return d
-
-
-def _source_of(con, project_id: str, metric_key: str, period: str) -> dict[str, Any]:
-    """取某个指标某一年的事实出处。"""
-    key = metric_key
-    if key == "gross_margin":
-        # 派生值没有单一出处，它的出处是「收入 − 成本」两行，
-        # 与 `facts.margin` 的处理一致——只给一个的话界面上是半个算式。
-        rev = _source_of(con, project_id, "revenue", period)
-        cost = _source_of(con, project_id, "operating_cost", period)
-        if not rev and not cost:
-            return {}
-        return {
-            "derived": True,
-            "sources": [
-                {"role": "被减数 · 营业收入", **rev},
-                {"role": "减数 · 营业成本", **cost},
-            ],
-        }
-    points, label, unit = _read_series(con, project_id, key)
-    for p in points:
-        if p["period"] == period:
-            return {
-                "label_cn": label, "unit": unit, "period": period,
-                "value": p["value"], "fact_id": p["fact_id"],
-                "source_file": p["source_file"], "source_page": p["source_page"],
-                "source_table": p["source_table"], "source_text": p["source_text"],
-            }
-    return {}
-
-
-# --------------------------------------------------------------- Tool 实现
-
-
-@tool(
-    name="narrative.claims",
-    version="v1",
-    description_cn="从年报的管理层讨论与分析里抽取可验证的经营主张，逐条带出年报页码与原句",
-    input_schema={
-        "type": "object",
-        "properties": {"project_id": {"type": "string", "description": "项目 id"}},
-    },
-    output_schema={
-        "type": "object",
-        "properties": {"claims": {"type": "array"}, "total": {"type": "integer"}},
-    },
-)
-def narrative_claims(ctx: StepContext, project_id: str | None = None) -> ToolOutcome:
-    con = ctx.repo.con
-    pid, err = _resolve_project(con, project_id)
-    if err:
-        return ToolOutcome(summary=f"无法读取叙事：{err}", value={"error": err})
-
-    utterances = _load_utterances(con, pid)
-    if not utterances:
-        # 「正文没入库」和「公司没说什么」在界面上长得很像，但要做的事完全不同：
-        # 前者去跑 scripts/parse_mdna.py，后者才需要看年报。
-        return ToolOutcome(
-            summary="这个项目还没有 MD&A 正文。先跑：python scripts/parse_mdna.py",
-            value={"project_id": pid, "claims": [], "total": 0, "no_text": True},
-        )
-
-    claims = find_claims(utterances)
-    by_theme: dict[str, int] = {}
-    for c in claims:
-        by_theme[c.theme_label] = by_theme.get(c.theme_label, 0) + 1
-    detail = "、".join(f"{k} {v}" for k, v in by_theme.items()) or "无"
-
-    return ToolOutcome(
-        summary=(
-            f"从 {len(utterances)} 句管理层表述中识别出 {len(claims)} 条可验证主张"
-            f"（{detail}）"
-        ),
-        value={
-            "project_id": pid,
-            "total": len(claims),
-            "sentences": len(utterances),
-            "by_theme": by_theme,
-            "claims": [_claim_payload(c) for c in claims],
-        },
-        formula=(
-            "逐句匹配主题词表（app.engine.narrative._THEMES），"
-            "命中排除词或风险/否定词的句子不计入"
-        ),
-    )
-
-
-@tool(
-    name="narrative.consistency",
-    version="v1",
-    description_cn="把管理层主张与财务事实逐年比对，逐条给出支持/部分支持/冲突/不可比/缺失，并汇总",
-    input_schema={
-        "type": "object",
-        "properties": {
-            "project_id": {"type": "string"},
-            "theme_key": {"type": "string", "description": "只看某一类主题；不填则全部"},
-        },
-    },
-    output_schema={
-        "type": "object",
-        "properties": {
-            "observations": {"type": "array"},
-            "counts": {"type": "object"},
-            "headline": {"type": "string"},
-        },
-    },
-)
-def narrative_consistency(
-    ctx: StepContext, project_id: str | None = None, theme_key: str | None = None
-) -> ToolOutcome:
-    con = ctx.repo.con
-    pid, err = _resolve_project(con, project_id)
-    if err:
-        return ToolOutcome(summary=f"无法读取叙事：{err}", value={"error": err})
-
-    utterances = _load_utterances(con, pid)
-    if not utterances:
-        return ToolOutcome(
-            summary="这个项目还没有 MD&A 正文。先跑：python scripts/parse_mdna.py",
-            value={"project_id": pid, "observations": [], "no_text": True},
-        )
-
-    forward_next = _rule_bool(con, "narrative.forward_verifies_next_year", True)
-    claims = find_claims(utterances, forward_verifies_next_year=forward_next)
-    if theme_key:
-        claims = [c for c in claims if c.theme_key == theme_key]
-
-    series = _metric_series(con, pid)
-    observations = verify_all(claims, series)
-    verdict = summarize(observations)
-
-    payload = [
-        _obs_payload(
-            ob,
-            # 只有**判出了方向**的观测才去查数字出处：判成缺失或不可比时，
-            # 那一年的数本来就没取到，查了也是空 dict，白跑一次查询。
-            _source_of(con, pid, ob.claim.metric.key, ob.claim.verify_period)
-            if ob.state not in (MISSING, INCOMPARABLE)
-            else {},
-        )
-        for ob in observations
-    ]
-
-    # 按主题分组：评审要看的不是「35 条里 9 条冲突」，
-    # 而是「哪一类说法系统性地对不上」——那才是有投资含义的东西。
-    themes: list[dict[str, Any]] = []
-    for key, theme in THEMES.items():
-        rows = [o for o in payload if o["theme_key"] == key]
-        if not rows:
-            continue
-        cnt = {s: sum(1 for r in rows if r["state"] == s) for s in STATE_CN}
-        themes.append(
-            {
-                "theme_key": key,
-                "label_cn": theme.label_cn,
-                "metric_label": theme.metric.label_cn,
-                "basis_cn": theme.basis_cn,
-                "total": len(rows),
-                "counts": cnt,
-            }
-        )
-
-    return ToolOutcome(
-        summary=f"{verdict.headline}｜{verdict.text.splitlines()[1] if chr(10) in verdict.text else ''}",
-        value={
-            "project_id": pid,
-            "headline": verdict.headline,
-            "verdict_text": verdict.text,
-            "total": verdict.total,
-            "counts": verdict.counts,
-            "themes": themes,
-            "observations": payload,
-            "forward_verifies_next_year": forward_next,
-            "index_note": (
-                "诊断指数未出分：公式 I = 50 + 20H + 20C + 5R − 10P − 15Q 已由会计口径"
-                "定下（accounting_signoff_v1.docx A-7 / docs/04-index-rules）。"
-                "其中 H（历史兑现度）与 C（当前一致性）由本次观测构成，"
-                "R（风险披露变化）、P（模板化惩罚）、Q（财务质量冲突）尚未接入"
-                "——Q 依赖 engine/checks.py 的勾稽结果。缺 30 分权重的构成项时出的分"
-                "与完整版长得一样，因此不出。"
-            ),
-        },
-        formula=(
-            "主张方向（向好）与指标实际方向逐年比对：方向相反即判冲突，"
-            "不设幅度阈值（A-7：「20 个百分点」只适用于明确提出数值目标的主张）；"
-            "指标数值未变动时判不可比。前瞻主张验下一年。"
-        ),
-    )
-
-
-# --------------------------------------------------------------- Skill 实现
-
-
-#: ⚠ 不能与 `facts` / `selfcheck` 的词撞车：路由取**第一个**命中的 Skill
-#: （见 `app/skills/__init__.py`），撞了的话后一个永远轮不到，且没有任何提示。
-#: 所以这里一律用「叙事」侧的词，不碰「事实」「指标」「趋势」。
-_KEYWORDS = ("叙事", "一致性", "管理层", "措辞", "说法", "言行", "兑现", "吹", "承诺")
-
-
-class NarrativeConsistencySkill:
-    key = "narrative"
-    name_cn = "叙事一致性"
-    description_cn = (
-        "从年报管理层讨论与分析中抽取可验证主张，与财务事实逐年比对，"
-        "给出支持 / 部分支持 / 冲突 / 不可比 / 缺失的逐条判定。"
-    )
-
-    def can_handle(self, request: SkillRequest) -> bool:
-        text = request.user_input.strip().lower()
-        return any(k in text for k in _KEYWORDS)
-
-    def plan(self, request: SkillRequest) -> list[PlannedStep]:
-        pid = request.project_id
-        return [
-            PlannedStep(name="抽取管理层可验证主张", tool_name="narrative.claims",
-                        args={"project_id": pid}),
-            PlannedStep(name="与财务事实逐年比对", tool_name="narrative.consistency",
-                        args={"project_id": pid}, depends_on=(0,)),
-            PlannedStep(name="汇总", depends_on=(1,)),
-        ]
-
-    async def run(
-        self, step: PlannedStep, ctx: StepContext, prior: dict[int, StepOutcome]
-    ) -> StepOutcome:
-        """汇总。**不做任何计算**，只组织已经判好的结果。"""
-        if step.name != "汇总":
-            return StepOutcome(summary=f"未实现的步骤：{step.name}")
-
-        # ⚠ 取值一律经 tool_result()：编排器把工具结果包了一层
-        #   （{"result": ..., "formula": ..., "inputs": ...}），
-        #   直接读 outcome.value 会拿到那一层，所有 .get() 都是 None。
-        v = tool_result(prior.get(1))
-        if v.get("error"):
-            return StepOutcome(summary=v["error"], value=v)
-        if v.get("no_text"):
-            return StepOutcome(summary="这个项目还没有 MD&A 正文，先跑 scripts/parse_mdna.py", value=v)
-
-        g = tool_result(prior.get(0))
-        lines = [v.get("headline", "")]
-        if g.get("total"):
-            lines.append(f"  · 从 {g.get('sentences', 0)} 句管理层表述中识别出 {g['total']} 条可验证主张")
-
-        for t in v.get("themes", []):
-            c = t["counts"]
-            bit = f"支持 {c.get('supported', 0)}"
-            if c.get("partial"):
-                bit += f" / 部分支持 {c.get('partial')}"
-            if c.get("conflicted"):
-                bit += f" / 冲突 {c.get('conflicted')}"
-            lines.append(f"  · {t['label_cn']}（验 {t['metric_label']}）：{bit}")
-
-        bad = [o for o in v.get("observations", []) if o["state"] == "conflicted"]
-        if bad:
-            lines.append("  与事实相悖的表述（逐条可点回原句）：")
-            for o in bad[:5]:
-                lines.append(
-                    f"    - {o['source_period']} 年报 p{o['page_no']}「{o['text'][:38]}…」"
-                    f" 但{o['metric_label']}{o['actual']}"
-                )
-
-        return StepOutcome(
-            summary="\n".join(lines) + f"\n\n{v.get('index_note', '')}",
-            value=v,
-        )
-
-
-SKILL = NarrativeConsistencySkill()
-
-__all__ = ["NarrativeConsistencySkill", "SKILL"]
+    return {
+        "total": row["total"] or 0,
+        "verifiable": row["verifiable"] or 0,
+        "background_only": row["background_only"] or 0,
+        "validated": row["validated"] or 0,
+        "by_type": by_type,
+    }

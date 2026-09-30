@@ -1,0 +1,7 @@
+{
+  "cassette_id": "ba6977af3e271e80a418206d9bdd90d6",
+  "model_version": "deepseek-flash",
+  "text": "{\"claims\": [{\"text\": \"2022年取向硅钢基料产销量超40万吨，创造新的纪录\", \"subject\": \"华菱涟钢\", \"period_expr\": \"2022年\", \"direction\": \"up\", \"magnitude_text\": \"超40万吨\", \"metric_key\": null, \"metric_note\": \"取向硅钢基料产销量，字段表中无对应键名\", \"claim_type\": \"demand\", \"verifiable\": true, \"confidence\": 0.9}, {\"text\": \"华菱湘钢特厚板坯连铸机提质改造项目顺利投运，为华能苍南4号海上风电项目供货2万吨管桩用钢，最大单重达28.115吨，最大厚度103mm，刷新海上风电项目管桩用钢记录\", \"subject\": \"华菱湘钢\", \"period_expr\": \"报告期\", \"direction\": \"unknown\", \"magnitude_text\": \"2万吨\", \"metric_key\": null, \"metric_note\": \"海上风电项目管桩用钢供货量，字段表中无对应键名\", \"claim_type\": \"order\", \"verifiable\": true, \"confidence\": 0.75}, {\"text\": \"报告期，公司获得专利授权107项，获得省部级以上科技奖项10余个\", \"subject\": \"公司\", \"period_expr\": \"报告期\", \"direction\": \"unknown\", \"magnitude_text\": \"107项；10余个\", \"metric_key\": null, \"metric_note\": \"专利授权数量、省部级以上科技奖项数量，字段表中无对应键名\", \"claim_type\": \"other\", \"verifiable\": true, \"confidence\": 0.85}, {\"text\": \"华菱涟钢技术中心被认定为“国家企业技术中心”，实现公司国家级研发平台“零的突破”\", \"subject\": \"华菱涟钢\", \"period_expr\": \"报告期\", \"direction\": \"improve\", \"magnitude_text\": null, \"metric_key\": null, \"metric_note\": \"国家级研发平台认定，字段表中无对应键名\", \"claim_type\": \"other\", \"verifiable\": true, \"confidence\": 0.7}]}",
+  "tokens_in": 2705,
+  "tokens_out": 473
+}
