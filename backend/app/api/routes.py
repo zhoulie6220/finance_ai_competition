@@ -16,10 +16,28 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.agents.llm.settings import LlmSettings
+from app.api.errors import COMMON_RESPONSES
 from app.db import repository
+from app.schemas.workspace import (
+    ChecksView,
+    ClaimsView,
+    FactDetailView,
+    FactGridView,
+    HealthCard,
+    MatchesView,
+    NarrativeIndexView,
+    PageDetailView,
+    ProjectCard,
+    RuleConfigView,
+    StoredChecksView,
+)
 from app.skills import checks as checks_skill
 
-router = APIRouter(prefix="/api")
+# ⚠ `responses=COMMON_RESPONSES` 不是装饰。FastAPI 默认给 200/422 写的说明是
+#   英文的 "Successful Response" / "Validation Error"，而 `/docs` 是评审看得见的
+#   界面——中文界面上突然冒出一句英文，没人会报错，只会觉得没做完。
+#   测试：tests/integration/test_api.py::test_response_descriptions_are_chinese
+router = APIRouter(prefix="/api", responses=COMMON_RESPONSES)
 
 
 def get_con() -> Any:
@@ -50,7 +68,7 @@ def _require_project(con: sqlite3.Connection, project_id: str) -> dict[str, Any]
 # ---------------------------------------------------------------- 健康检查
 
 
-@router.get("/health")
+@router.get("/health", response_model=HealthCard)
 def health(con: sqlite3.Connection = Depends(get_con)) -> dict[str, Any]:
     """启动时调一次。
 
@@ -83,19 +101,19 @@ def health(con: sqlite3.Connection = Depends(get_con)) -> dict[str, Any]:
 # ---------------------------------------------------------------- 项目
 
 
-@router.get("/projects")
+@router.get("/projects", response_model=list[ProjectCard])
 def list_projects(con: sqlite3.Connection = Depends(get_con)) -> list[dict[str, Any]]:
     return repository.list_projects(con)
 
 
-@router.get("/projects/{project_id}")
+@router.get("/projects/{project_id}", response_model=ProjectCard)
 def get_project(
     project_id: str, con: sqlite3.Connection = Depends(get_con)
 ) -> dict[str, Any]:
     return _require_project(con, project_id)
 
 
-@router.get("/projects/{project_id}/fact-grid")
+@router.get("/projects/{project_id}/fact-grid", response_model=FactGridView)
 def fact_grid(
     project_id: str,
     scope: str | None = Query(default=None, description="默认取项目的 base_scope"),
@@ -123,7 +141,7 @@ def fact_grid(
 # ---------------------------------------------------------------- 事实与原文
 
 
-@router.get("/facts/{fact_id}")
+@router.get("/facts/{fact_id}", response_model=FactDetailView)
 def get_fact(fact_id: str, con: sqlite3.Connection = Depends(get_con)) -> dict[str, Any]:
     fact = repository.get_fact(con, fact_id)
     if fact is None:
@@ -131,7 +149,7 @@ def get_fact(fact_id: str, con: sqlite3.Connection = Depends(get_con)) -> dict[s
     return fact
 
 
-@router.get("/facts/{fact_id}/page")
+@router.get("/facts/{fact_id}/page", response_model=PageDetailView)
 def fact_page(
     fact_id: str, con: sqlite3.Connection = Depends(get_con)
 ) -> dict[str, Any]:
@@ -151,7 +169,7 @@ def fact_page(
     return page
 
 
-@router.get("/pages/{page_id}")
+@router.get("/pages/{page_id}", response_model=PageDetailView)
 def get_page(page_id: str, con: sqlite3.Connection = Depends(get_con)) -> dict[str, Any]:
     page = repository.get_page(con, page_id)
     if page is None:
@@ -162,7 +180,7 @@ def get_page(page_id: str, con: sqlite3.Connection = Depends(get_con)) -> dict[s
 # ---------------------------------------------------------------- 勾稽校验
 
 
-@router.get("/checks")
+@router.get("/checks", response_model=ChecksView)
 def run_checks(
     project_id: str = Query(..., description="项目 id"),
     persist: bool = Query(default=True, description="是否把结论写回 fact_check_result"),
@@ -183,7 +201,7 @@ def run_checks(
     return checks_skill.report_to_json(report, load)
 
 
-@router.get("/checks/stored")
+@router.get("/checks/stored", response_model=StoredChecksView)
 def stored_checks(
     project_id: str = Query(...), con: sqlite3.Connection = Depends(get_con)
 ) -> dict[str, Any]:
@@ -195,7 +213,7 @@ def stored_checks(
 # ---------------------------------------------------------------- 叙事一致性
 
 
-@router.get("/projects/{project_id}/narrative/claims")
+@router.get("/projects/{project_id}/narrative/claims", response_model=ClaimsView)
 def narrative_claims(
     project_id: str,
     theme: str | None = Query(default=None),
@@ -243,7 +261,7 @@ def _extractor_comparison(
     return [dict(r) for r in rows]
 
 
-@router.get("/projects/{project_id}/narrative/matches")
+@router.get("/projects/{project_id}/narrative/matches", response_model=MatchesView)
 def narrative_matches(
     project_id: str,
     limit: int = Query(default=300, ge=1, le=2000),
@@ -263,7 +281,7 @@ def narrative_matches(
     }
 
 
-@router.get("/projects/{project_id}/narrative/index")
+@router.get("/projects/{project_id}/narrative/index", response_model=NarrativeIndexView)
 def narrative_index(
     project_id: str,
     con: sqlite3.Connection = Depends(get_con),
@@ -371,7 +389,7 @@ def _dec(value: Any) -> str | None:
 # ---------------------------------------------------------------- 规则参数
 
 
-@router.get("/rule-config")
+@router.get("/rule-config", response_model=list[RuleConfigView])
 def rule_config(
     industry: str = Query(default=""), con: sqlite3.Connection = Depends(get_con)
 ) -> list[dict[str, Any]]:

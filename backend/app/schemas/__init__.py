@@ -40,6 +40,31 @@ from app.schemas.diagnosis import (
     RuleConfigItem,
     ScenarioDelta,
 )
+from app.schemas.workspace import (
+    CheckResultView,
+    CheckSummaryView,
+    ChecksView,
+    ClaimMatchView,
+    ClaimStatsView,
+    ClaimView,
+    ClaimsView,
+    ExtractorSummaryView,
+    FactCellView,
+    FactDetailView,
+    FactGridView,
+    FactGridRowView,
+    HealthCard,
+    IndexComponentsView,
+    IndexCountsView,
+    MatchesView,
+    NarrativeIndexView,
+    PageDetailView,
+    ProjectCard,
+    ProjectFileView,
+    RuleConfigView,
+    ScenarioMappingView,
+    StoredChecksView,
+)
 from app.schemas.enums import (
     AdjustmentCategory,
     AdjustmentDirection,
@@ -150,4 +175,11 @@ __all__ = [
     "ToolSpecView", "ToolListResponse", "SkillView", "SkillListResponse",
     "MetaResponse", "ProjectView", "ProjectListResponse", "FileView",
     "FileListResponse",
+    # 工作台读模型（app/api/routes.py 的接口；与上面那组分开，见 workspace.py）
+    "HealthCard", "ProjectCard", "ProjectFileView", "FactCellView", "FactGridRowView", "FactGridView",
+    "FactDetailView", "PageDetailView", "CheckSummaryView", "CheckResultView",
+    "ChecksView", "StoredChecksView", "ClaimView", "ClaimStatsView",
+    "ExtractorSummaryView", "ClaimsView", "ClaimMatchView", "MatchesView",
+    "IndexComponentsView", "IndexCountsView", "ScenarioMappingView",
+    "NarrativeIndexView", "RuleConfigView",
 ]

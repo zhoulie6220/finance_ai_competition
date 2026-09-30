@@ -19,6 +19,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.api.routes import get_con
+from app.db import repository
 from app.db.session import connect, init_schema, load_seeds
 from app.main import app
 
@@ -262,3 +263,79 @@ def test_real_comparable_projects_have_grid_values():
             assert filled > 0, f"{pid} 的网格全是空的——多半是又换回 v_fact_grid 了"
     finally:
         app.dependency_overrides.clear()
+
+
+# ---------------------------------------------------------------- 响应模型不许丢字段
+#
+# ⚠ 这一组盯的是 `response_model` **反方向**的坑。
+#
+# 少了必填字段时接口会 500，很吵，一眼能看见——那是好事。
+# 真正的坑是**多出来的字段被静默删掉**：路由返回的 dict 里有 `files`，
+# 而响应模型里没写，FastAPI 就按模型裁剪，前端拿到 `undefined`，
+# 不报错、不告警，只是那个字段永远显示不出来。
+#
+# 2026-09-30 给 13 个工作台接口补响应模型时就踩到了这一条：
+# `GET /api/projects/{id}` 的 `files` 被裁掉了。所以在这里逐条对账，
+# 不是靠「接口没报错」当作通过。
+
+
+def _keys(x: object) -> set[str]:
+    if isinstance(x, dict):
+        return set(x)
+    if isinstance(x, list) and x and isinstance(x[0], dict):
+        return set(x[0])
+    return set()
+
+
+def test_project_list_response_keeps_every_repository_field(
+    client: TestClient, seeded_db: Path
+) -> None:
+    """列表接口：仓储层给几列，接口就要出几列。"""
+    con = connect(seeded_db)
+    try:
+        raw = _keys(repository.list_projects(con))
+    finally:
+        con.close()
+    api = _keys(client.get("/api/projects").json())
+    assert raw <= api, f"这些字段被响应模型裁掉了：{sorted(raw - api)}"
+
+
+def test_project_detail_response_keeps_every_repository_field(
+    client: TestClient, seeded_db: Path
+) -> None:
+    """详情接口。
+
+    ★ 这一条是**回归测试**：`files` 曾经就是在这里被裁掉的——
+    仓储层返回了它，`ProjectCard` 里没写，于是项目详情页的文件列表
+    永远是空的，而且不报错。
+    """
+    con = connect(seeded_db)
+    try:
+        raw = _keys(repository.get_project(con, "p1"))
+    finally:
+        con.close()
+    api = _keys(client.get("/api/projects/p1").json())
+    assert raw <= api, f"这些字段被响应模型裁掉了：{sorted(raw - api)}"
+
+
+def test_fact_detail_response_keeps_every_repository_field(
+    client: TestClient, seeded_db: Path
+) -> None:
+    """事实详情是字段最多的一个（30 列），最容易被裁。"""
+    con = connect(seeded_db)
+    try:
+        raw = _keys(repository.get_fact(con, "fx1"))
+    finally:
+        con.close()
+    assert raw, "夹具里的 fx1 没取到，测试本身失效了"
+    api = _keys(client.get("/api/facts/fx1").json())
+    assert raw <= api, f"这些字段被响应模型裁掉了：{sorted(raw - api)}"
+
+
+def test_rule_config_response_keeps_every_repository_field(client: TestClient) -> None:
+    """口径参数：页面要按 `default_value` 做「恢复默认」，裁掉就没法恢复。"""
+    page = client.get("/api/rule-config").json()
+    assert page, "种子里的 rule_config 是空的"
+    assert {"key", "value", "default_value"} <= set(page[0]), (
+        f"口径参数少了字段：{sorted(page[0])}"
+    )

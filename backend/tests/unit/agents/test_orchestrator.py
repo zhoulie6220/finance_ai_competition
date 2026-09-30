@@ -203,8 +203,15 @@ def test_prior_results_flow_into_later_steps(staged) -> None:
     task = run(orch.run_task(task))
     summary = task.steps[-1].output_ref or ""
     assert "自检通过" in summary
-    # 汇总里带上了第一步的数据库统计，说明 prior 真的传到了
-    assert "42" in summary and "91" in summary
+    # 汇总里带上了第一步的数据库统计，说明 prior 真的传到了。
+    #
+    # ⚠ 这里比的是**第一步的实际输出**，不是写死的数字。原来写的是
+    #   `"42" in summary`——那个 42 是当时种子数据的表数量，两条分支合并后
+    #   种子变成了 45 张表，测试就红了，而它想验的「prior 有没有传到」
+    #   其实一点没坏。写死数字的断言会把「数据变了」报成「逻辑坏了」，
+    #   而修复它的正确做法不是把 42 改成 45（下次还会再改一遍）。
+    assert task.steps[0].output_ref
+    assert task.steps[0].output_ref in summary
 
 
 def test_task_cannot_be_run_twice(staged) -> None:

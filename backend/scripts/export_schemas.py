@@ -86,6 +86,31 @@ EXPORTED_MODELS = [
     "ProjectListResponse",
     "FileView",
     "FileListResponse",
+    # 工作台读模型。没有它们，`frontend/src/api/types.ts` 那 345 行手写类型
+    # 就只能继续手抄——而后端加字段时它不会报错，只是那个字段永远显示不出来。
+    "HealthCard",
+    "ProjectCard",
+    "ProjectFileView",
+    "FactCellView",
+    "FactGridRowView",
+    "FactGridView",
+    "FactDetailView",
+    "PageDetailView",
+    "CheckSummaryView",
+    "CheckResultView",
+    "ChecksView",
+    "StoredChecksView",
+    "ClaimView",
+    "ClaimStatsView",
+    "ExtractorSummaryView",
+    "ClaimsView",
+    "ClaimMatchView",
+    "MatchesView",
+    "IndexComponentsView",
+    "IndexCountsView",
+    "ScenarioMappingView",
+    "NarrativeIndexView",
+    "RuleConfigView",
 ]
 
 #: 文件头写成 `$comment` 而不是 `/* */`。

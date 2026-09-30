@@ -317,7 +317,11 @@ def test_project_lifecycle(client, tmp_path) -> None:
                          "2021", "2022", "2023", "2024"],
     }).json()
     assert p["project_id"]
-    assert client.get("/api/projects").json()["projects"][0]["stock_code"] == "600019.SH"
+    # ⚠ 返回的是**裸数组**，不是 `{"projects": [...]}`。
+    #   这个形状由 `app/api/routes.py::list_projects` 定，它压过了
+    #   `routes_projects.py` 里那个返回包装对象的同名端点（见 routes_projects
+    #   里那段注释）。前端 `api/client.ts` 解的就是裸数组，改形状要一起改。
+    assert client.get("/api/projects").json()[0]["stock_code"] == "600019.SH"
 
 
 def test_register_file_computes_hash(client, tmp_path) -> None:
@@ -448,12 +452,28 @@ def test_missing_field_error_names_the_field(client) -> None:
     assert "缺少必填字段" in issue["msg"]
 
 
-def test_every_endpoint_declares_a_response_model(client) -> None:
-    """每个接口的 200 都要指向一个真实模型。
+def _is_typed(schema: dict) -> bool:
+    """这份 schema 是不是「指向一个真实模型」。
 
-    返回 `dict[str, Any]` 时 FastAPI 生成的是 `{"additionalProp1": {}}` 空壳——
+    三种算数：顶层 `$ref`、数组且 `items` 是 `$ref`、以及 `anyOf` 里全是
+    `$ref`（Pydantic 对 `X | None` 的顶层响应会这么生成）。
+
+    ⚠ **数组那种一定要算数。** 这个断言原本只认顶层 `$ref`，于是
+    `response_model=list[ProjectCard]` 会被判成「没声明响应模型」——
+    可它明明是有类型的，被误伤的恰好是最该鼓励的写法。真正的靶子是
+    `dict[str, Any]` 生成的 `{"additionalProp1": {}}` 空壳：
     它看起来像一份文档，实际什么也没说，前端也没法据此生成类型。
     """
+    if "$ref" in schema:
+        return True
+    if schema.get("type") == "array":
+        return "$ref" in schema.get("items", {})
+    variants = schema.get("anyOf")
+    return bool(variants) and all("$ref" in v for v in variants)
+
+
+def test_every_endpoint_declares_a_response_model(client) -> None:
+    """每个接口的 200 都要指向一个真实模型。"""
     spec = client.get("/openapi.json").json()
     untyped = []
     for path, ops in spec["paths"].items():
@@ -462,7 +482,7 @@ def test_every_endpoint_declares_a_response_model(client) -> None:
             if "application/json" not in content:
                 continue  # SSE 那条是 text/event-stream，见下一条测试
             schema = content["application/json"].get("schema", {})
-            if "$ref" not in schema:
+            if not _is_typed(schema):
                 untyped.append(f"{method.upper()} {path} → {schema}")
     assert not untyped, f"这些接口没声明响应模型：{untyped}"
 

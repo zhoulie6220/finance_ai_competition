@@ -113,6 +113,59 @@ export interface CheckResult {
   created_at: string;
 }
 
+/** 一条勾稽结论。`formula` 与 `inputs` 是「可复算」的落点。 */
+export interface CheckResultView {
+  rule_key: string;
+  period: string;
+  scope: string;
+  status: string;
+  severity: string;
+  lhs?: string | null;
+  rhs?: string | null;
+  diff?: string | null;
+  tolerance?: string | null;
+  formula: string;
+  inputs?: unknown[];
+  message: string;
+  suggestion?: string | null;
+}
+
+/**
+ * 勾稽校验的汇总。
+ * 
+ * `hard_failed` 与 `soft_failed` 分开是刻意的：报表本身不平（几可断定解析
+ * 错了）与字典缺字段（报表没问题，是字典没覆盖）是两件事，混成一个
+ * 「失败数」会让前者被后者的噪声淹没。
+ */
+export interface CheckSummaryView {
+  total: number;
+  evaluable: number;
+  passed: number;
+  failed: number;
+  hard_failed: number;
+  soft_failed: number;
+  skipped_missing_data: number;
+  skipped_incomparable: number;
+  sheet_ok: boolean;
+  coverage_line: string;
+}
+
+/**
+ * `GET /api/checks` 的响应。
+ * 
+ * `warnings` 记的是**取数阶段**的问题（值解析不出来、同一指标多行等），
+ * 与校验结论分开：把它们混进 `results` 会让「报表不平」和「这行没读出来」
+ * 看起来是同一种失败。
+ */
+export interface ChecksView {
+  project_id: string;
+  scope: string;
+  method_version: string;
+  summary: CheckSummaryView;
+  results: CheckResultView[];
+  warnings?: unknown[];
+}
+
 /**
  * 一条管理层主张。
  * 
@@ -194,8 +247,78 @@ export interface ClaimMatch {
   created_at: string;
 }
 
+/**
+ * 一条「主张 → 事实」的判定。
+ * 
+ * `formula` 与 `inputs` 允许为空：不可比的主张没有算式可给，
+ * 给一个空算式比编一个更有用。
+ */
+export interface ClaimMatchView {
+  match_id: string;
+  claim_id: string;
+  metric_key: string;
+  verdict: string;
+  reason: string;
+  confidence: number;
+  claim_period: string;
+  fact_period: string;
+  direction_claim?: string | null;
+  direction_actual?: string | null;
+  magnitude_target?: string | null;
+  magnitude_actual?: string | null;
+  relative_deviation?: string | null;
+  formula?: string | null;
+  inputs?: string | null;
+  claim_text: string;
+  claim_type: string;
+  source_page: number;
+  verifiable: number;
+  background_only: number;
+}
+
+export interface ClaimStatsView {
+  total: number;
+  verifiable: number;
+  background_only: number;
+  validated: number;
+  by_type?: Record<string, number>;
+}
+
 /** MD&A 主张的主题。对应大框架里的四类叙事信号。 */
 export type ClaimType = "demand" | "order" | "capacity" | "collection" | "product_mix" | "cost" | "risk" | "macro" | "other";
+
+/**
+ * 一条主张（MD&A 里的一句话结构化之后）。
+ * 
+ * `verifiable` / `background_only` 用 0/1 而不是布尔：它们直接来自 SQLite
+ * 的 INTEGER 列，且页面上要按它们求和。
+ */
+export interface ClaimView {
+  claim_id: string;
+  claim_text: string;
+  claim_type: string;
+  direction: string;
+  period_norm?: string | null;
+  period_expr?: string | null;
+  magnitude_text?: string | null;
+  magnitude_value?: string | null;
+  magnitude_unit?: string | null;
+  verifiable: number;
+  background_only: number;
+  confidence: number;
+  status: string;
+  source_page: number;
+  primary_metric?: string | null;
+  /** 该主题被禁止的简化推断，随主张一起展示供人工复核对照 */
+  forbidden_simplifications?: string[];
+}
+
+export interface ClaimsView {
+  project_id: string;
+  stats: ClaimStatsView;
+  by_extractor: ExtractorSummaryView[];
+  claims: ClaimView[];
+}
 
 /**
  * 可比公司。
@@ -345,6 +468,42 @@ export type EvidenceKind = "fact" | "claim" | "match" | "check" | "calc" | "llm"
  */
 export type ExampleSource = "annual_report" | "synthetic_example";
 
+/**
+ * 一种抽取法的概况，用来做「规则法 vs LLM」的并排对照。
+ * 
+ * 条数少不代表差、也不代表好——LLM 版条数少于规则法（它更挑），但可验证的
+ * 比例更高。**这两件事都不该由代码下结论**，并排放着让人自己判。
+ */
+export interface ExtractorSummaryView {
+  /** 'rule:claim_v1' 或 'llm:deepseek-chat@<prompt_hash>' */
+  extractor: string;
+  total: number;
+  verifiable: number;
+  validated: number;
+  theme_count: number;
+}
+
+/**
+ * 财务事实网格里的一格。
+ * 
+ * **没有数据也有一格**，此时 `status='not_found'` 且 `fact_id` 为空——
+ * 缺失用「格子是空的」表达，而不是「这一行不存在」。后者在页面上与
+ * 「这家公司没披露这一项」长得一模一样，但成因完全不同。
+ */
+export interface FactCellView {
+  fact_id?: string | null;
+  /** 字符串，见模块头说明 */
+  value?: string | null;
+  unit?: string | null;
+  raw_unit?: string | null;
+  status: string;
+  comparable: boolean;
+  incomparable_reason?: string | null;
+  source_file?: string | null;
+  source_page?: number | null;
+  confidence?: number | null;
+}
+
 /** 人工修正。只追加增量，旧行保留，绝不原地覆盖。 */
 export interface FactCorrection {
   correction_id: string;
@@ -355,6 +514,68 @@ export interface FactCorrection {
   reason: string;
   operator: string;
   created_at: string;
+}
+
+/**
+ * 一笔财务事实的全部字段（`GET /api/facts/{id}`）。
+ * 
+ * **证据链的终点**：`source_file` / `source_page` / `source_text` 三个字段
+ * 就是「点任意结论回到年报原文」落地的地方，缺一个这条链就断在这里。
+ */
+export interface FactDetailView {
+  fact_id: string;
+  project_id: string;
+  company_id: string;
+  is_primary: boolean;
+  metric: string;
+  value?: string | null;
+  unit?: string | null;
+  period: string;
+  scope: string;
+  source_file: string;
+  source_page: number;
+  source_text: string;
+  confidence: number;
+  status: string;
+  period_kind: string;
+  value_raw?: string | null;
+  raw_unit?: string | null;
+  unit_factor?: string | null;
+  source_table?: string | null;
+  source_row_label?: string | null;
+  source_printed_page?: string | null;
+  bbox?: string | null;
+  extractor: string;
+  comparable: boolean;
+  incomparable_reason?: string | null;
+  restated: boolean;
+  file_name?: string | null;
+  file_period?: string | null;
+  sign_basis?: string | null;
+  mapped_from?: string | null;
+}
+
+export interface FactGridRowView {
+  metric_key: string;
+  label_cn: string;
+  statement: string;
+  unit_kind: string;
+  /** 期间 → 格子 */
+  cells: Record<string, FactCellView>;
+}
+
+/**
+ * 「指标 × 年度」网格。
+ * 
+ * 读的是 `v_fact_grid_company` 而不是 `v_fact_grid`——后者硬编码
+ * `is_primary = 1`，会让华菱、首钢的网格每格都是 not_found 且不报错。
+ */
+export interface FactGridView {
+  project_id: string;
+  company_name: string;
+  scope: string;
+  periods: string[];
+  metrics: FactGridRowView[];
 }
 
 /**
@@ -490,6 +711,29 @@ export interface FinancialFact {
 }
 
 /**
+ * 工作台健康检查（`GET /api/health`）。
+ * 
+ * `db_ok` 为假时 `db_hint` 必须给出去处——空库是能打开的，不提示的话
+ * 刚重建完还没导数据的库会让所有页面显示空白，而没有任何地方说明原因。
+ */
+export interface HealthCard {
+  /** 'ok' 或 'empty' */
+  status: string;
+  db_ok: boolean;
+  /** 库为空时的处置办法 */
+  db_hint?: string | null;
+  /** 各表行数，供页面显示「库里有东西」 */
+  counts: Record<string, number>;
+  /** 'live' 或 'replay' */
+  llm_mode: string;
+  llm_configured: boolean;
+  llm_description: string;
+  /** 离线回放时界面必须显著标注，不得假装实时 */
+  offline_mode: boolean;
+  rule_config_version?: number | null;
+}
+
+/**
  * 健康检查。
  * 
  * 数据库不可用时返回的是 **503 + `status='degraded'`**，不是 200——
@@ -517,7 +761,45 @@ export interface HealthResponse {
  */
 export type IncomparableReason = "mna" | "restructuring" | "asset_injection" | "scope_change" | "restatement" | "policy_change" | "industry_cycle" | "seasonality" | "other";
 
-export type IndexGrade = "high" | "medium" | "low" | "insufficient";
+/**
+ * 诊断指数的五个构成项。
+ * 
+ * **每一项都是 [−1, 1] 区间的字符串**（会计口径 v1.1 §一）。
+ * 旧稿五个分项都是 0–1，中性证据只能取 0.5，于是 H=C=0.5 会算出
+ * 50 + 20×0.5 + 20×0.5 = 70 分——正好压在「一致性较高」的分界线上，
+ * 全中性的公司反而得分最高。
+ */
+export interface IndexComponentsView {
+  history?: string | null;
+  current?: string | null;
+  risk?: string | null;
+  template?: string | null;
+  quality?: string | null;
+}
+
+/**
+ * 分母与跳过数。
+ * 
+ * 跳过了什么**也要说**，不只报成功的数——只报成功的数会让「公司没披露」
+ * 和「系统没读到」看起来一样。
+ */
+export interface IndexCountsView {
+  n: number;
+  N: number;
+  history_observations: number;
+  current_observations: number;
+  skipped_no_period: number;
+  skipped_no_fact: number;
+}
+
+/**
+ * 分级线见 rule_config：index.grade_high_min=70、index.grade_low_max=45。
+ * 
+ * 按**未四舍五入**的值分级。取 insufficient_evidence 时 `score` 必须为 NULL ——
+ * 绝不用 0 分或 50 分代替：页面一定会把那个数字渲染成一个大号分数，
+ * 人工复核的入口就形同虚设了。
+ */
+export type IndexGrade = "high" | "medium" | "low" | "insufficient_evidence";
 
 /**
  * 一次模型调用。
@@ -555,11 +837,34 @@ export interface LlmCall {
 export type LogLevel = "DEBUG" | "INFO" | "WARNING" | "ERROR" | "CRITICAL";
 
 /**
- * 主张—事实匹配的四态 + 部分支持。
+ * 主张—事实匹配的判定。会计口径 v1.1 §A.2 的 s 标度。
  * 
- * `partial` 用于「方向一致但幅度明显偏弱」，避免把只兑现一半与完全兑现混为一谈。
+ * 三个**计分**态，构成 H / C 的等权平均：
+ * 
+ *     supported     s = +1   同口径直接证据满足目标，或实质支持主张方向
+ *     neutral       s =  0   方向性主张对应的变化落在噪声区间内
+ *     contradicted  s = -1   直接证据超过阈值且方向相反，或明确数值目标未达成
+ * 
+ * 三个**不计分**态，留在页面单列，理由必须写进 `reason`：
+ * 
+ *     needs_review  —— 只有间接代理、口径不一致或来源冲突，尚未核清。**留在覆盖率分母**
+ *     unverifiable  —— 未披露直接指标，或主张目标不够具体。**不进分母**
+ *     incomparable  —— 并购/重组/政策变更/重述/周期/季节性导致不可比。不进分母、不扣分
+ * 
+ * ⚠ v1.1 明确删掉了旧稿的 `partial`（方向一致但幅度偏弱），并把 H、C 的取值域
+ * 从 [0,1] 改成 [-1,1]。旧定义下五个分项都是 0–1，中性证据只能取 0.5，于是
+ * H=C=0.5 会算出 50 + 20×0.5 + 20×0.5 = 70 —— **正好压在「一致性较高」的分界线上**。
+ * 改成 [-1,1] 之后全中性得 50 分，才是诚实的。
  */
-export type MatchVerdict = "supported" | "partial" | "conflicted" | "incomparable" | "missing";
+export type MatchVerdict = "supported" | "neutral" | "contradicted" | "needs_review" | "unverifiable" | "incomparable";
+
+export interface MatchesView {
+  project_id: string;
+  counts?: Record<string, number>;
+  /** 没跑过匹配时给出的说明 */
+  hint?: string | null;
+  matches: ClaimMatchView[];
+}
 
 /** MD&A 章节切分结果。 */
 export interface MdnaSection {
@@ -607,6 +912,33 @@ export interface MetricDefinition {
   /** 例句所在页码。example_source=annual_report 时必填 */
   example_page?: number | null;
   scope_note?: string | null;
+}
+
+/**
+ * `GET /api/projects/{id}/narrative/index` 的响应。
+ * 
+ * 闸门不过时 `score` 是 **null**，并附逐条的未满足条件。页面据此显示
+ * 「证据不足，不出分」——**绝不用 0 分或 50 分代替**：分母没变、权重照乘，
+ * 那个分数看起来和完整版一模一样，而它缺了整整 30 分权重的构成项。
+ */
+export interface NarrativeIndexView {
+  project_id: string;
+  /** 'scored' 或 'insufficient_evidence' */
+  status: string;
+  grade: string;
+  /** 字符串；闸门不过时是 null */
+  score?: string | null;
+  components: IndexComponentsView;
+  coverage?: string | null;
+  counts: IndexCountsView;
+  insufficient_reason?: string | null;
+  formula: string;
+  conclusion_boundary: string;
+  scenarios: ScenarioMappingView;
+  action: string;
+  valuation_action: string;
+  user_hint: string;
+  method_version: string;
 }
 
 /**
@@ -714,6 +1046,35 @@ export interface NormalizationYear {
 /** 同一次取值的多个观测，裁决结果。 */
 export type ObservationResolution = "pending" | "adopted" | "rejected";
 
+/**
+ * 年报的一页正文（`GET /api/pages/{id}`、`GET /api/facts/{id}/page`）。
+ * 
+ * 返回的是**已抽取的正文**而不是 PDF 切片：样例 PDF 有几十 MB，被 .gitignore
+ * 挡在仓库外，评委 clone 下来根本没有那些文件。正文在库里、能全文检索、
+ * 能高亮，比 PDF 更好用。
+ * 
+ * `prev_page_id` / `next_page_id` 由**后端**给出。前端不自己拼 id——
+ * 那种隐式约定一旦和后端的 id 生成规则分叉，表现为「翻页点了没反应」，
+ * 而且不报错。
+ */
+export interface PageDetailView {
+  page_id: string;
+  file_id: string;
+  file_name?: string | null;
+  period: string;
+  role: string;
+  page_no: number;
+  printed_page_no?: string | null;
+  text?: string | null;
+  /** 'native' 或 'ocr' */
+  text_source: string;
+  has_table: boolean;
+  prev_page_id?: string | null;
+  next_page_id?: string | null;
+  first_page_no?: number | null;
+  last_page_no?: number | null;
+}
+
 /** 估值参数的来源。禁止模型凭记忆填入。 */
 export type ParamSourceType = "historical_fact" | "user_input" | "comparable_stat" | "model_assumption";
 
@@ -737,6 +1098,49 @@ export type PeerRole = "valuation_peer" | "chain_reference";
 export type PeriodKind = "current" | "instant" | "opening" | "average";
 
 export type Profitability = "profitable" | "loss";
+
+/**
+ * 项目卡片（`GET /api/projects`、`GET /api/projects/{id}`）。
+ * 
+ * 比 `ProjectView` 多三个计数字段——工作台首页要显示「几份文件、几条事实、
+ * 几段正文」，不带上这三个数就得到处再发一次请求。
+ * 
+ * ⚠ `files` **只有详情接口（`GET /api/projects/{id}`）才带**，
+ * 列表接口是空的。这一点是补这个模型才发现的：
+ * 仓储层的 `get_project` 会多返回一个 `files` 键，而模型里没有——
+ * `response_model` 就把它**静默删掉**了，前端拿到 `undefined` 不报错，
+ * 只是项目详情页的文件列表永远是空的。
+ * 
+ * 这正是 `response_model` 的取舍：**多写一个字段会 500（吵，但是对的），
+ * 少写一个字段会静默丢数据**。所以加完模型一定拿真实响应对一遍字段集合，
+ * 别只看接口没报错就算过。
+ */
+export interface ProjectCard {
+  project_id: string;
+  name: string;
+  company_name: string;
+  stock_code: string;
+  industry: string;
+  base_scope: string;
+  fiscal_years?: string[];
+  file_count?: number | null;
+  fact_count?: number | null;
+  mdna_count?: number | null;
+  /** 仅详情接口返回；列表接口为 null */
+  files?: ProjectFileView[] | null;
+}
+
+/** 项目下的一份文件（只出现在项目详情里，列表接口不带）。 */
+export interface ProjectFileView {
+  file_id: string;
+  /** 'annual_report' 等 */
+  role: string;
+  period: string;
+  file_name: string;
+  page_count?: number | null;
+  /** 停在 'pending' 是诚实的状态 */
+  parse_status: string;
+}
 
 export interface ProjectListResponse {
   projects: ProjectView[];
@@ -816,6 +1220,33 @@ export interface RuleConfigItem {
 }
 
 /**
+ * 一条口径参数。页面提供查看/修改/恢复默认，改的就是这些行。
+ * 
+ * ⚠ **这里没有 `tier` 字段，虽然 `rule_config` 表里有这一列。**
+ * `repository.list_rule_config()` 的 SELECT 没有取它，页面也就拿不到——
+ * 而 `tier` 决定改这个值要谁点头（A-8：`hard` 会计口径须签字 / `soft`
+ * 提示语与排序 / `model` 模型参数）。要做「这个值归谁批」的界面时，
+ * 得先把那一列加进 SELECT，模型这里同步加。
+ * 
+ * ⚠ 加这个模型时我照着表结构写了个 `tier: str`，接口直接 500
+ * （`ResponseValidationError: Field required`）——**这正是 `response_model`
+ * 该有的行为**：少一个字段立刻炸，而不是像 `dict[str, Any]` 那样
+ * 悄悄少返回一个字段、前端拿到 `undefined` 还不报错。
+ */
+export interface RuleConfigView {
+  key: string;
+  value: string;
+  value_type: string;
+  industry: string;
+  label_cn: string;
+  description: string;
+  unit: string;
+  default_value?: string | null;
+  min_value?: string | null;
+  max_value?: string | null;
+}
+
+/**
  * 复现一次的完整凭据。
  * 
  * 「同一份输入和配置可以重新生成同一计算结果」不是靠承诺，是靠这张表：
@@ -867,12 +1298,34 @@ export interface ScenarioDelta {
   note: string;
 }
 
+/**
+ * 指数 → 估值情景的传导。
+ * 
+ * **没有目标价字段，也不该有。** 估值输出永远是区间；单点目标价会隐藏
+ * 不确定性，而这里给的是「有一组证据指向增长假设需要复核」。
+ */
+export interface ScenarioMappingView {
+  /** 不足以出分时是 null——给一组「差不多的权重」会让闸门形同虚设 */
+  weights?: Record<string, string> | null;
+  revenue_growth_ref?: string | null;
+  requires_human_confirmation: boolean;
+  changes_valuation: boolean;
+  notes?: string[];
+}
+
 /** 会计口径。默认合并口径；母公司口径只在用户明确选择时展示。 */
 export type Scope = "consolidated" | "parent";
 
 export type Severity = "info" | "warn" | "error";
 
-export type SignConvention = "positive_is_good" | "negative_is_good" | "neutral";
+/**
+ * 指标的经济方向：数值越大是好事还是坏事。
+ * 
+ * ⚠ 它描述的是**经济方向**，不是**列报符号**——资产减值类指标两者都要：
+ * 经济方向是「损失越大越坏」，而列报符号要看那一年年报是正数列示还是
+ * 「损失以负号填列」。后者记在 financial_fact.sign_basis 上，不是这里。
+ */
+export type SignConvention = "positive_is_good" | "negative_is_good" | "neutral" | "loss_positive";
 
 export interface SkillListResponse {
   count: number;
@@ -891,6 +1344,12 @@ export type SourceLocation = "main_statement" | "indicator_table" | "notes" | "m
 export type Statement = "balance" | "income" | "cashflow" | "indicator" | "industry" | "disclosure";
 
 export type StepStatus = "pending" | "running" | "succeeded" | "failed" | "skipped" | "retrying";
+
+/** `GET /api/checks/stored`：读回上次落库的结果，供「与上次运行对照」。 */
+export interface StoredChecksView {
+  project_id: string;
+  results: CheckResultView[];
+}
 
 /**
  * 一次编排任务。

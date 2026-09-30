@@ -25,6 +25,41 @@ export interface EvidenceSource {
   source_text?: string | null
 }
 
+/**
+ * 证据面板要展示的东西：点开一个数字，看到它是怎么来的。
+ *
+ * **这是整个系统区别于「AI 财报摘要工具」的地方**，所以它显示的不是一句
+ * 「数据来源：年报」，而是四样能核对的东西：
+ *
+ *   1. 算出这个数的公式（后端引擎给的 `formula`，不是前端拼的）
+ *   2. 代进公式的入参
+ *   3. 每个入参**来自哪份年报的第几页哪张表**
+ *   4. 那一行的**原文**——照抄，不做任何加工
+ *
+ * ⚠ **这个类型原来定义在 `components/EvidenceDrawer.tsx` 里，2026-09-30
+ *   合并两条分支时搬到这里。** 那个组件被另一条分支的同名组件取代了——
+ *   新的那个接收 `factId`、自己去取原文页，做的是**另一种**交互
+ *   （从事实表点进来，而不是从任务时间线的算式点进来）。
+ *
+ *   而 `components/ResultPanel.tsx`（任务时间线的结果面板）要的是**这个**
+ *   形状：它已经拿到了算式和入参，只需要一个"把它显示出来"的抽屉。
+ *   两者别混用——它们的入参根本不是一回事。
+ */
+export interface EvidenceTarget {
+  /** 例如「2024 年 · 营业收入」 */
+  title: string
+  /** 已经格式化好的数值，例如「322,115.85 百万元」 */
+  value: string
+  /** 后端引擎给的公式。前端不拼公式。 */
+  formula?: string | null
+  inputs?: unknown
+  sources: EvidenceSource[]
+  /** 拒绝出数的理由，或重述说明。有值时要显著显示。 */
+  note?: string | null
+  /** 这个数是程序算出来的（年报里没有这一行），而不是读到的 */
+  derived?: boolean
+}
+
 /** `facts.series` 的一个数据点。 */
 export interface SeriesPoint extends EvidenceSource {
   period: string

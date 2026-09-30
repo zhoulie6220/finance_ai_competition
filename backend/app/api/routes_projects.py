@@ -87,9 +87,18 @@ def _resolve_within_data_root(rel_path: str) -> Path:
     return target
 
 
-@router.get("", summary="项目列表", response_model=ProjectListResponse)
-def list_projects(repo: ProjectRepository = Depends(get_project_repo)) -> dict:
-    return {"projects": repo.list_projects()}
+# ⚠ `GET /api/projects` **不在这里**。
+#
+#   这里原本有一个返回 `{"projects": [...]}` 的版本，与 `app/api/routes.py` 的
+#   `list_projects`（返回裸数组）撞了同一个路径。FastAPI 按注册顺序取第一个命中，
+#   而 `app/main.py` 刻意让 `app.api.router` 先注册，所以那个版本从来跑不到——
+#   它只是让 `/docs` 上出现两份互相矛盾的 `/api/projects` 文档（operationId
+#   撞车，FastAPI 会告警但不会失败）。
+#
+#   合并两条并行开发的分支时删掉了这个死端点，保留 `routes.py` 那一份：
+#   消费它的是现在真正在跑的前端（`frontend/src/api/client.ts` 取的就是裸数组）。
+#   `ProjectListResponse` 模型保留着——包装成对象是更可扩展的形状，
+#   将来若要加分页会用到它。
 
 
 @router.post(

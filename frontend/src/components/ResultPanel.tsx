@@ -22,7 +22,10 @@
 
 import { useState } from 'react'
 import { EChart } from './EChart'
-import type { EvidenceTarget } from './EvidenceDrawer'
+// ⚠ 从 `types/view` 取，不是从 `./EvidenceDrawer`。
+//   同名的那个组件已经被另一条分支的版本取代，它接收的是 `factId`
+//   （从事实表点进来、自己去取原文页），不是这里的 `EvidenceTarget`。
+import type { EvidenceTarget } from '../types/view'
 import type { StepResult } from '../hooks/useTaskStream'
 import {
   asCoverage,

@@ -1,5 +1,4 @@
 {
-  "$comment": "本文件由 backend/scripts/export_schemas.py 自动生成，请勿手改。\n\n数据契约的唯一定义源在 backend/app/schemas/（Pydantic v2），\n人类可读版本见 docs/01-data-contract.md。\n契约变更后请重新运行：\n    cd backend && python scripts/export_schemas.py",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$comment": "本文件由 backend/scripts/export_schemas.py 自动生成，请勿手改。\n数据契约的唯一定义源在 backend/app/schemas/（Pydantic v2），\n人类可读版本见 docs/01-data-contract.md。\n契约变更后请重新运行：cd backend && python scripts/export_schemas.py",
   "title": "投研工作台数据契约",
@@ -5454,6 +5453,1818 @@
         "files"
       ],
       "title": "文件列表",
+      "type": "object"
+    },
+    "HealthCard": {
+      "description": "工作台健康检查（`GET /api/health`）。\n\n`db_ok` 为假时 `db_hint` 必须给出去处——空库是能打开的，不提示的话\n刚重建完还没导数据的库会让所有页面显示空白，而没有任何地方说明原因。",
+      "properties": {
+        "status": {
+          "description": "'ok' 或 'empty'",
+          "title": "Status",
+          "type": "string"
+        },
+        "db_ok": {
+          "title": "Db Ok",
+          "type": "boolean"
+        },
+        "db_hint": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "库为空时的处置办法",
+          "title": "Db Hint"
+        },
+        "counts": {
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "description": "各表行数，供页面显示「库里有东西」",
+          "title": "Counts",
+          "type": "object"
+        },
+        "llm_mode": {
+          "description": "'live' 或 'replay'",
+          "title": "Llm Mode",
+          "type": "string"
+        },
+        "llm_configured": {
+          "title": "Llm Configured",
+          "type": "boolean"
+        },
+        "llm_description": {
+          "title": "Llm Description",
+          "type": "string"
+        },
+        "offline_mode": {
+          "description": "离线回放时界面必须显著标注，不得假装实时",
+          "title": "Offline Mode",
+          "type": "boolean"
+        },
+        "rule_config_version": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Rule Config Version"
+        }
+      },
+      "required": [
+        "status",
+        "db_ok",
+        "counts",
+        "llm_mode",
+        "llm_configured",
+        "llm_description",
+        "offline_mode"
+      ],
+      "title": "健康检查",
+      "type": "object"
+    },
+    "ProjectFileView": {
+      "description": "项目下的一份文件（只出现在项目详情里，列表接口不带）。",
+      "properties": {
+        "file_id": {
+          "title": "File Id",
+          "type": "string"
+        },
+        "role": {
+          "description": "'annual_report' 等",
+          "title": "Role",
+          "type": "string"
+        },
+        "period": {
+          "title": "Period",
+          "type": "string"
+        },
+        "file_name": {
+          "title": "File Name",
+          "type": "string"
+        },
+        "page_count": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Page Count"
+        },
+        "parse_status": {
+          "description": "停在 'pending' 是诚实的状态",
+          "title": "Parse Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "file_id",
+        "role",
+        "period",
+        "file_name",
+        "parse_status"
+      ],
+      "title": "项目文件",
+      "type": "object"
+    },
+    "ProjectCard": {
+      "description": "项目卡片（`GET /api/projects`、`GET /api/projects/{id}`）。\n\n比 `ProjectView` 多三个计数字段——工作台首页要显示「几份文件、几条事实、\n几段正文」，不带上这三个数就得到处再发一次请求。\n\n⚠ `files` **只有详情接口（`GET /api/projects/{id}`）才带**，\n列表接口是空的。这一点是补这个模型才发现的：\n仓储层的 `get_project` 会多返回一个 `files` 键，而模型里没有——\n`response_model` 就把它**静默删掉**了，前端拿到 `undefined` 不报错，\n只是项目详情页的文件列表永远是空的。\n\n这正是 `response_model` 的取舍：**多写一个字段会 500（吵，但是对的），\n少写一个字段会静默丢数据**。所以加完模型一定拿真实响应对一遍字段集合，\n别只看接口没报错就算过。",
+      "properties": {
+        "project_id": {
+          "title": "Project Id",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "company_name": {
+          "title": "Company Name",
+          "type": "string"
+        },
+        "stock_code": {
+          "title": "Stock Code",
+          "type": "string"
+        },
+        "industry": {
+          "title": "Industry",
+          "type": "string"
+        },
+        "base_scope": {
+          "title": "Base Scope",
+          "type": "string"
+        },
+        "fiscal_years": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Fiscal Years",
+          "type": "array"
+        },
+        "file_count": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "File Count"
+        },
+        "fact_count": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Fact Count"
+        },
+        "mdna_count": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Mdna Count"
+        },
+        "files": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/ProjectFileView"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "仅详情接口返回；列表接口为 null",
+          "title": "Files"
+        }
+      },
+      "required": [
+        "project_id",
+        "name",
+        "company_name",
+        "stock_code",
+        "industry",
+        "base_scope"
+      ],
+      "title": "项目卡片",
+      "type": "object"
+    },
+    "FactCellView": {
+      "description": "财务事实网格里的一格。\n\n**没有数据也有一格**，此时 `status='not_found'` 且 `fact_id` 为空——\n缺失用「格子是空的」表达，而不是「这一行不存在」。后者在页面上与\n「这家公司没披露这一项」长得一模一样，但成因完全不同。",
+      "properties": {
+        "fact_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Fact Id"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "字符串，见模块头说明",
+          "title": "Value"
+        },
+        "unit": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Unit"
+        },
+        "raw_unit": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Raw Unit"
+        },
+        "status": {
+          "title": "Status",
+          "type": "string"
+        },
+        "comparable": {
+          "title": "Comparable",
+          "type": "boolean"
+        },
+        "incomparable_reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Incomparable Reason"
+        },
+        "source_file": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source File"
+        },
+        "source_page": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Page"
+        },
+        "confidence": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Confidence"
+        }
+      },
+      "required": [
+        "status",
+        "comparable"
+      ],
+      "title": "事实格",
+      "type": "object"
+    },
+    "FactGridRowView": {
+      "properties": {
+        "metric_key": {
+          "title": "Metric Key",
+          "type": "string"
+        },
+        "label_cn": {
+          "title": "Label Cn",
+          "type": "string"
+        },
+        "statement": {
+          "title": "Statement",
+          "type": "string"
+        },
+        "unit_kind": {
+          "title": "Unit Kind",
+          "type": "string"
+        },
+        "cells": {
+          "additionalProperties": {
+            "$ref": "#/$defs/FactCellView"
+          },
+          "description": "期间 → 格子",
+          "title": "Cells",
+          "type": "object"
+        }
+      },
+      "required": [
+        "metric_key",
+        "label_cn",
+        "statement",
+        "unit_kind",
+        "cells"
+      ],
+      "title": "事实网格行",
+      "type": "object"
+    },
+    "FactGridView": {
+      "description": "「指标 × 年度」网格。\n\n读的是 `v_fact_grid_company` 而不是 `v_fact_grid`——后者硬编码\n`is_primary = 1`，会让华菱、首钢的网格每格都是 not_found 且不报错。",
+      "properties": {
+        "project_id": {
+          "title": "Project Id",
+          "type": "string"
+        },
+        "company_name": {
+          "title": "Company Name",
+          "type": "string"
+        },
+        "scope": {
+          "title": "Scope",
+          "type": "string"
+        },
+        "periods": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Periods",
+          "type": "array"
+        },
+        "metrics": {
+          "items": {
+            "$ref": "#/$defs/FactGridRowView"
+          },
+          "title": "Metrics",
+          "type": "array"
+        }
+      },
+      "required": [
+        "project_id",
+        "company_name",
+        "scope",
+        "periods",
+        "metrics"
+      ],
+      "title": "事实网格",
+      "type": "object"
+    },
+    "FactDetailView": {
+      "description": "一笔财务事实的全部字段（`GET /api/facts/{id}`）。\n\n**证据链的终点**：`source_file` / `source_page` / `source_text` 三个字段\n就是「点任意结论回到年报原文」落地的地方，缺一个这条链就断在这里。",
+      "properties": {
+        "fact_id": {
+          "title": "Fact Id",
+          "type": "string"
+        },
+        "project_id": {
+          "title": "Project Id",
+          "type": "string"
+        },
+        "company_id": {
+          "title": "Company Id",
+          "type": "string"
+        },
+        "is_primary": {
+          "title": "Is Primary",
+          "type": "boolean"
+        },
+        "metric": {
+          "title": "Metric",
+          "type": "string"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Value"
+        },
+        "unit": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Unit"
+        },
+        "period": {
+          "title": "Period",
+          "type": "string"
+        },
+        "scope": {
+          "title": "Scope",
+          "type": "string"
+        },
+        "source_file": {
+          "title": "Source File",
+          "type": "string"
+        },
+        "source_page": {
+          "title": "Source Page",
+          "type": "integer"
+        },
+        "source_text": {
+          "title": "Source Text",
+          "type": "string"
+        },
+        "confidence": {
+          "title": "Confidence",
+          "type": "number"
+        },
+        "status": {
+          "title": "Status",
+          "type": "string"
+        },
+        "period_kind": {
+          "title": "Period Kind",
+          "type": "string"
+        },
+        "value_raw": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Value Raw"
+        },
+        "raw_unit": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Raw Unit"
+        },
+        "unit_factor": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Unit Factor"
+        },
+        "source_table": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Table"
+        },
+        "source_row_label": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Row Label"
+        },
+        "source_printed_page": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Printed Page"
+        },
+        "bbox": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Bbox"
+        },
+        "extractor": {
+          "title": "Extractor",
+          "type": "string"
+        },
+        "comparable": {
+          "title": "Comparable",
+          "type": "boolean"
+        },
+        "incomparable_reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Incomparable Reason"
+        },
+        "restated": {
+          "title": "Restated",
+          "type": "boolean"
+        },
+        "file_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "File Name"
+        },
+        "file_period": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "File Period"
+        },
+        "sign_basis": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Sign Basis"
+        },
+        "mapped_from": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Mapped From"
+        }
+      },
+      "required": [
+        "fact_id",
+        "project_id",
+        "company_id",
+        "is_primary",
+        "metric",
+        "period",
+        "scope",
+        "source_file",
+        "source_page",
+        "source_text",
+        "confidence",
+        "status",
+        "period_kind",
+        "extractor",
+        "comparable",
+        "restated"
+      ],
+      "title": "事实详情",
+      "type": "object"
+    },
+    "PageDetailView": {
+      "description": "年报的一页正文（`GET /api/pages/{id}`、`GET /api/facts/{id}/page`）。\n\n返回的是**已抽取的正文**而不是 PDF 切片：样例 PDF 有几十 MB，被 .gitignore\n挡在仓库外，评委 clone 下来根本没有那些文件。正文在库里、能全文检索、\n能高亮，比 PDF 更好用。\n\n`prev_page_id` / `next_page_id` 由**后端**给出。前端不自己拼 id——\n那种隐式约定一旦和后端的 id 生成规则分叉，表现为「翻页点了没反应」，\n而且不报错。",
+      "properties": {
+        "page_id": {
+          "title": "Page Id",
+          "type": "string"
+        },
+        "file_id": {
+          "title": "File Id",
+          "type": "string"
+        },
+        "file_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "File Name"
+        },
+        "period": {
+          "title": "Period",
+          "type": "string"
+        },
+        "role": {
+          "title": "Role",
+          "type": "string"
+        },
+        "page_no": {
+          "title": "Page No",
+          "type": "integer"
+        },
+        "printed_page_no": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Printed Page No"
+        },
+        "text": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Text"
+        },
+        "text_source": {
+          "description": "'native' 或 'ocr'",
+          "title": "Text Source",
+          "type": "string"
+        },
+        "has_table": {
+          "title": "Has Table",
+          "type": "boolean"
+        },
+        "prev_page_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Prev Page Id"
+        },
+        "next_page_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Next Page Id"
+        },
+        "first_page_no": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "First Page No"
+        },
+        "last_page_no": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Last Page No"
+        }
+      },
+      "required": [
+        "page_id",
+        "file_id",
+        "period",
+        "role",
+        "page_no",
+        "text_source",
+        "has_table"
+      ],
+      "title": "年报页",
+      "type": "object"
+    },
+    "CheckSummaryView": {
+      "description": "勾稽校验的汇总。\n\n`hard_failed` 与 `soft_failed` 分开是刻意的：报表本身不平（几可断定解析\n错了）与字典缺字段（报表没问题，是字典没覆盖）是两件事，混成一个\n「失败数」会让前者被后者的噪声淹没。",
+      "properties": {
+        "total": {
+          "title": "Total",
+          "type": "integer"
+        },
+        "evaluable": {
+          "title": "Evaluable",
+          "type": "integer"
+        },
+        "passed": {
+          "title": "Passed",
+          "type": "integer"
+        },
+        "failed": {
+          "title": "Failed",
+          "type": "integer"
+        },
+        "hard_failed": {
+          "title": "Hard Failed",
+          "type": "integer"
+        },
+        "soft_failed": {
+          "title": "Soft Failed",
+          "type": "integer"
+        },
+        "skipped_missing_data": {
+          "title": "Skipped Missing Data",
+          "type": "integer"
+        },
+        "skipped_incomparable": {
+          "title": "Skipped Incomparable",
+          "type": "integer"
+        },
+        "sheet_ok": {
+          "title": "Sheet Ok",
+          "type": "boolean"
+        },
+        "coverage_line": {
+          "title": "Coverage Line",
+          "type": "string"
+        }
+      },
+      "required": [
+        "total",
+        "evaluable",
+        "passed",
+        "failed",
+        "hard_failed",
+        "soft_failed",
+        "skipped_missing_data",
+        "skipped_incomparable",
+        "sheet_ok",
+        "coverage_line"
+      ],
+      "title": "勾稽汇总",
+      "type": "object"
+    },
+    "CheckResultView": {
+      "description": "一条勾稽结论。`formula` 与 `inputs` 是「可复算」的落点。",
+      "properties": {
+        "rule_key": {
+          "title": "Rule Key",
+          "type": "string"
+        },
+        "period": {
+          "title": "Period",
+          "type": "string"
+        },
+        "scope": {
+          "title": "Scope",
+          "type": "string"
+        },
+        "status": {
+          "title": "Status",
+          "type": "string"
+        },
+        "severity": {
+          "title": "Severity",
+          "type": "string"
+        },
+        "lhs": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Lhs"
+        },
+        "rhs": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Rhs"
+        },
+        "diff": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Diff"
+        },
+        "tolerance": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Tolerance"
+        },
+        "formula": {
+          "title": "Formula",
+          "type": "string"
+        },
+        "inputs": {
+          "items": {},
+          "title": "Inputs",
+          "type": "array"
+        },
+        "message": {
+          "title": "Message",
+          "type": "string"
+        },
+        "suggestion": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Suggestion"
+        }
+      },
+      "required": [
+        "rule_key",
+        "period",
+        "scope",
+        "status",
+        "severity",
+        "formula",
+        "message"
+      ],
+      "title": "勾稽结论",
+      "type": "object"
+    },
+    "ChecksView": {
+      "description": "`GET /api/checks` 的响应。\n\n`warnings` 记的是**取数阶段**的问题（值解析不出来、同一指标多行等），\n与校验结论分开：把它们混进 `results` 会让「报表不平」和「这行没读出来」\n看起来是同一种失败。",
+      "properties": {
+        "project_id": {
+          "title": "Project Id",
+          "type": "string"
+        },
+        "scope": {
+          "title": "Scope",
+          "type": "string"
+        },
+        "method_version": {
+          "title": "Method Version",
+          "type": "string"
+        },
+        "summary": {
+          "$ref": "#/$defs/CheckSummaryView"
+        },
+        "results": {
+          "items": {
+            "$ref": "#/$defs/CheckResultView"
+          },
+          "title": "Results",
+          "type": "array"
+        },
+        "warnings": {
+          "items": {},
+          "title": "Warnings",
+          "type": "array"
+        }
+      },
+      "required": [
+        "project_id",
+        "scope",
+        "method_version",
+        "summary",
+        "results"
+      ],
+      "title": "勾稽校验",
+      "type": "object"
+    },
+    "StoredChecksView": {
+      "description": "`GET /api/checks/stored`：读回上次落库的结果，供「与上次运行对照」。",
+      "properties": {
+        "project_id": {
+          "title": "Project Id",
+          "type": "string"
+        },
+        "results": {
+          "items": {
+            "$ref": "#/$defs/CheckResultView"
+          },
+          "title": "Results",
+          "type": "array"
+        }
+      },
+      "required": [
+        "project_id",
+        "results"
+      ],
+      "title": "上次勾稽结果",
+      "type": "object"
+    },
+    "ClaimView": {
+      "description": "一条主张（MD&A 里的一句话结构化之后）。\n\n`verifiable` / `background_only` 用 0/1 而不是布尔：它们直接来自 SQLite\n的 INTEGER 列，且页面上要按它们求和。",
+      "properties": {
+        "claim_id": {
+          "title": "Claim Id",
+          "type": "string"
+        },
+        "claim_text": {
+          "title": "Claim Text",
+          "type": "string"
+        },
+        "claim_type": {
+          "title": "Claim Type",
+          "type": "string"
+        },
+        "direction": {
+          "title": "Direction",
+          "type": "string"
+        },
+        "period_norm": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Period Norm"
+        },
+        "period_expr": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Period Expr"
+        },
+        "magnitude_text": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Magnitude Text"
+        },
+        "magnitude_value": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Magnitude Value"
+        },
+        "magnitude_unit": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Magnitude Unit"
+        },
+        "verifiable": {
+          "title": "Verifiable",
+          "type": "integer"
+        },
+        "background_only": {
+          "title": "Background Only",
+          "type": "integer"
+        },
+        "confidence": {
+          "title": "Confidence",
+          "type": "number"
+        },
+        "status": {
+          "title": "Status",
+          "type": "string"
+        },
+        "source_page": {
+          "title": "Source Page",
+          "type": "integer"
+        },
+        "primary_metric": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Primary Metric"
+        },
+        "forbidden_simplifications": {
+          "description": "该主题被禁止的简化推断，随主张一起展示供人工复核对照",
+          "items": {
+            "type": "string"
+          },
+          "title": "Forbidden Simplifications",
+          "type": "array"
+        }
+      },
+      "required": [
+        "claim_id",
+        "claim_text",
+        "claim_type",
+        "direction",
+        "verifiable",
+        "background_only",
+        "confidence",
+        "status",
+        "source_page"
+      ],
+      "title": "主张",
+      "type": "object"
+    },
+    "ClaimStatsView": {
+      "properties": {
+        "total": {
+          "title": "Total",
+          "type": "integer"
+        },
+        "verifiable": {
+          "title": "Verifiable",
+          "type": "integer"
+        },
+        "background_only": {
+          "title": "Background Only",
+          "type": "integer"
+        },
+        "validated": {
+          "title": "Validated",
+          "type": "integer"
+        },
+        "by_type": {
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "title": "By Type",
+          "type": "object"
+        }
+      },
+      "required": [
+        "total",
+        "verifiable",
+        "background_only",
+        "validated"
+      ],
+      "title": "主张统计",
+      "type": "object"
+    },
+    "ExtractorSummaryView": {
+      "description": "一种抽取法的概况，用来做「规则法 vs LLM」的并排对照。\n\n条数少不代表差、也不代表好——LLM 版条数少于规则法（它更挑），但可验证的\n比例更高。**这两件事都不该由代码下结论**，并排放着让人自己判。",
+      "properties": {
+        "extractor": {
+          "description": "'rule:claim_v1' 或 'llm:deepseek-chat@<prompt_hash>'",
+          "title": "Extractor",
+          "type": "string"
+        },
+        "total": {
+          "title": "Total",
+          "type": "integer"
+        },
+        "verifiable": {
+          "title": "Verifiable",
+          "type": "integer"
+        },
+        "validated": {
+          "title": "Validated",
+          "type": "integer"
+        },
+        "theme_count": {
+          "title": "Theme Count",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "extractor",
+        "total",
+        "verifiable",
+        "validated",
+        "theme_count"
+      ],
+      "title": "抽取法对照",
+      "type": "object"
+    },
+    "ClaimsView": {
+      "properties": {
+        "project_id": {
+          "title": "Project Id",
+          "type": "string"
+        },
+        "stats": {
+          "$ref": "#/$defs/ClaimStatsView"
+        },
+        "by_extractor": {
+          "items": {
+            "$ref": "#/$defs/ExtractorSummaryView"
+          },
+          "title": "By Extractor",
+          "type": "array"
+        },
+        "claims": {
+          "items": {
+            "$ref": "#/$defs/ClaimView"
+          },
+          "title": "Claims",
+          "type": "array"
+        }
+      },
+      "required": [
+        "project_id",
+        "stats",
+        "by_extractor",
+        "claims"
+      ],
+      "title": "主张列表",
+      "type": "object"
+    },
+    "ClaimMatchView": {
+      "description": "一条「主张 → 事实」的判定。\n\n`formula` 与 `inputs` 允许为空：不可比的主张没有算式可给，\n给一个空算式比编一个更有用。",
+      "properties": {
+        "match_id": {
+          "title": "Match Id",
+          "type": "string"
+        },
+        "claim_id": {
+          "title": "Claim Id",
+          "type": "string"
+        },
+        "metric_key": {
+          "title": "Metric Key",
+          "type": "string"
+        },
+        "verdict": {
+          "title": "Verdict",
+          "type": "string"
+        },
+        "reason": {
+          "title": "Reason",
+          "type": "string"
+        },
+        "confidence": {
+          "title": "Confidence",
+          "type": "number"
+        },
+        "claim_period": {
+          "title": "Claim Period",
+          "type": "string"
+        },
+        "fact_period": {
+          "title": "Fact Period",
+          "type": "string"
+        },
+        "direction_claim": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Direction Claim"
+        },
+        "direction_actual": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Direction Actual"
+        },
+        "magnitude_target": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Magnitude Target"
+        },
+        "magnitude_actual": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Magnitude Actual"
+        },
+        "relative_deviation": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Relative Deviation"
+        },
+        "formula": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Formula"
+        },
+        "inputs": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Inputs"
+        },
+        "claim_text": {
+          "title": "Claim Text",
+          "type": "string"
+        },
+        "claim_type": {
+          "title": "Claim Type",
+          "type": "string"
+        },
+        "source_page": {
+          "title": "Source Page",
+          "type": "integer"
+        },
+        "verifiable": {
+          "title": "Verifiable",
+          "type": "integer"
+        },
+        "background_only": {
+          "title": "Background Only",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "match_id",
+        "claim_id",
+        "metric_key",
+        "verdict",
+        "reason",
+        "confidence",
+        "claim_period",
+        "fact_period",
+        "claim_text",
+        "claim_type",
+        "source_page",
+        "verifiable",
+        "background_only"
+      ],
+      "title": "主张判定",
+      "type": "object"
+    },
+    "MatchesView": {
+      "properties": {
+        "project_id": {
+          "title": "Project Id",
+          "type": "string"
+        },
+        "counts": {
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "title": "Counts",
+          "type": "object"
+        },
+        "hint": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "没跑过匹配时给出的说明",
+          "title": "Hint"
+        },
+        "matches": {
+          "items": {
+            "$ref": "#/$defs/ClaimMatchView"
+          },
+          "title": "Matches",
+          "type": "array"
+        }
+      },
+      "required": [
+        "project_id",
+        "matches"
+      ],
+      "title": "判定结果",
+      "type": "object"
+    },
+    "IndexComponentsView": {
+      "description": "诊断指数的五个构成项。\n\n**每一项都是 [−1, 1] 区间的字符串**（会计口径 v1.1 §一）。\n旧稿五个分项都是 0–1，中性证据只能取 0.5，于是 H=C=0.5 会算出\n50 + 20×0.5 + 20×0.5 = 70 分——正好压在「一致性较高」的分界线上，\n全中性的公司反而得分最高。",
+      "properties": {
+        "history": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "History"
+        },
+        "current": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Current"
+        },
+        "risk": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Risk"
+        },
+        "template": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Template"
+        },
+        "quality": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Quality"
+        }
+      },
+      "title": "指数构成项",
+      "type": "object"
+    },
+    "IndexCountsView": {
+      "description": "分母与跳过数。\n\n跳过了什么**也要说**，不只报成功的数——只报成功的数会让「公司没披露」\n和「系统没读到」看起来一样。",
+      "properties": {
+        "n": {
+          "title": "N",
+          "type": "integer"
+        },
+        "N": {
+          "title": "N",
+          "type": "integer"
+        },
+        "history_observations": {
+          "title": "History Observations",
+          "type": "integer"
+        },
+        "current_observations": {
+          "title": "Current Observations",
+          "type": "integer"
+        },
+        "skipped_no_period": {
+          "title": "Skipped No Period",
+          "type": "integer"
+        },
+        "skipped_no_fact": {
+          "title": "Skipped No Fact",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "n",
+        "N",
+        "history_observations",
+        "current_observations",
+        "skipped_no_period",
+        "skipped_no_fact"
+      ],
+      "title": "指数计数",
+      "type": "object"
+    },
+    "ScenarioMappingView": {
+      "description": "指数 → 估值情景的传导。\n\n**没有目标价字段，也不该有。** 估值输出永远是区间；单点目标价会隐藏\n不确定性，而这里给的是「有一组证据指向增长假设需要复核」。",
+      "properties": {
+        "weights": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "不足以出分时是 null——给一组「差不多的权重」会让闸门形同虚设",
+          "title": "Weights"
+        },
+        "revenue_growth_ref": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Revenue Growth Ref"
+        },
+        "requires_human_confirmation": {
+          "title": "Requires Human Confirmation",
+          "type": "boolean"
+        },
+        "changes_valuation": {
+          "title": "Changes Valuation",
+          "type": "boolean"
+        },
+        "notes": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Notes",
+          "type": "array"
+        }
+      },
+      "required": [
+        "requires_human_confirmation",
+        "changes_valuation"
+      ],
+      "title": "情景传导",
+      "type": "object"
+    },
+    "NarrativeIndexView": {
+      "description": "`GET /api/projects/{id}/narrative/index` 的响应。\n\n闸门不过时 `score` 是 **null**，并附逐条的未满足条件。页面据此显示\n「证据不足，不出分」——**绝不用 0 分或 50 分代替**：分母没变、权重照乘，\n那个分数看起来和完整版一模一样，而它缺了整整 30 分权重的构成项。",
+      "properties": {
+        "project_id": {
+          "title": "Project Id",
+          "type": "string"
+        },
+        "status": {
+          "description": "'scored' 或 'insufficient_evidence'",
+          "title": "Status",
+          "type": "string"
+        },
+        "grade": {
+          "title": "Grade",
+          "type": "string"
+        },
+        "score": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "字符串；闸门不过时是 null",
+          "title": "Score"
+        },
+        "components": {
+          "$ref": "#/$defs/IndexComponentsView"
+        },
+        "coverage": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Coverage"
+        },
+        "counts": {
+          "$ref": "#/$defs/IndexCountsView"
+        },
+        "insufficient_reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Insufficient Reason"
+        },
+        "formula": {
+          "title": "Formula",
+          "type": "string"
+        },
+        "conclusion_boundary": {
+          "title": "Conclusion Boundary",
+          "type": "string"
+        },
+        "scenarios": {
+          "$ref": "#/$defs/ScenarioMappingView"
+        },
+        "action": {
+          "title": "Action",
+          "type": "string"
+        },
+        "valuation_action": {
+          "title": "Valuation Action",
+          "type": "string"
+        },
+        "user_hint": {
+          "title": "User Hint",
+          "type": "string"
+        },
+        "method_version": {
+          "title": "Method Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "project_id",
+        "status",
+        "grade",
+        "components",
+        "counts",
+        "formula",
+        "conclusion_boundary",
+        "scenarios",
+        "action",
+        "valuation_action",
+        "user_hint",
+        "method_version"
+      ],
+      "title": "诊断指数",
+      "type": "object"
+    },
+    "RuleConfigView": {
+      "description": "一条口径参数。页面提供查看/修改/恢复默认，改的就是这些行。\n\n⚠ **这里没有 `tier` 字段，虽然 `rule_config` 表里有这一列。**\n`repository.list_rule_config()` 的 SELECT 没有取它，页面也就拿不到——\n而 `tier` 决定改这个值要谁点头（A-8：`hard` 会计口径须签字 / `soft`\n提示语与排序 / `model` 模型参数）。要做「这个值归谁批」的界面时，\n得先把那一列加进 SELECT，模型这里同步加。\n\n⚠ 加这个模型时我照着表结构写了个 `tier: str`，接口直接 500\n（`ResponseValidationError: Field required`）——**这正是 `response_model`\n该有的行为**：少一个字段立刻炸，而不是像 `dict[str, Any]` 那样\n悄悄少返回一个字段、前端拿到 `undefined` 还不报错。",
+      "properties": {
+        "key": {
+          "title": "Key",
+          "type": "string"
+        },
+        "value": {
+          "title": "Value",
+          "type": "string"
+        },
+        "value_type": {
+          "title": "Value Type",
+          "type": "string"
+        },
+        "industry": {
+          "title": "Industry",
+          "type": "string"
+        },
+        "label_cn": {
+          "title": "Label Cn",
+          "type": "string"
+        },
+        "description": {
+          "title": "Description",
+          "type": "string"
+        },
+        "unit": {
+          "title": "Unit",
+          "type": "string"
+        },
+        "default_value": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Default Value"
+        },
+        "min_value": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Min Value"
+        },
+        "max_value": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Value"
+        }
+      },
+      "required": [
+        "key",
+        "value",
+        "value_type",
+        "industry",
+        "label_cn",
+        "description",
+        "unit"
+      ],
+      "title": "口径参数",
       "type": "object"
     }
   }
