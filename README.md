@@ -32,23 +32,34 @@ python -m venv .venv
 .venv\Scripts\activate            # Windows
 # source .venv/bin/activate       # macOS / Linux
 
-python -m pip install -r requirements.txt
-python scripts/init_db.py         # 建库并装载字段字典与规则参数
-python -m pytest                  # 运行测试
-uvicorn app.main:app --reload     # 启动服务（默认 127.0.0.1:8000）
+python -m pip install -r requirements.lock.txt
+python scripts/init_db.py --force                # 1. 建库并装载字段字典与规则参数
+python scripts/parse_reports.py --source var/samples   # 2. 解析年报 → 财务事实
+python scripts/parse_mdna.py                     # 3. 解析正文与 MD&A 章节
+python -m pytest                                 # 运行测试（613 条）
+uvicorn app.main:app --reload                    # 启动服务（默认 127.0.0.1:8000）
 ```
 
-> **开发中**：后端**已经能启动**，编排链路已经跑通（一句话 → 任务时间线 →
-> 结构化结果 → 工具调用留痕）。已完成：数据库结构、数据契约、周期正常化引擎、
-> 检索层、字段字典、REST + SSE、编排状态机、Tool 登记表。
-> **尚未实现**：PDF 解析（`app/parsing/`）、4 个主流程 Skill、估值与诊断引擎、
-> 以及整个前端。详见 `CLAUDE.md` 的「当前进度」与「冻结的接缝」。
+> ⚠ **`init_db.py --force` 是「重建」不是「补齐」**——它把整个库删掉重来，
+> 所以第 2、3 步**必须补跑**。漏跑第 3 步的表现是「叙事一致性页没有正文」，
+> 那句话是对的，但它不会告诉你库是刚重建的。
+>
+> 样例年报 PDF 在 `backend/var/samples/`（不入库，约 94MB，可向项目组索取）。
+
+> **当前状态（2026-09-30）**：端到端已经跑通。
+> 已完成：数据库结构、数据契约、PDF 解析、正文与 MD&A 入库、周期正常化引擎、
+> 三表勾稽、规则法与 LLM 两种主张抽取、主张—事实判定、诊断指数、REST + SSE、
+> 编排状态机、Tool 登记表、工作台前端（财务事实表页、叙事一致性页）。
+> **尚未实现**：三情景估值（`engine/dcf` 等，决赛项）、MCP、可观测性包。
+> 详见 `CLAUDE.md` 的「当前进度」。
 
 ### 跑一次看看
 
 ```bash
 cd backend
 python scripts/init_db.py --force
+python scripts/parse_reports.py --source var/samples
+python scripts/parse_mdna.py
 uvicorn app.main:app --reload          # http://127.0.0.1:8000/docs
 ```
 
@@ -91,13 +102,13 @@ python -m pip install -r requirements.lock.txt
 
 | 技术要求 | 目录 | 说明 |
 |---|---|---|
-| 智能体编排框架 | `backend/app/agents/` | 编排状态机、意图路由、任务规划、执行调度、数字守卫 |
-| Tool | `backend/app/tools/` + `backend/app/engine/api.py` | 工具登记表（一份 JSON Schema 同时供给 REST 与 MCP） |
-| Prompt | `backend/app/agents/llm/prompts/` | 版本化管理，含 registry 与 CHANGELOG |
-| Skill | `backend/app/skills/` | 4 个主流程 Skill + 1 个质量控制 Skill |
-| MCP | `backend/app/mcp/` | server（把本系统能力暴露为 MCP 工具）+ client（受限只读文件访问） |
-| 数据处理 | `backend/app/parsing/`、`engine/`、`db/`、`retrieval/` | PDF 解析、确定性计算、持久化、检索 |
-| 日志记录 | `backend/app/observability/` | 结构化日志、工具 trace、文件访问审计、可复现凭据 |
+| 智能体编排框架 | `backend/app/agents/` | ✅ 编排状态机、意图路由、任务规划、执行调度、数字守卫 |
+| Tool | `backend/app/tools/` | ✅ 工具登记表，一份 JSON Schema 同时供给 REST 与 MCP |
+| Prompt | `backend/app/agents/llm/prompts/` | ✅ 版本化管理，含 registry 与 CHANGELOG |
+| Skill | `backend/app/skills/` | ✅ Skill 协议 + 注册表 + 主流程 Skill；另有工作台侧取数模块 |
+| MCP | `backend/app/mcp/` | ⬜ **决赛项**（把本系统能力暴露为 MCP 工具 + 受限只读文件访问） |
+| 数据处理 | `backend/app/parsing/`、`engine/`、`db/`、`retrieval/` | ✅ PDF 解析、确定性计算、持久化、检索 |
+| 日志记录 | `app_log` 表 + `app/main.py` 中间件 + `tool_call` / `llm_call` 表 | ✅ 结构化日志与工具留痕已落库；`backend/app/observability/` 包待整理（决赛项） |
 
 ---
 
@@ -106,40 +117,49 @@ python -m pip install -r requirements.lock.txt
 ```
 ├── TEAM.md                  分工、排期与上手提示（给人看）
 ├── CLAUDE.md                给 AI 读的仓库规则（队友的 AI 会自动加载它）
-├── 待会计确认.md            ★还没经过会计签字的 6 件事（12 个参数正在生效）
+├── 待会计确认.md            会计口径提问与答复的**归档记录**（已结案，非待办）
 ├── docs/                    设计规则手册
 │   ├── 00-scope.md              ✅ 系统能做什么、不做什么（适用范围与边界）
 │   ├── 01-data-contract.md      ✅ ★数据契约与字段字典
 │   ├── 02-accounting-rules.md   ✅ ★会计硬规则与校验清单
 │   ├── 03-valuation-rules.md    ✅ ★估值规则与周期正常化口径
 │   ├── 04-index-rules.md        ✅ ★诊断指数：观测→指数→情景传导 + 参数出处清单
-│   ├── 05-assumptions-and-risks.md  ⬜ 主要假设、适用范围与风险因素
-│   ├── 06-demo-script.md        ⬜ 现场演示脚本与断网兜底流程
-│   └── 07-third-party-licenses.md   ✅ ★第三方名称/版本/来源/许可证/使用范围
+│   ├── 05-assumptions-and-risks.md  ✅ 主要假设、适用范围与风险因素
+│   ├── 06-demo-script.md        ✅ 现场演示脚本与断网兜底流程
+│   ├── 07-third-party-licenses.md   ✅ ★第三方名称/版本/来源/许可证/使用范围
+│   └── 初赛计划书骨架.md         初赛交付物草稿
 │
 │   ⚠ docs/ 下的 .md 是**从 Word 转写**的机读化落地记录，不是会计同学亲笔。
-│     两份源文件在仓库根目录：accounting_signoff_v1.docx（字段口径、EBIT、指数）、
-│     方案选择.docx（方向判断三态）。**冲突时以 Word 为准。**
-│     04 第六节列了「哪些参数有文档依据、哪些还是实现时拍的暂定值」。
+│     源文件在仓库根目录：accounting_signoff_v1.docx（字段口径、EBIT、指数）、
+│     方案选择.docx（方向判断三态）、会计K交付：…（v1.1，当前生效）。
+│     **冲突时以 Word 为准。**
 │
 ├── backend/
 │   ├── app/
 │   │   ├── api/               REST 路由（薄层）
+│   │   │   ├── routes.py         工作台读接口
+│   │   │   └── routes_*.py       任务编排接口（/api/tasks + SSE）
 │   │   ├── schemas/           ★数据契约唯一真源（Pydantic v2）
-│   │   ├── db/                schema.sql + session.py + repositories
+│   │   ├── db/                schema.sql + session.py + repositories/ + repository.py
 │   │   ├── engine/            ★确定性计算引擎（纯函数、零 IO、零 LLM）
-│   │   ├── parsing/           PDF 文本与表格解析、报表定位、行名映射
+│   │   ├── parsing/           PDF 文本与表格解析、报表定位、行名映射、主张句切分
 │   │   ├── retrieval/         FTS5 检索（含短查询回退）
 │   │   ├── agents/            编排框架
-│   │   ├── tools/  skills/  mcp/
-│   │   ├── observability/     日志、审计、可复现凭据
+│   │   │   └── llm/           DeepSeek 客户端 + prompts/ + cassette 离线回放
+│   │   ├── tools/  skills/
+│   │   ├── mcp/               ⬜ 空包，决赛项
+│   │   ├── observability/     ⬜ 空包，决赛项
 │   │   └── data/seed/         字段字典与规则参数种子
-│   ├── scripts/               init_db / export_schemas / gen_data_contract_doc
-│   └── tests/
+│   ├── scripts/               init_db / parse_reports / parse_mdna / export_schemas …
+│   └── tests/                 613 条
 │
-└── frontend/                 React + Vite + Ant Design + ECharts
-    └── src/types/contract.json   ← 由后端契约自动生成，请勿手改
+└── frontend/                 React + Vite + ECharts
+    └── src/types/             contract.json / contract.ts ← 后端契约自动生成，勿手改
 ```
+
+> ⚠ **`app/api/` 与 `app/db/` 下各有两套并存的东西**，是 2026-09-30 合并两条
+> 开发分支的产物，都活着。哪些接口生效取决于 `app/main.py` 的注册顺序——
+> 那里的 docstring 写了原因。**动手前先读它。**
 
 ---
 
