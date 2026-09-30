@@ -22,29 +22,44 @@ DCF 估值的情景参数。
 ## 目录
 
 ```
-frontend/          React + Vite + Ant Design + ECharts（工作台，8 个页面）
+frontend/          React + Vite + ECharts（工作台）
+  src/api/         client.ts（取数）+ types.ts（手写读模型）
+  src/pages/       FactTable 财务事实表 / Narrative 叙事一致性
 backend/
   app/
     api/           REST 路由（薄层，只做校验与调用）
+      routes.py       工作台读接口（项目、事实、原文、勾稽、叙事、指数、规则参数）
+      routes_*.py     任务编排接口（/api/tasks + SSE、/api/tools、/api/skills、/api/meta）
     schemas/       Pydantic v2 数据契约唯一真源
-    db/            schema.sql + session.py + repositories
+      api.py          任务编排接口的响应形状
+      workspace.py    工作台读接口的响应形状
+    db/            schema.sql + session.py + repositories/ + repository.py
     engine/        确定性计算引擎（纯函数、零 IO、零 LLM）
-    parsing/       PDF 文本/表格解析、报表定位、行名映射
-    agents/        编排状态机 + router + planner + guards
-      llm/prompts/ Prompt 版本化管理
+      normalization / ratios        周期正常化、同比与比率
+      checks / quality / q2         勾稽校验、财务质量、账龄
+      claim_rules / claim_match     主张抽取（规则法）与主张—事实判定
+      index / mapping               诊断指数、指数→情景传导
+      sign / attestation            资产减值符号标准化、人工确认留痕
+      narrative                     早期的一致性观测（已被 claim_* 取代，见下）
+    parsing/       PDF 文本/表格解析、报表定位、行名映射、主张句切分
+    agents/        编排状态机 + orchestrator + guards
+      llm/          DeepSeek 客户端、传输层、cassette 离线回放
+        prompts/    版本化 Prompt（claim_extract.v1 / v2 + registry + CHANGELOG）
     tools/         Tool 登记表（一份 JSON Schema，REST 与 MCP 共用）
-    skills/        4 个主 Skill + 1 个质控
-    mcp/           MCP server + client
+    skills/        Skill 协议 + 注册表，兼工作台侧的取数模块
+    mcp/           ⬜ 空包占位（决赛项）
     retrieval/     FTS5 检索（含短查询回退）
-    observability/ 结构化日志、工具 trace、文件访问审计、run_manifest
+    observability/ ⬜ 空包占位（结构化日志落在 app_log 表 + main.py 中间件）
     data/seed/     字段字典与规则参数的种子 SQL
-  scripts/init_db.py
-  tests/
+    data/cassettes/ LLM 回放录制（离线演示用）
+  scripts/         init_db / parse_reports / parse_mdna / dict_csv / export_schemas …
+  tests/           613 条
 docs/              设计规则手册（编号文档，见下）
 ```
 
 赛事要求提交源码时须包含「智能体编排框架、Tool、Prompt、Skill、MCP、数据处理、
 日志记录」七类模块，上表与之一一对应，`README.md` 里有映射表。
+**MCP 与 observability 是决赛项**，初赛不交付。
 
 ## 当前进度
 
@@ -52,99 +67,88 @@ docs/              设计规则手册（编号文档，见下）
 
 | 模块 | 状态 |
 |---|---|
-| `db/schema.sql`、`db/session.py` | ✅ 42 张表 + 3 个视图；三条硬规则已落到 CHECK 约束 |
-| `app/main.py` + `api/` | ✅ 可启动。`uvicorn app.main:app --reload` 已能跑；SEE 事件流通了 |
-| `agents/`（状态机 + 编排器） | ✅ 骨架冻结，见下方「冻结的接缝」 |
-| `agents/llm/`、`planner`、`router`、`guards.py` | ⬜ **不存在。全仓零 LLM 代码**——见下 |
-| `tools/registry.py` | ✅ Tool 登记表；已登记 **8** 个工具（3 个 `system.*`、3 个 `facts.*`、2 个 `narrative.*`） |
-| `skills/` | ✅ 契约 + **3 个真 Skill**（系统自检、财务事实、叙事一致性）；2 个主流程 Skill 待填 |
-| `observability/` | ⬜ 空包占位（结构化日志暂落在 `app_log` 表 + `main.py` 中间件） |
-| `schemas/` | ✅ 33 个模型，数据契约的机读真源 |
-| `engine/normalization.py` | ✅ 周期正常化（19 个 golden case） |
-| `engine/ratios.py` | ✅ 同比与比率，含拒绝路径 |
-| `engine/narrative.py` | ✅ 主张抽取 + 方向比对，四态观测（**规则法，不含 LLM**） |
-| `engine/checks|index|dcf|multiples|sensitivity` | ⬜ **全部未实现**（`index.py` 卡在 R/P/Q 三项构成，见下） |
-| `retrieval/fts.py` | ✅ FTS5 + 短查询 LIKE 回退（**现在真的有数据可搜了**——3547 页） |
-| `data/seed/` | ✅ 91 个字段字典、**65** 条规则参数、14 条旧键名映射 |
-| `scripts/` | ✅ init_db / export_schemas / gen_data_contract_doc / dict_csv / seed_demo / parse_reports / **parse_mdna** |
-| `parsing/` | ✅ PDF → 三张合并表 → 指标（**16 份真实年报 → 743 条事实**）+ **正文与 MD&A 章节** |
-| `mcp/` | ⬜ **空包占位** |
-| `frontend/src/` | 🟡 **1/8 页**：任务时间线 + 结果面板 + 证据抽屉，已接真实数据 |
-| `docs/` | ✅ 00 / 01 / 02 / 03 / 04 / 07；⬜ **05**（假设与风险）/ **06**（演示脚本） |
-| 初赛交付物 | ⬜ **项目计划书与 5 分钟视频均未开始**（截止 2026-10-18） |
+| `db/schema.sql`、`db/session.py` | ✅ **44 张表 + 4 个视图**；三条硬规则已落到 CHECK 约束 |
+| `app/main.py` + `api/` | ✅ 可启动。两组路由都挂着，见下「两套接口」 |
+| `agents/`（状态机 + 编排器 + guards） | ✅ 骨架冻结，见「冻结的接缝」 |
+| `agents/llm/` | ✅ DeepSeek 客户端 + 版本化 Prompt + 数字守卫 + cassette 回放 |
+| `tools/registry.py` | ✅ Tool 登记表；已登记 9 个工具（`system.*` / `facts.*` / `narrative.*`） |
+| `skills/` | ✅ Skill 协议 + 3 个主 Skill；另有工作台侧的取数模块（`checks` / `matching` / `narrative`） |
+| `schemas/` | ✅ **115 个模型**，数据契约的机读真源；74 个导出给前端 |
+| `engine/normalization`、`ratios` | ✅ 周期正常化（19 个 golden case）、同比与比率含拒绝路径 |
+| `engine/checks`、`quality`、`q2` | ✅ 三表勾稽、财务质量、账龄核验 |
+| `engine/claim_rules`、`claim_match` | ✅ 规则法主张抽取 + 主张—事实判定 |
+| `engine/index`、`mapping` | ✅ **诊断指数已能出分**；指数→情景传导（只提示，不自动改参数） |
+| `engine/sign`、`attestation` | ✅ 资产减值符号标准化、人工确认留痕 |
+| `engine/narrative.py` | 🟡 **早期的一致性观测，已被 `claim_*` 取代**——还留着，但不在活路径上（见下） |
+| `parsing/` | ✅ PDF → 三张合并表 → 指标（**16 份真实年报 → 743 条事实**）+ 正文与 MD&A 章节 |
+| `retrieval/fts.py` | ✅ FTS5 + 短查询 LIKE 回退（3547 页可搜） |
+| `data/seed/` | ✅ 91 个字段字典、**72** 条规则参数、14 条旧键名映射 |
+| `frontend/src/` | 🟡 工作台外壳 + **2 页**（财务事实表、叙事一致性），已接真实数据 |
+| `docs/` | ✅ 00–07 全部到位（另有一份初赛计划书骨架） |
+| `mcp/`、`observability/` | ⬜ 空包占位——**决赛项**，初赛不交付 |
+| 初赛交付物 | 🟡 计划书骨架已起（`docs/初赛计划书骨架.md`）；**5 分钟视频未开始**（截止 2026-10-18） |
 
 ### ⚠ 三件必须说破的事
 
-**1. 比赛主题是「金融投研智能体构建」，而仓里没有智能体。**
-`agents/` 只有状态机和编排器，Skill 靠关键词路由，**没有一句模型调用**。
-主张抽取与叙事—事实匹配是这套系统不可替代的部分；没有它，
-演示出来的东西与「AI 财报摘要工具」没有区别。
+**1. 两条开发线在 2026-09-30 合并，合并后有两套并存的接口层。**
+`app/api/routes.py`（工作台读接口，hb-wip 线）与 `app/api/routes_*.py`（任务编排
++ SSE，主干线）**同时挂着**，`db/repository.py` 与 `db/repositories/` 也是两套。
+这不是没收拾干净，是两条线各自建了一套、合起来时都留着。
+**动手前先看 `app/main.py` 的 docstring**，那里写了注册顺序与为什么。
 
-**2. 指数公式早就定了，卡住 `index.py` 的是 `R`/`P`/`Q` 三项没有数据源。**
-公式、分级线、覆盖率闸门由 K 在 **2026-09-22** 拍板（`accounting_signoff_v1.docx`
-A-7），机读版同期进了 `rule_config.index.*`。**不要再把 `docs/04` 当成阻塞项**
-（它在 9-26 才被转写成人读版，这是转写的滞后，不是 K 的滞后）。
-出不了分的原因是 `R`（风险披露变化）、`P`（模板化惩罚）要跨年度正文比对，
-`Q`（财务质量冲突）依赖 `engine/checks.py`——缺 30 分权重的构成项。
+⚠ 尤其注意：`GET /api/projects` **两组都注册了，返回形状不同**
+（裸数组 vs `{projects:[…]}`）。FastAPI 取先注册的那个、**不报错**。
+现在生效的是裸数组那版，前端 `api/client.ts` 解的就是它。
+
+**2. 「两套并存」里有一处是真的死代码，别照着它改。**
+`engine/narrative.py` + `skills/narrative_consistency.py` 是主干线早期的
+一致性观测（v1.0 口径），现在跑的是 hb-wip 线的
+`engine/claim_rules.py` + `claim_match.py`（v1.1 口径）。
+前者只在编排器（`/api/tasks` 那条路）上还挂着，工作台页面不走它。
+**改判定逻辑时改 `claim_*`，别改 `narrative.py`**——改错了一边不报错，
+只是页面上的数字不变。
 
 **3. `docs/` 下的 `.md` 都不是会计同学亲笔，是从 Word 转写的。**
-两份源文件在仓库根目录：`accounting_signoff_v1.docx`（字段口径、EBIT、指数）、
-`方案选择.docx`（方向判断三态）。**冲突时以 Word 为准。**
-转写会走样而**不报错**，所以 `docs/04` 第六节专门列了「哪些参数有文档依据、
-哪些还是实现时拍的暂定值」——`rule_config.tier` 全是 `hard`，机器分不出来。
-`accounting_signoff_v1.docx` 的签字栏**三个位置全空**。
+源文件在仓库根目录：`accounting_signoff_v1.docx`（字段口径、EBIT、指数）、
+`方案解读……`、以及 **2026-09-26 的《会计K交付：指数、阈值、主题判据与减值口径》
+（会计口径 v1.1，当前生效）**。**冲突时以 Word 为准。**
+转写会走样而**不报错**。`accounting_signoff_v1.docx` 的签字栏**三个位置全空**；
+`docs/04` 第八节与它一样。
 
 > 分工、排期与上手提示在 **`TEAM.md`**（给人看）；本文件只写给 AI 的规则。
 
 ---
 
-## ★ 有一批参数「正在生效，但没人签字过」
+## ★ 会计口径已由 v1.1 补齐，那批「没签字」的参数已归位
 
-**清单在仓库根目录：`待会计确认.md`。动手前先读它。**
+**2026-09-26 K 交付 v1.1**（《指数、阈值、主题判据与减值口径》），
+2026-09-30 合并时全部落地。之前 `rule_config` 里有 12 条参数
+「正在生效但没有任何会计依据」——**这个问题现在不存在了**：
 
-`rule_config` 里有 **12 条参数**的 `description` 带 **`⬜ 待会计确认`** 前缀：
+| 那批参数 | 现在 |
+|---|---|
+| `index.weight.*`、`index.direction.*` | 有依据（v1.1 §一 / §3.1） |
+| `narrative.min_rel_change` 等噪声阈值 | 有依据，且拆成**分类型**（v1.1 §A.5） |
+| `mapping.*` 情景权重与参数调整 | 保留但**不再自动生效**，全部带 `requires_human_confirmation`（v1.1 §八） |
+| `valuation.terminal_growth_max` / `wacc_min` | 保留为静态边界，**不再由指数驱动** |
 
-```
-index.direction.weak_ratio      0.5              观察状态的幅度分界
-index.weight.supported/partial/conflicted   1.0 / 0.5 / -1.0
-mapping.high|medium|low.weights|delta       情景权重与参数调整
-valuation.terminal_growth_max / wacc_min    0.02 / 0.06
-```
-
-它们**已经实现、正在生效**，但**没有任何会计文档给过依据**——
-实现时先拍的。而 `rule_config.tier` 只有 `hard` / `soft` / `model` 三档（A-8），
-**没有「已实现但未签字」这一档**，所以它们在库里与其他会计口径**长得一模一样**。
+**完整的提问—答复对照在 `待会计确认.md`（已结案归档），
+参数出处清单在 `docs/04-index-rules.md` 第六节。**
 
 ### 你该怎么做
 
-1. **不要在结论里把它们当成已确认的口径。** 拿 `mapping.*` 的权重算出的估值区间，
-   要说得出它是暂定的——评审分不出来，你分得出来。
-2. **不要自己给它们定值。** 尤其不要「为了让某个功能有输出」而凑一个阈值。
-   `engine/narrative.py` 里那道 1% 的 `min_rel_change` 就是这么来的，
-   它和 A-7 直接冲突，已于 2026-09-26 删除。
-3. **需要它们定下来才能往下做 → 去群里问 K，别自己拍。**
-   `待会计确认.md` 里每一题都有一段 `>` 引用的「**群里怎么问**」，
-   **整段复制粘贴即可**——那段话不出现代码，会计同学不用打开仓库也能答。
-   ⚠ 不要自己转述成一句话去问：转述会丢掉关键背景（比如「产能释放」为什么是利空），
-   问出来的答案会答非所问。
-4. **拿到答复后必须写回 `待会计确认.md` 的「答」下面，带上日期和是谁说的。**
-   只留在聊天记录里的话，下一次开新会话的 AI 会重新问一遍，
-   或者更糟——**默认现值就是对的**。然后才改代码、再去掉 `⬜` 前缀。
-5. **去掉 `⬜` 前缀不是打扫卫生**，是声明「这个参数已经过会计确认」。
-   真签了就把它**同时**从 `待会计确认.md` 的表格里删掉——两件事一起做，
-   否则 `tests/unit/db/test_pending_accounting.py` 会失败（这是刻意的）。
+1. **不要再把 `待会计确认.md` 当成待办清单**，它是归档。里面的「问题 N」
+   已有答复，别再拿去群里问一遍。
+2. **不要自己给会计口径定值。** 需要新参数才能往下做 → 在 `待会计确认.md`
+   里新开一条（保留「群里怎么问」那段可复制的问法），去群里问 K。
+   ⚠ **不要自己转述成一句话去问**：转述会丢掉关键背景，答案会答非所问。
+3. **拿到答复后必须写回文件**，带日期和是谁说的。只留在聊天记录里的话，
+   下一次开新会话的 AI 会重新问一遍，或者更糟——**默认现值就是对的**。
 
-### 还有三件不在 `rule_config` 里的
-
-清单前半部分的 **问题 1 正负号口径**（`asset_impairment` 2015 印正数、2024 印负数，
-`sign_convention` 该标什么一份文档都没写过）、**问题 2 主题→指标映射**
-（`_THEMES` 里每个主题验哪个指标是实现时定的）、**问题 3「产能释放」算不算利好**，
-都落在代码而非参数里，同样**不要自己拍**。
-
-> ⚠ **编号别混。** `A-数字` 是会计文档 `accounting_signoff_v1.docx` 自己的编号
-> （A-1 字段键名 … A-7 诊断指数 … A-9 细分行业）。引用会计文档时用 `A-数字`，
-> 引用 `待会计确认.md` 时用「问题 N」。这份清单曾给自己的条目也编了 `A-1…A-6`，
-> **和会计文档撞了四个**——K 读到「A-5」会想到产能利用率，而清单指的是计分权重。
+> ⚠ **编号别混。** `A-数字` 是会计文档自己的编号（A-1 字段键名 … A-7 诊断指数
+> … A-9 细分行业），v1.1 沿用。`待会计确认.md` 一度给自己的条目也编了
+> `A-1…A-6`，**和会计文档撞了四个**——K 读到「A-5」会想到产能利用率，
+> 而那份清单指的是计分权重。**引用会计文档用 `A-数字`，引用那份清单用「问题 N」。**
 
 ## ★ 冻结的接缝 —— 三个人都从这条线往上长
 
@@ -152,6 +156,12 @@ valuation.terminal_growth_max / wacc_min    0.02 / 0.06
 
 重写的代价不是"多写一遍"，而是同一个位置出现两套并存的约定：一边发
 `step.finished`、另一边发 `step.succeeded`，前端只能显示一半，而且**两边都不报错**。
+
+> ⚠ **下表是「任务编排」那一层的冻结清单（主干线）。**
+> 2026-09-30 合并进来的另一条线另有一套对应物（工作台读接口）：
+> `app/api/routes.py`、`app/schemas/workspace.py`、`app/db/repository.py`。
+> 两套都活着，**改哪一套要看改动落在哪个页面/接口上**——
+> `app/main.py` 的 docstring 写了注册顺序与优先级。
 
 ### 已经冻结的东西
 
@@ -235,25 +245,28 @@ ALL_SKILLS = (SELFCHECK, YourSkill())
 
 ```bash
 cd backend
-python scripts/init_db.py --force      # 建库 + 种子数据
-python scripts/seed_demo.py            # 灌演示数据（380 条事实，可选但前端要用）
-uvicorn app.main:app --reload
-# 另开一个终端：
-curl -X POST localhost:8000/api/tasks -H "Content-Type: application/json" \
-     -d '{"input":"跑一次系统自检","sync":true}'
+python scripts/init_db.py --force                  # 1. 建库 + 种子
+python scripts/parse_reports.py --source var/samples   # 2. 财务事实（约 1 分钟）
+python scripts/parse_mdna.py                       # 3. 正文与 MD&A（约 1 分钟）
+uvicorn app.main:app --reload                      # 4. 起服务
 ```
 
-同时看前端（两个终端）：
+前端另开一个终端：`cd frontend && npm run dev` → http://localhost:5173
 
-```bash
-cd frontend && npm run dev     # http://localhost:5173
-```
+**验证的最快方式是看工作台页面**，不是去 `/docs` 点接口：
 
-页面上输入「看一下这家公司的财务事实趋势」→ 中间时间线逐条亮起 → 右侧出结果。
-**这是验证整条链路最快的方式**，比在 `/docs` 上点接口直观得多。
+| 页面 | 走哪条链路 |
+|---|---|
+| 财务事实表 | `GET /api/projects/{id}/fact-grid` → 点任意一格 → `GET /api/facts/{id}/page` 回年报原文 |
+| 叙事一致性 | `.../narrative/claims` → `matches` → `index`（诊断指数与情景传导） |
 
-一句话 → 4 个步骤 → 16 条 SSE 事件 → 3 条 `tool_call` 留痕。
-**这是"假数据真链路"里的那条真链路**，后面所有 Skill 都往上套。
+另外两条链路各自独立：
+
+- **任务时间线**：`POST /api/tasks`（`{"input":"跑一次系统自检","sync":true}`）→
+  4 个步骤 → SSE 事件 → `tool_call` 留痕。
+  ⚠ 后端是通的，但**前端外壳目前没接它**，见「任务时间线那一组前端」那一节。
+- **LLM 抽取**（要密钥）：`python scripts/run_llm_extraction.py`；
+  离线回放走 `app/data/cassettes/`，`scripts/verify_llm.py` 可验证链路。
 
 ## 常用命令
 
@@ -476,10 +489,34 @@ EventSource 重连会补发历史，追加会让同一张表出现两份，而�
 > 浏览器 import 不了。而 `--check` 一直是绿的（它比文本）。现在头部是
 > `$comment` 字段，`test_exported_files_are_actually_usable_by_the_frontend` 盯着。
 
+### ⚠ 任务时间线那一组前端**现在没有任何页面引用它**
+
+`components/ResultPanel.tsx` + `hooks/useTaskStream.ts` + `components/EChart.tsx`
+是一套完整的「任务时间线 + 结果面板」，后端 `/api/tasks` 与 SSE 也都还在——
+但合并两条分支后，**应用外壳取的是另一条分支的 `App.tsx`，它不渲染这一组**。
+
+    ResultPanel  ← 没人 import
+      ├─ useTaskStream   ← 只有 ResultPanel 用
+      └─ EChart          ← 只有 ResultPanel 用
+
+它们是**能编译、跑得通、但页面上看不见**的状态。要把它接回外壳里（或者
+决定不要了），是丙的事——**不要以为删掉它们等于删掉功能**，也不要以为
+留着它们等于功能还在。
+
+> ⚠ 顺带一个坑：`EvidenceTarget` 这个类型原来定义在 `components/EvidenceDrawer.tsx`，
+> 而那个组件被另一条分支的同名组件取代了。**两个同名组件做的是不同的事**：
+>
+> | 组件 | 入参 | 交互 |
+> |---|---|---|
+> | `EvidenceDrawer`（现行） | `factId` | 从事实表点进来，自己去取原文页 |
+> | `EvidenceTarget`（类型，现在在 `types/view.ts`） | 已算好的算式与入参 | 从任务时间线的算式点进来 |
+>
+> 别混用，它们的入参根本不是一回事。
+
 ### SSE 订阅只有一处实现
 
-`frontend/src/hooks/useTaskStream.ts`。**不要在每个页面里各写一遍 EventSource。**
-它处理的三件事都不是可选的：
+`frontend/src/hooks/useTaskStream.ts`（⚠ 见上，目前没接进外壳）。
+**不要在每个页面里各写一遍 EventSource。** 它处理的三件事都不是可选的：
 
 1. **按类型逐个 `addEventListener`**——服务端发的是具名事件，不会触发 `onmessage`。
    清单来自 `contract.ts`，由后端导出。
@@ -612,11 +649,26 @@ kind，同一笔事实会存成两行，任何聚合都重复计算且不报错�
 ## 叙事层
 
 「管理层说的话，财务事实认不认」——这一层就是项目名里那个「叙事一致性」。
-三个文件，职责严格分开：
 
-    app/parsing/mdna.py      PDF → 章节正文（IO）
-    app/engine/narrative.py  正文 → 主张 → 观测（纯函数，零 IO 零 LLM）
-    app/skills/narrative.py  取数、组织、留痕（编排）
+⚠ **这一层有两套实现，跑的是新的那套。** 合并两条开发分支时都留下了：
+
+| | v1.0（主干线，旧） | **v1.1（现行，按 K 的 9-26 交付）** |
+|---|---|---|
+| 抽取 | `engine/narrative.py` | **`engine/claim_rules.py`**（规则法）+ `skills/narrative_llm.py`（LLM） |
+| 判定 | 同上 | **`engine/claim_match.py`** |
+| 编排 | `skills/narrative_consistency.py` | `skills/narrative.py` |
+| 挂在 | 编排器（`/api/tasks`） | **工作台页面（`routes.py`）** |
+
+**改判定逻辑改 v1.1 那一列。** v1.0 那套只在 `/api/tasks` 那条路上还挂着，
+工作台不走它——改了它页面上的数字不会变，而且不报错。
+
+v1.1 那条链路的文件职责：
+
+    app/parsing/mdna.py            PDF → 章节正文（IO）
+    app/parsing/claims.py          正文 → 候选句（纯文本处理）
+    app/engine/claim_rules.py      候选句 → 主张（纯函数，零 IO 零 LLM）
+    app/engine/claim_match.py      主张 + 事实 → 判定
+    app/skills/narrative.py        取数、组织、落库（编排）
 
     先跑一次：python scripts/parse_mdna.py
 
@@ -655,24 +707,31 @@ kind，同一笔事实会存成两行，任何聚合都重复计算且不报错�
 结果是整段展望被静默丢光。写「下降」，会命中「成本**下降**」——那正是
 「降本增效」的正面措辞，等于把要验的主张本身过滤掉。**否定词一律用二字词。**
 
-### ⚠ 方向判定**不设幅度阈值**（这里删过一道错的闸门）
+### ⚠ 噪声阈值**必须分类型**，不能一个 1% 管所有指标
 
-`_direction()` 现在**只判方向**：方向相反即 `conflicted`，不看动了多少。
+判定时确实有噪声区间，但**不是一个数**（v1.1 §A.5）：
 
-这里曾有一道 `min_rel_change`（默认 1%）的闸门——「相对变动低于 1% 就当作没动」，
-理由是宝钢 2019 年毛利率从 10.8791% 走到 10.8350%（动了 0.04 个百分点），
-被判成「管理层说降本增效，事实相悖」看着荒唐。**挡掉的动机成立，
-但那是拿工程直觉改会计口径。** 依据（两份都在仓库根目录）：
+| 类型 | 噪声区间 | 配置键 |
+|---|---|---|
+| 金额 / 数量 | 相对变化 **≤ 1%** | `narrative.min_rel_change` |
+| 一般比例指标 | 绝对变化 **≤ 0.5 个百分点** | `narrative.min_ratio_change` |
+| 天数型 | 绝对变化 **≤ 3 天** | `narrative.min_days_change` |
+| 产能利用率 | 绝对变化 **≤ 1 个百分点** | `narrative.min_utilization_change` |
 
-- `accounting_signoff_v1.docx` A-7：方向性主张实际方向相反，**直接标记为冲突**
-- `方案选择.docx` 第 10 条：「20 个百分点」**只适用于明确数值目标的主张**
+毛利率和金额的**量纲根本不同**，用同一个 1% 去卡，等于给其中一类设了
+一个数量级不对的闸门——而且两边都不会报错。
 
-已于 2026-09-26 删除，`rule_config.narrative.min_rel_change` 同步清掉。
-删除的实际影响：宝钢 2020 年那两条从「不可比」变成「冲突」，全项目冲突数 **8 → 10**。
+> **这一段有来历。** 2026-09-25 这里曾经只有一道 `min_rel_change`（默认 1%）
+> 的闸门，理由是宝钢 2019 年毛利率从 10.8791% 走到 10.8350%（动了 0.04 个百分点），
+> 被判成「管理层说降本增效，事实相悖」看着荒唐。**挡掉的动机成立，
+> 但那是拿工程直觉改会计口径**——当时没有任何文档给过这个 1%。
+>
+> 9-26 删掉了它；同一天 K 交付 v1.1，**又把它加回来了，但拆成了上面四种**，
+> 并明确写下「毛利率下降 0.04 个百分点不误报冲突」。
+> **删是因为没依据，回来是因为有依据了**——不是绕回原点。
 
-> **噪声该在词表那一层挡**（这句话够不够格被当成主张），不在判定这一层。
-> 一条真实的反向主张因为「动得不够多」而免于被记成冲突时，它在界面上与
-> 「数据缺失」长得一模一样——**比误报更难发现**。
+另外 v1.1 明确：**明确数值目标不许套用统一容差**——
+「增长至少 5%」实际 4% 必须判未达成，不能因为只差 1 个百分点就当作无明显变化。
 
 `delta == 0`（数值一点没动）另判 `incomparable`：既没变好也没变坏，没有方向可判。
 不设这个出口的话，它会落进 `up if delta > 0 else down` 的 else 分支被判成下行，
@@ -693,19 +752,36 @@ kind，同一笔事实会存成两行，任何聚合都重复计算且不报错�
 > 读布尔参数一律走 `skills/narrative.py::_rule_bool`，**不要写 `bool(value)`**：
 > SQLite 里存的是文本 `'0'`，而 `bool('0')` 是 **True**。
 
-### ⚠ 诊断指数**不出分**，缺的是数据源不是公式
+### ⚠ 诊断指数能出分了，但**闸门不过时绝不用 0 或 50 代替**
 
-公式（`docs/02` §九 = A-7，机读版 `rule_config.index.*`）：
+公式（v1.1 §四 = A-7，机读版 `rule_config.index.*`）：
 
-    I = 50 + 20·H + 20·C + 5·R − 10·P − 15·Q
+    I = min(100, max(0, 50 + 20·H + 20·C + 5·R − 10·P − 15·Q))
 
-H（历史兑现度）与 C（当前一致性）由叙事层产出；**R（风险披露变化）、
-P（模板化惩罚）、Q（财务质量冲突）没有数据源**——Q 依赖 `engine/checks.py`，
-R/P 要跨年度正文比对。**不是「等 K 定公式」，公式 9-22 就定了。**
+五个分项现在都有数据源（`engine/index.py` + `claim_match` + `checks` + `quality`）。
 
-只算得出两项时就出分，是最糟的选择：分母没变、权重照乘，**分数看起来和
-完整版一模一样**，而它缺了足足 30 分权重的构成项。所以界面上的
-`narrative_consistency` 只给观测与计数，并**把不出分的原因写在卡片上**。
+**⚠ H 与 C 是 [−1, 1]**，不是 [0, 1]。旧稿五个分项都是 0–1，中性证据只能取 0.5，
+于是 `H=C=0.5` 会算出 `50 + 20×0.5 + 20×0.5 = 70` 分——**正好压在「一致性较高」
+的分界线上，全中性的公司反而得分最高**。这是 v1.1 最关键的修订。
+
+闸门（覆盖率 ≥ 0.60、有效观测 ≥ 5 等）不过时 `score` 返回 **null**，
+并给出**逐条**未满足条件。**绝不用 0 分或 50 分代替**：分母没变、权重照乘，
+那个分数看起来和完整版一模一样，看的人没有任何办法知道它其实不算数。
+
+### ⚠ 指数**不许黑箱式改估值**
+
+v1.1 §八把旧稿的「指数自动调情景权重 / 自动上调 WACC」**整个废掉了**。
+现在只有「提示 + 人工确认」：
+
+- ≥ 70：保留原有情景，**不得自动提高增长率**
+- 45–69：请求确认经营假设，**不自动改值**
+- < 45：**人工确认具体经营参数后重算**
+- 出不了分：不发生由指数驱动的任何估值调整
+
+另有两条硬约束：**WACC 与永续增长率需独立依据，不得仅因指数低而修改**；
+**同一风险不能同时压低收入、利润率并抬高 WACC**（重复惩罚）。
+`engine/mapping.py` 的 `ScenarioAdjustment` 里**没有价格字段**——这不是靠自觉，
+是数据类型层面的保证。改这块之前先读那个模块的 docstring。
 
 ## 计算引擎
 
