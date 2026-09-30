@@ -33,6 +33,18 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
+# _console 在 backend/scripts/ 下，两个脚本共用同一份编码兜底。
+# 复制一份到这里的话，改了一处忘了另一处，两边都不会报错。
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend" / "scripts"))
+
+# _console 与本文件同目录。**这一行不能省**：
+# 直接 `python scripts/x.py` 时 Python 会自动把脚本目录放进 sys.path，
+# 但测试用 `spec_from_file_location` 按路径加载脚本时**不会**——
+# 少了它，`import _console` 只在跑测试时炸，看起来像测试坏了。
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import _console  # noqa: E402  (与本文件同目录)
+
+_console.setup()
 
 from app.db.session import connect  # noqa: E402
 from app.engine.attestation import RISK_ITEMS  # noqa: E402
@@ -211,7 +223,19 @@ def _export_p(con: sqlite3.Connection, limit: int = 400) -> None:
     ⚠ **候选来自规则法与模型法的并集**，而且只导 `verifiable=1` 的——
     不可验证的主张已经标了 `background_only`，本来就不进 P 分母。
     全导的话会计要审几千条，而其中一大半根本不是实质经营表述。
+
+    ⚠ **截断了要说出来。** 排序是 `claim_type, source_page`，超限时砍掉的是
+    **排序靠后的那几个主题的全部主张**——不是「随机少一点」，是**按主题整块丢**。
+    不吭声的话，界面上表现为「某几类主张怎么一条都没确认过」，
+    而谁都想不到是导出时被 LIMIT 掉了。
     """
+    total = con.execute("SELECT COUNT(*) FROM claim WHERE verifiable = 1").fetchone()[0]
+    if total > limit:
+        print(
+            f"  ⚠ P 表候选共 {total} 条，只导出前 {limit} 条（按主题排序截断）。"
+            f"**剩下的 {total - limit} 条这次默认「无确认记录」**——"
+            f"要全导请在 _export_p 里调大 limit。"
+        )
     existing = {
         r["claim_id"]: r for r in con.execute("SELECT * FROM p_confirmation")
     }
@@ -274,6 +298,26 @@ def _check_or_import(con: sqlite3.Connection, *, do_import: bool) -> int:
         for i, row in enumerate(rows, start=3):     # 表头 1 行 + 说明 1 行
             problems.extend(f"{name} 第 {i} 行：{p}" for p in checker(row))
 
+    # ⚠ 逐条核对 P 表的 claim_id 在不在**当前这个库**里。
+    #
+    # 不核的话，`_import` 会把对不上的行**静默 continue 掉**——会计填了几百行，
+    # 脚本打印「✓ 已写回 0 行」，而 P 项照样算不出来。**没有任何一处报错。**
+    #
+    # 这件事真的发生过：`人工录入/P_人工确认.csv` 是照着另一个库导出的，
+    # 换台机器重跑抽取之后，400 条的 id 与库里 1047 条**零重合**。
+    # CSV 是库的投影，库一变（重建、重跑抽取、换 prompt 版本），投影就作废。
+    p_rows = parsed.get("P_人工确认.csv") or []
+    if p_rows:
+        known = {r[0] for r in con.execute("SELECT claim_id FROM claim")}
+        orphan = [r.get("claim_id", "") for r in p_rows if r.get("claim_id") not in known]
+        if orphan:
+            problems.append(
+                f"P_人工确认.csv：{len(orphan)}/{len(p_rows)} 条的 claim_id 在当前库里"
+                f"不存在（例：{orphan[0]}）。**这批表对不上库，填了也写不进去**——"
+                "CSV 是库的投影，重建库或重跑抽取都会让旧 CSV 作废。"
+                "请先确认库与 CSV 出自同一份数据，再重新 --export 一份发出去。"
+            )
+
     if problems:
         print(f"✗ 发现 {len(problems)} 处问题，**整体拒绝**（会计口径 §七：不猜、不填 0）：")
         for p in problems[:25]:
@@ -287,8 +331,17 @@ def _check_or_import(con: sqlite3.Connection, *, do_import: bool) -> int:
         print("  要写回数据库请加 --import")
         return 0
 
-    n = _import(con, parsed)
+    n, p_dropped = _import(con, parsed)
     print(f"✓ 已写回 {n} 行")
+    if p_dropped:
+        # 走到这里说明校验那一步被绕过了（比如直接调 _import），
+        # 仍然要出声——**静默丢数据是这个文件最不该有的行为**。
+        print(
+            f"✗ 另有 {p_dropped} 行 P 表因为 claim_id 不在库里被丢弃，"
+            "**会计的判定没有生效**。先跑 --check 看是哪些。",
+            file=sys.stderr,
+        )
+        return 1
     return 0
 
 
@@ -347,10 +400,18 @@ def _check_p(row: dict) -> list[str]:
     return out
 
 
-def _import(con: sqlite3.Connection, parsed: dict[str, list[dict]]) -> int:
-    """写回。整批一个事务，中途失败整体回滚。"""
+def _import(con: sqlite3.Connection, parsed: dict[str, list[dict]]) -> tuple[int, int]:
+    """写回。整批一个事务，中途失败整体回滚。
+
+    返回 `(写入行数, 丢掉的 P 行数)`。
+
+    ⚠ **第二个数不能吞。** 原来这里对找不到的 `claim_id` 直接 `continue`，
+    于是「会计填了 400 行、一行都没写进去」与「填了 400 行、全部写进去了」
+    在输出上**长得一模一样**。现在把它报出来——调用方会在非零时给醒目提示。
+    """
     now = _utc_now()
     n = 0
+    p_dropped = 0
     with con:
         for row in parsed.get("Q2_账龄.csv", []):
             con.execute(
@@ -413,6 +474,7 @@ def _import(con: sqlite3.Connection, parsed: dict[str, list[dict]]) -> int:
                 "SELECT 1 FROM claim WHERE claim_id = ?", (claim_id,)
             ).fetchone()
             if not exists:
+                p_dropped += 1
                 continue
             con.execute(
                 "INSERT INTO p_confirmation (id, claim_id, is_substantive,"
@@ -435,7 +497,7 @@ def _import(con: sqlite3.Connection, parsed: dict[str, list[dict]]) -> int:
                 ),
             )
             n += 1
-    return n
+    return n, p_dropped
 
 
 def _json_list(raw: str | None) -> str:

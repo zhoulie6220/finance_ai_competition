@@ -34,6 +34,15 @@ import urllib.request
 from dataclasses import dataclass, field
 from typing import Any
 
+# _console 与本文件同目录。**这一行不能省**：
+# 直接 `python scripts/x.py` 时 Python 会自动把脚本目录放进 sys.path，
+# 但测试用 `spec_from_file_location` 按路径加载脚本时**不会**——
+# 少了它，`import _console` 只在跑测试时炸，看起来像测试坏了。
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import _console  # noqa: E402  (与本文件同目录)
+
+_console.setup()
+
 BASE = "http://127.0.0.1:8000"
 
 # 演示动线的主公司。可比公司在演示中只作对照，不做完整动线。

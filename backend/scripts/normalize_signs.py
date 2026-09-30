@@ -36,6 +36,15 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+# _console 与本文件同目录。**这一行不能省**：
+# 直接 `python scripts/x.py` 时 Python 会自动把脚本目录放进 sys.path，
+# 但测试用 `spec_from_file_location` 按路径加载脚本时**不会**——
+# 少了它，`import _console` 只在跑测试时炸，看起来像测试坏了。
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import _console  # noqa: E402  (与本文件同目录)
+
+_console.setup()
+
 from app.db.session import connect  # noqa: E402
 from app.engine.sign import (  # noqa: E402
     LOSS_NEGATIVE,
