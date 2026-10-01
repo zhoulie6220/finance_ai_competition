@@ -34,6 +34,8 @@ import sqlite3
 from dataclasses import dataclass, field
 from typing import Any
 
+from app.db.dictionary import metric_aliases
+
 from app.engine.claim_rules import (
     Magnitude,
     extract_direction,
@@ -101,6 +103,9 @@ def extract_and_store(
             (project_id,),
         )
     )
+    # 主判据指标的别名，用来在一句多目标时挑对那个数（见 claim_rules._pick_by_metric）。
+    # 取一次、整批复用——字段字典在抽取期间不会变。
+    aliases_by_metric = metric_aliases(con)
 
     sections = con.execute(
         """
@@ -125,7 +130,12 @@ def extract_and_store(
                 continue
 
             direction, modality_only = extract_direction(sentence.text)
-            magnitude = extract_magnitude(sentence.text)
+            # 别名用来在一句多目标时挑对那个数。宝钢的年度经营计划是
+            # 「计划产铁X万吨、…、营业成本Z亿元」，不传别名会取到产铁的吨数。
+            magnitude = extract_magnitude(
+                sentence.text,
+                aliases_by_metric.get(match.rule.primary_metric or "", ()),
+            )
 
             # 只提了主题词、没有方向也没有数值 → 不是主张，是背景叙述。
             # 放进 claim 表会让 N 虚高、覆盖率虚高，而页面上一堆「主张」
@@ -164,6 +174,8 @@ def extract_and_store(
                     magnitude.raw if magnitude else None,
                     str(magnitude.value) if magnitude else None,
                     magnitude.unit if magnitude else None,
+                    magnitude.bound if magnitude else None,
+                    1 if (magnitude and magnitude.is_plan) else 0,
                     match.rule.claim_type,
                     1 if verifiable else 0,
                     # v1.1 与 docs/01 的硬约束：不可验证的主张必须标
@@ -209,10 +221,11 @@ def extract_and_store(
             "INSERT OR IGNORE INTO claim (claim_id, project_id, section_id,"
             " claim_text, subject, action, object, period_expr, period_norm,"
             " direction, magnitude_text, magnitude_value, magnitude_unit,"
+            " magnitude_bound, is_plan_target,"
             " claim_type, verifiable, background_only, confidence,"
             " source_file_id, source_page, source_text, extractor,"
             " prompt_version, status, created_at)"
-            " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             rows,
         )
         con.executemany(

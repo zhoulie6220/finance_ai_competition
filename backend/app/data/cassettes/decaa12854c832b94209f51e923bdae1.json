@@ -1,0 +1,7 @@
+{
+  "cassette_id": "decaa12854c832b94209f51e923bdae1",
+  "model_version": "deepseek-flash",
+  "text": "```json\n{\n  \"claims\": [\n    {\n      \"text\": \"深挖存量资产利用，完成6条停产产线的盘活处置；员工人均年钢产量再上新台阶。\",\n      \"subject\": \"公司\",\n      \"period_expr\": \"报告期内\",\n      \"direction\": \"up\",\n      \"magnitude_text\": \"6条停产产线\",\n      \"metric_key\": null,\n      \"metric_note\": \"应为人均钢产量（员工人均年钢产量）及停产产线盘活处置数量，字段表中无对应指标\",\n      \"claim_type\": \"capacity\",\n      \"verifiable\": true,\n      \"confidence\": 0.6\n    },\n    {\n      \"text\": \"海外基地布局实现历史性突破，第一家海外全流程钢厂沙特宝海钢铁公司成立，产品出口突破600万吨创历史新高，与宝澳等海外研发中心合作空间不断拓展。\",\n      \"subject\": \"公司\",\n      \"period_expr\": \"报告期内\",\n      \"direction\": \"up\",\n      \"magnitude_text\": \"突破600万吨\",\n      \"metric_key\": null,\n      \"metric_note\": \"应为产品出口量（出口销量），字段表中无对应指标\",\n      \"claim_type\": \"demand\",\n      \"verifiable\": true,\n      \"confidence\": 0.7\n    }\n  ]\n}\n```",
+  "tokens_in": 1641,
+  "tokens_out": 288
+}

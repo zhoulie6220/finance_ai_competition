@@ -26,7 +26,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
-from typing import Literal
+from typing import Literal, Sequence
 
 Direction = Literal["up", "down", "improve", "deteriorate", "flat", "unknown"]
 
@@ -237,6 +237,19 @@ class Magnitude:
     value: Decimal
     unit: str            # '%' / '个百分点' / '亿元' / ...
     bound: Literal["exact", "at_least", "at_most", "about"]
+    #: 这个数字是不是**计划值**（所在分句里出现「计划 / 预算 / 目标」这类词）。
+    #:
+    #: ⚠ 这一位决定判定走第 4 条还是第 6 条，不是装饰：
+    #:
+    #:     已发生的事实  「2022年公司销售商品坯材4,976.3万吨」
+    #:        → 拿它去核验等于**拿事实核验事实**，永远判「支持」。
+    #:          而假的「支持」会把 H 和 C 一起抬上去，还看不出来。
+    #:     计划值        「2018年公司计划营业成本2,420亿元」
+    #:        → 和当年实际比，实际 2,590.85 亿，超支 7%，是实打实的未达成。
+    #:
+    #: 两者的区别**只在有没有计划模态词**，所以必须在抽取时记下来——
+    #: 判定那一步手上只有这一行数据，回头去原文找「计划」二字是找不到的。
+    is_plan: bool = False
 
     @property
     def is_ratio(self) -> bool:
@@ -263,6 +276,11 @@ _ABOUT = ("约", "左右", "大约", "近", "逾", "余")
 _BOUND_LOOKBACK = 4
 
 
+#: 年份区间写法：「2019-2021年」「2019—2021年」「2019至2021年」。
+#: 区间**两头的数字都是年份**，不能只放行第一个、把第二个当幅度。
+_YEAR_RANGE_RE = re.compile(r"\s*[-–—~～至]\s*20\d{2}\s*年")
+
+
 def _is_year(match: re.Match[str], text: str) -> bool:
     """这个数字是不是年份。
 
@@ -270,6 +288,10 @@ def _is_year(match: re.Match[str], text: str) -> bool:
     幅度会全被解析成「2022」——句子里的真实金额（4,976.3 万吨）
     反而被丢掉，而且**不报错**：判定会拿「2022」去和实际值比，
     得到一个永远对不上的偏差，最后把好句子判成冲突。
+
+    区间写法要单独认：宝钢的「公司2019-2021年规划目标」里，
+    `2019` 后面跟的是减号不是「年」，只判「紧跟年字」会把它当成幅度，
+    于是幅度变成 2019——一个既不是金额也不是数量的数。
     """
     if match.group("unit"):
         return False
@@ -277,15 +299,88 @@ def _is_year(match: re.Match[str], text: str) -> bool:
         value = int(match.group("num"))
     except ValueError:
         return False
+    if not (1900 <= value <= 2099):
+        return False
     tail = text[match.end() : match.end() + 1]
-    return tail == "年" and 1900 <= value <= 2099
+    if tail == "年":
+        return True
+    return bool(_YEAR_RANGE_RE.match(text[match.end() :]))
 
 
-def extract_magnitude(text: str) -> Magnitude | None:
+#: 计划模态词。数字所在分句里出现这些词，才算「计划值」而不是已发生的事实。
+#:
+#: ⚠ 刻意**不含**「预计 / 有望 / 力争」——那是预测与意向，v1.1 明确
+#: 「可以跟踪目标完成情况，但不能据此推断虚假陈述」，核验口径不同。
+_PLAN_TERMS = ("计划", "预算", "目标", "安排", "拟定", "拟")
+
+#: 断分句时用的边界。⚠ **「、」不在里面**，这一点是有意的：
+#: 宝钢的年度经营计划是「2018年，公司计划产铁X万吨、产钢Y万吨、…、营业成本Z亿元」——
+#: 「计划」在句首，管的是整个顿号列表。若把「、」也当边界，
+#: 「营业成本Z亿元」那个分句里就没有「计划」二字，最该认出来的目标反而认不出。
+_PLAN_CLAUSE_BREAK = "。！？；，"
+
+
+def _plan_clause(text: str, pos: int) -> str:
+    """取 pos 所在的那个「强分句」——回退到上一个句号/分号/逗号为止。
+
+    ⚠ 硬边界是 `_PLAN_CLAUSE_BREAK` 里那几个字符，**不含顿号**，理由见那里的说明。
+    """
+    start = max((text.rfind(b, 0, pos) for b in _PLAN_CLAUSE_BREAK), default=-1) + 1
+    return text[start : pos + 1]
+
+
+def _crosses_clause(text: str, start: int, end: int) -> bool:
+    """`text[start:end]` 之间有没有分句边界。"""
+    return any(b in text[start:end] for b in _PLAN_CLAUSE_BREAK)
+
+
+def _pick_by_metric(
+    matches: list[re.Match[str]], text: str, metric_aliases: Sequence[str]
+) -> re.Match[str]:
+    """一句话里有多个数字时，挑出**与主判据指标对应的**那一个。
+
+    ⚠ 宝钢每年的「年度经营计划」一句话里塞五六个目标：
+
+        2018年，宝钢股份计划产铁4563万吨、产钢4737万吨、销售商品坯材4568万吨、
+        营业总收入2786亿元、营业成本2420亿元。
+
+    主判据是 `operating_cost`，而「取第一个带单位的数」拿到的是
+    **4,563 万吨（产铁）**——拿铁产量去和营业成本比，量纲完全不同，
+    算出来的偏差毫无意义，然后判成「未达成」。**不报错。**
+
+    做法：找到主判据别名（「营业成本」）的位置，取它**同一分句内**的下一个
+    带单位数字。别名的来源是 `metric_definition.aliases`——那份字典是
+    「PDF 行名 → 字段键」映射的唯一依据，这里复用它，不另造一份词表。
+    """
+    for alias in metric_aliases:
+        if not alias:
+            continue
+        at = text.find(alias)
+        if at < 0:
+            continue
+        after = at + len(alias)
+        # 别名与数字之间不许跨分句边界——否则「营业成本同比下降，销量 3000 万吨」
+        # 会拿「3000 万吨」去当营业成本的目标。
+        for m in matches:
+            if (
+                m.group("unit")
+                and m.start() >= after
+                and not _crosses_clause(text, after, m.start())
+            ):
+                return m
+    return next((m for m in matches if m.group("unit")), matches[0])
+
+
+def extract_magnitude(
+    text: str, metric_aliases: Sequence[str] = ()
+) -> Magnitude | None:
     """抽取句子里明确的数值目标或幅度。
 
     优先取**带单位的**数字——年报里的金额与数量几乎都带单位，
     而年份不带。只有在没有带单位数字时才退回取不带单位的。
+
+    `metric_aliases` 传入主判据指标的别名（取自字段字典），
+    用来在一句多目标时挑对那个数；不传则退回「第一个带单位的」。
 
     没有数字的方向性表述（「销量持续增长」）返回 None——
     v1.1 要求这类只做「方向级验证」，不套用任何幅度阈值。
@@ -294,7 +389,7 @@ def extract_magnitude(text: str) -> Magnitude | None:
     if not matches:
         return None
 
-    chosen = next((m for m in matches if m.group("unit")), matches[0])
+    chosen = _pick_by_metric(matches, text, metric_aliases)
     unit = chosen.group("unit") or ""
     try:
         # ⚠ **必须去掉千位分隔符**：Decimal("4,976.3") 会抛 InvalidOperation，
@@ -314,13 +409,24 @@ def extract_magnitude(text: str) -> Magnitude | None:
     else:
         bound = "exact"
 
-    return Magnitude(raw=chosen.group(0), value=value, unit=unit, bound=bound)
+    # 起点用 chosen.start() + 1：「2022年公司实现销量4,976万吨」里的
+    # 「实现」在数字之前、且跨不过逗号，不会被误当成计划词。
+    is_plan = any(t in _plan_clause(text, chosen.start() + 1) for t in _PLAN_TERMS)
+
+    return Magnitude(
+        raw=chosen.group(0), value=value, unit=unit, bound=bound, is_plan=is_plan
+    )
 
 
 # ---------------------------------------------------------------- 期间
 
-# 明确的四位数年份
-_YEAR_RE = re.compile(r"(20\d{2})\s*年?")
+# 明确的四位数年份。**必须带「年」字，不能写成 `年?`。**
+#
+# ⚠ 可选的那个「年」是真实存在的 bug：「……材2073万吨，同比降低6.5%」
+# （首钢 2023 年报原句）里的 2073 会被当成 2073 年，于是这条主张变成
+# 一条 50 年后才到期的前瞻计划——永远进不了验证、永远不判冲突，
+# 却实实在在占用 H 的观测集。**不报错**，只是 H 里混进一条永远不动的。
+_YEAR_RE = re.compile(r"(20\d{2})\s*年")
 # 相对期间
 _RELATIVE = {
     "本期": 0, "本年度": 0, "本年": 0, "报告期": 0, "当期": 0,
@@ -374,7 +480,8 @@ def extract_period_expr(text: str) -> str | None:
     """
     m = _YEAR_RE.search(text)
     if m:
-        return text[m.start() : m.end() + 1] if text[m.end() : m.end() + 1] == "年" else m.group(0)
+        # 归一成「YYYY年」，不带出原文里的空白
+        return f"{m.group(1)}年"
     for word in _RELATIVE:
         if word in text:
             return word

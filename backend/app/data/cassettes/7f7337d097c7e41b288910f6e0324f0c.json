@@ -1,7 +1,7 @@
 {
   "cassette_id": "7f7337d097c7e41b288910f6e0324f0c",
   "model_version": "deepseek-flash",
-  "text": "{\"claims\":[{\"text\":\"国内采购  4,410,000  5,450,000  2,976  2,858\",\"subject\":\"公司铁矿石国内采购\",\"period_expr\":\"本年度\",\"direction\":\"down\",\"magnitude_text\":\"4,410,000吨\",\"metric_key\":null,\"metric_note\":\"铁矿石国内采购量（吨），字段表中无对应指标\",\"claim_type\":\"cost\",\"verifiable\":true,\"confidence\":0.75},{\"text\":\"国内采购  4,410,000  5,450,000  2,976  2,858\",\"subject\":\"公司铁矿石国内采购支出金额\",\"period_expr\":\"本年度\",\"direction\":\"up\",\"magnitude_text\":\"2,976百万元\",\"metric_key\":null,\"metric_note\":\"铁矿石国内采购支出金额（百万元），字段表中无对应指标\",\"claim_type\":\"cost\",\"verifiable\":true,\"confidence\":0.7},{\"text\":\"国外进口  67,810,000  60,630,000  36,811  22,648\",\"subject\":\"公司铁矿石国外进口\",\"period_expr\":\"本年度\",\"direction\":\"up\",\"magnitude_text\":\"67,810,000吨\",\"metric_key\":null,\"metric_note\":\"铁矿石国外进口量（吨），字段表中无对应指标\",\"claim_type\":\"cost\",\"verifiable\":true,\"confidence\":0.75},{\"text\":\"国外进口  67,810,000  60,630,000  36,811  22,648\",\"subject\":\"公司铁矿石国外进口支出金额\",\"period_expr\":\"本年度\",\"direction\":\"up\",\"magnitude_text\":\"36,811百万元\",\"metric_key\":null,\"metric_note\":\"铁矿石国外进口支出金额（百万元），字段表中无对应指标\",\"claim_type\":\"cost\",\"verifiable\":true,\"confidence\":0.7}]}",
+  "text": "{\"claims\":[{\"text\":\"国内采购  4,410,000  5,450,000  2,976  2,858\",\"subject\":\"公司铁矿石国内采购\",\"period_expr\":\"本年度\",\"direction\":\"down\",\"magnitude_text\":\"4,410,000 吨\",\"metric_key\":null,\"metric_note\":\"铁矿石国内采购量（吨），字段表中无对应指标\",\"claim_type\":\"cost\",\"verifiable\":true,\"confidence\":0.75},{\"text\":\"国外进口  67,810,000  60,630,000  36,811  22,648\",\"subject\":\"公司铁矿石国外进口\",\"period_expr\":\"本年度\",\"direction\":\"up\",\"magnitude_text\":\"67,810,000 吨\",\"metric_key\":null,\"metric_note\":\"铁矿石国外进口量（吨），字段表中无对应指标\",\"claim_type\":\"cost\",\"verifiable\":true,\"confidence\":0.75}]}",
   "tokens_in": 1685,
-  "tokens_out": 387
+  "tokens_out": 195
 }

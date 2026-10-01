@@ -57,6 +57,9 @@ METRIC_KINDS: dict[str, MetricKind] = {
     "capacity_utilization": "utilization",
 }
 
+#: 比例型的单位。只有目标是比例时，才能直接和实测的变化率相比。
+_RATIO_UNITS = ("%", "％", "个百分点")
+
 # 方向词 → 期望的变化方向。'improve'/'deteriorate' 描述的是「状态」，
 # 对不同的指标含义不同：毛利率改善是上升，成本改善是下降。
 _IMPROVING_IS_UP = ("gross_margin", "net_margin", "ebit_margin", "ebitda_margin",
@@ -107,6 +110,9 @@ class ClaimInput:
     magnitude_raw: str | None = None
     bound: Literal["exact", "at_least", "at_most", "about"] = "exact"
     primary_metric: str | None = None
+    #: 这个数字是不是**计划值**。判定要区分「承诺」和「已发生的事实」——
+    #: 拿事实去核验事实永远判「支持」，而假的「支持」看不出来。
+    is_plan: bool = False
 
 
 @dataclass(frozen=True)
@@ -231,18 +237,31 @@ def is_explicit_target(claim: ClaimInput) -> bool:
     然后判成「未达成」。实测中这一条让宝钢多出 60 多条假的「相悖」，
     而假的冲突比漏报更糟：它会让整张对照表失去可信度。
 
-    真正能当目标核验的只有两类：
+    真正能当目标核验的有三类：
 
       · **比率型**（「增长 5% 以上」「下降不超过 10%」）——有方向、有幅度
       · **带界限的绝对量**（「不低于 100 万吨」「至少 5 亿元」）
+      · **计划里的绝对量**（「2018年公司计划营业成本 2,420 亿元」）
+        —— 有「计划 / 预算 / 目标」这类模态词，说明它是承诺不是陈述
 
     没有界限的绝对量只是陈述，按方向性主张处理（走噪声带）。
+
+    ⚠ 第三类**不是**在放宽上面那条警告。警告说的是「拿 4,976.3 万吨
+    去和营业成本的变化率相比」——量纲不同。而这里能进第三类的前提是
+    抽取阶段已经**按主判据别名挑过数**（`claim_rules._pick_by_metric`）：
+    「营业成本 2,420 亿元」对「营业成本 2,590.85 亿元」，同一个指标、
+    同一个量纲，比较是有意义的。
+
+    实测：宝钢 2018 年计划营业成本 2,420 亿元，实际 2,590.85 亿元，
+    超支 7%——这是一个**真实存在**、原先被判成「转人工复核」的未达成。
     """
     if claim.magnitude_value is None:
         return False
     if claim.magnitude_unit in ("%", "％", "个百分点"):
         return True
-    return claim.bound in ("at_least", "at_most")
+    if claim.bound in ("at_least", "at_most"):
+        return True
+    return claim.is_plan
 
 
 def judge(
@@ -383,6 +402,30 @@ def _judge_explicit_target(
             claim, metric, "needs_review",
             f"原文表述为「{claim.magnitude_raw}」，属约数且无公开容差，"
             f"只展示实际偏差、不擅自认定完成或未完成。",
+            confidence=0.0, magnitude_target=claim.magnitude_raw,
+            fact_period=current.period,
+        )
+
+    # ⚠ **绝对量目标在这一层比不了，必须挡住。**
+    #
+    # 金额类指标的 `actual_ratio` 是**相对变化** ((本期 − 基期) / 基期)，
+    # 而 `target` 是绝对金额。拿 2,420 亿元去减 0.0429，偏差必然是
+    # −2,419.96，于是**任何绝对量目标都判「未达成」——算术上就不可能达标**。
+    #
+    # 而那个「未达成」有公式、有偏差数字、有理由，看起来和真结论一模一样。
+    # 实测宝钢一次跑出 12 条，逐条都是这么来的；进 H 的 9 个观测里
+    # **有 7 个是这么来的**。这正是本模块开头警告的「假的冲突比漏报更糟」，
+    # 只不过方向反过来了：不是拿事实核验事实，是拿两个不同量纲的数相减。
+    #
+    # 要真判，得先把目标换算到与事实同一单位（亿元 → 百万元），
+    # 再定「计划营业成本」「成本环比削减 30 亿元」这类表述的达成方向——
+    # **那是会计口径**，不是这一层能拍的。所以转人工复核，不擅自判。
+    if claim.magnitude_unit not in _RATIO_UNITS:
+        return _out(
+            claim, metric, "needs_review",
+            f"数值目标「{claim.magnitude_raw}」是**绝对量**，与 {metric} 的"
+            f"相对变化不同量纲。换算与达成方向的口径未定，按规则转人工复核——"
+            f"**不擅自判完成或未完成**。",
             confidence=0.0, magnitude_target=claim.magnitude_raw,
             fact_period=current.period,
         )

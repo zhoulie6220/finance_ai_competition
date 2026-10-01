@@ -169,12 +169,27 @@ class ReplayTransport:
 
 
 class RecordingTransport:
-    """录制：转发给真实传输，同时把结果落成 cassette。"""
+    """录制：转发给真实传输，同时把结果落成 cassette。
+
+    ★ **已经有磁带就直接放，不再拨一次号。**
+
+    这一条是给「补录」用的。cassette 是按输入内容哈希存的，而抽取是**分批跑**
+    的：跑一半断了、或者中途加了新的章节，重跑时前面那几百段会**原样再调一遍
+    真实接口**——输入没变、结果也一定一样，钱白花，而且**从输出上看不出来**
+    （进度照走、数字照涨），只体现在账单上。
+
+    先查磁带之后，补录只花「还没录过的那部分」。
+
+    这**不是**「回放模式的降级」：回放模式（`ReplayTransport`）找不到磁带仍然
+    必须报错。这里只是把「已知答案」当缓存用——同样的输入、temperature=0、
+    固定 seed，结果本来就是确定的。
+    """
 
     def __init__(self, inner: Transport, store: CassetteStore) -> None:
         self.inner = inner
         self.store = store
         self.recorded: list[str] = []
+        self.replayed: list[str] = []
 
     def complete(
         self,
@@ -185,15 +200,19 @@ class RecordingTransport:
         seed: int | None,
         timeout_s: float,
     ) -> Completion:
+        key = cassette_key(
+            messages, model=model, temperature=temperature, seed=seed
+        )
+        if self.store.has(key):
+            self.replayed.append(key)
+            return self.store.read(key)
+
         completion = self.inner.complete(
             messages,
             model=model,
             temperature=temperature,
             seed=seed,
             timeout_s=timeout_s,
-        )
-        key = cassette_key(
-            messages, model=model, temperature=temperature, seed=seed
         )
         self.store.write(key, completion)
         self.recorded.append(key)

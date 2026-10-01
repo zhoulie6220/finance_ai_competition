@@ -1,0 +1,7 @@
+{
+  "cassette_id": "0cf0d264f6c9533bebaf81dab65bfb3d",
+  "model_version": "deepseek-flash",
+  "text": "{\"claims\": [{\"text\": \"2022年本公司完成股权投资项目26.2亿元，较去年同期减少29.5亿元。\", \"subject\": \"本公司\", \"period_expr\": \"2022年\", \"direction\": \"down\", \"magnitude_text\": \"26.2亿元，较去年同期减少29.5亿元\", \"metric_key\": null, \"metric_note\": \"对外股权投资金额（本期完成股权投资额），字段表中无对应指标\", \"claim_type\": \"other\", \"verifiable\": true, \"confidence\": 0.9}]}",
+  "tokens_in": 2031,
+  "tokens_out": 119
+}

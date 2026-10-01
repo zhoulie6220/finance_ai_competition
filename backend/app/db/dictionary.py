@@ -100,6 +100,23 @@ def fetch(con: sqlite3.Connection) -> list[dict]:
     return out
 
 
+def metric_aliases(con: sqlite3.Connection) -> dict[str, tuple[str, ...]]:
+    """「指标键 → 别名」。
+
+    抽取层用它在一句话里定位**主判据对应的那个数**：宝钢的年度经营计划是
+    「计划产铁4563万吨、产钢4737万吨、…、营业成本2420亿元」，主判据是
+    `operating_cost`，靠别名「营业成本」才找得到 2,420 亿元那一个。
+
+    ⚠ 复用字段字典，**不另造一份词表**。别名本来就是「PDF 行名 → 字段键」
+    映射的唯一依据；两份词表迟早分叉，而分叉之后不报错，
+    只会让同一个指标在解析层和抽取层指的是两回事。
+    """
+    return {
+        d["metric_key"]: tuple(a for a in (d.get("aliases") or []) if a)
+        for d in fetch(con)
+    }
+
+
 def _parse_multi(raw: object) -> list[str]:
     """把别名/排除词解析成列表。
 

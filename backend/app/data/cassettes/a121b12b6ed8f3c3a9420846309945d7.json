@@ -1,0 +1,7 @@
+{
+  "cassette_id": "a121b12b6ed8f3c3a9420846309945d7",
+  "model_version": "deepseek-flash",
+  "text": "{\"claims\":[{\"text\":\"截至2023年年末，该公司总资产为218.8亿元，净资产为120.9亿元，全年实现净利润26.1亿元。\",\"subject\":\"该公司（公司持股48.89%的子公司）\",\"period_expr\":\"截至2023年年末\",\"direction\":\"unknown\",\"magnitude_text\":\"总资产218.8亿元，净资产120.9亿元，净利润26.1亿元\",\"metric_key\":null,\"metric_note\":\"涉及多个指标：总资产（total_assets）、净资产（total_equity）、净利润（net_income），一句话含三个对象，无法用单一metric_key表示\",\"claim_type\":\"other\",\"verifiable\":true,\"confidence\":0.6},{\"text\":\"截至2023年年末，该公司总资产为207.1亿元，净资产为89.0亿元，全年实现净利润1.8亿元。\",\"subject\":\"宝武碳业科技股份有限公司\",\"period_expr\":\"截至2023年年末\",\"direction\":\"unknown\",\"magnitude_text\":\"总资产207.1亿元，净资产89.0亿元，净利润1.8亿元\",\"metric_key\":null,\"metric_note\":\"涉及多个指标：总资产（total_assets）、净资产（total_equity）、净利润（net_income），一句话含三个对象，无法用单一metric_key表示\",\"claim_type\":\"other\",\"verifiable\":true,\"confidence\":0.6}]}",
+  "tokens_in": 1813,
+  "tokens_out": 290
+}

@@ -1,7 +1,7 @@
 {
   "cassette_id": "4023a2cb9b39329f4d588482cdf55601",
   "model_version": "deepseek-flash",
-  "text": "{\n  \"claims\": [\n    {\n      \"text\": \"据钢联资讯，按2016年固定资产投资增速9%测算，2016年钢铁表观消费量将进一步降至6.6-6.7亿吨，国内粗钢产量下降至7.5-7.6亿吨。\",\n      \"subject\": \"钢铁行业\",\n      \"period_expr\": \"2016年\",\n      \"direction\": \"down\",\n      \"magnitude_text\": \"6.6-6.7亿吨；7.5-7.6亿吨\",\n      \"metric_key\": \"crude_steel_output\",\n      \"metric_note\": null,\n      \"claim_type\": \"macro\",\n      \"verifiable\": true,\n      \"confidence\": 0.7\n    },\n    {\n      \"text\": \"通过全员全面全过程的降本，以技术降本、管理降本、协同降本等手段，破解公司高成本体质的难题，成本水平力争领先同行。\",\n      \"subject\": \"公司\",\n      \"period_expr\": null,\n      \"direction\": \"down\",\n      \"magnitude_text\": null,\n      \"metric_key\": null,\n      \"metric_note\": \"成本水平（吨钢成本或营业成本），原文未给出具体指标与数值\",\n      \"claim_type\": \"cost\",\n      \"verifiable\": false,\n      \"confidence\": 0.4\n    }\n  ]\n}",
+  "text": "{\n  \"claims\": [\n    {\n      \"text\": \"据钢联资讯，按2016年固定资产投资增速9%测算，2016年钢铁表观消费量将进一步降至6.6-6.7亿吨，国内粗钢产量下降至7.5-7.6亿吨。\",\n      \"subject\": \"钢铁行业\",\n      \"period_expr\": \"2016年\",\n      \"direction\": \"down\",\n      \"magnitude_text\": \"表观消费量降至6.6-6.7亿吨，粗钢产量下降至7.5-7.6亿吨\",\n      \"metric_key\": \"crude_steel_output\",\n      \"metric_note\": null,\n      \"claim_type\": \"macro\",\n      \"verifiable\": true,\n      \"confidence\": 0.7\n    },\n    {\n      \"text\": \"通过全员全面全过程的降本，以技术降本、管理降本、协同降本等手段，破解公司高成本体质的难题，成本水平力争领先同行。\",\n      \"subject\": \"公司\",\n      \"period_expr\": null,\n      \"direction\": \"down\",\n      \"magnitude_text\": null,\n      \"metric_key\": \"operating_cost\",\n      \"metric_note\": null,\n      \"claim_type\": \"cost\",\n      \"verifiable\": false,\n      \"confidence\": 0.4\n    }\n  ]\n}",
   "tokens_in": 2108,
-  "tokens_out": 296
+  "tokens_out": 292
 }

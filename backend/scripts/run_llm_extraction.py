@@ -88,22 +88,45 @@ def main() -> int:
             continue
 
         print(f"—— {project}（{remaining} 段）——")
+
+        # ★ **先把待抽的段 id 一次取全，再按批传进去。**
+        #
+        # ⚠ 不能用「`limit=批大小` + `only_missing`」循环：`only_missing` 挑的是
+        # 「这一段下还没有 LLM 主张的」，而**有些段抽出来就是零条**——模型认为
+        # 整段没有可验证表述，或者没有主判据指标。那些段永远进不了「已完成」，
+        # 于是**每一批都会被重新挑中、重新调一次**：
+        #
+        #   · 白花调用的钱（实测第一批 43 次调用只覆盖了 33 段）
+        #   · 进度看着在走（`done` 按批大小加），实际覆盖的段远没那么多
+        #   · **录制的 cassette 被同一批 prompt 反复覆写，文件数一直不涨**，
+        #     看起来像「录制根本没生效」
+        #
+        # 取一次 id 列表就没有这个问题：每段至多被处理一次，
+        # 抽不出东西的段也只付一次代价。
+        con = connect(DB_PATH)
+        try:
+            pending = _remaining_section_ids(con, project)
+        finally:
+            con.close()
+
         done = 0
-        while done < remaining:
+        for start in range(0, len(pending), args.batch):
             if spent >= args.max_tokens:
                 print()
                 print(f"⚠ 已达 token 预算上限 {args.max_tokens:,}，主动停下。")
                 print("  已抽的部分是完整的（每段各自成事务）；重跑时会跳过它们。")
                 return 0
 
-            step = min(args.batch, remaining - done)
+            batch = tuple(pending[start : start + args.batch])
             con = connect(DB_PATH)
             try:
-                s = extract_claims_llm(con, project, limit=step, only_missing=True)
+                s = extract_claims_llm(
+                    con, project, section_ids=batch, only_missing=True
+                )
             finally:
                 con.close()
 
-            done += step
+            done = start + len(batch)
             spent += s.calls * TOKENS_PER_CALL_ESTIMATE
 
             elapsed = time.monotonic() - started
@@ -127,25 +150,34 @@ def main() -> int:
     return 0
 
 
-def _remaining(con, project: str) -> int:
-    """还有多少段没抽过。
+_PENDING_SQL = """
+    SELECT m.section_id FROM mdna_section m
+    JOIN file f ON f.file_id = m.file_id
+    WHERE f.project_id = ?
+      AND NOT EXISTS (
+          SELECT 1 FROM claim c
+          WHERE c.section_id = m.section_id AND c.extractor LIKE 'llm:%'
+      )
+    ORDER BY f.period, m.page_from, m.section_id
+"""
 
-    判据是「这一段的章节下有没有 LLM 抽出来的主张」——
-    已经抽过的段落重跑会被 `INSERT OR IGNORE` 跳过，但白白花一次调用的钱。
+
+def _remaining_section_ids(con, project: str) -> list[str]:
+    """还没抽到 LLM 主张的段的 id，**顺序稳定**。
+
+    顺序稳定是要紧的：调用方按它切片分批，顺序一变，同一段可能落进两批，
+    也可能一批都没落进。
+
+    ⚠ 判据是「这一段下有没有 LLM 主张」，所以**抽出来是零条的段永远在这张表里**。
+    调用方必须把这份列表**一次取全**再分批，不能每批重新查一次——
+    那会让零条的段被反复挑中（见 main() 里的说明）。
     """
-    row = con.execute(
-        """
-        SELECT COUNT(*) FROM mdna_section m
-        JOIN file f ON f.file_id = m.file_id
-        WHERE f.project_id = ?
-          AND NOT EXISTS (
-              SELECT 1 FROM claim c
-              WHERE c.section_id = m.section_id AND c.extractor LIKE 'llm:%'
-          )
-        """,
-        (project,),
-    ).fetchone()
-    return row[0]
+    return [r[0] for r in con.execute(_PENDING_SQL, (project,))]
+
+
+def _remaining(con, project: str) -> int:
+    """还有多少段没抽过（只用于开工前的预估，循环里不要再用它）。"""
+    return len(_remaining_section_ids(con, project))
 
 
 if __name__ == "__main__":

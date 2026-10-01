@@ -1,7 +1,7 @@
 {
   "cassette_id": "caea2e7f064b4886f15acdf25d2cbb3d",
   "model_version": "deepseek-flash",
-  "text": "{\"claims\": []}",
+  "text": "{\"claims\": [{\"text\": \"货币资金  1,822.2  财务公司存放中央银行法定准备金存款等\", \"subject\": \"公司货币资金\", \"period_expr\": \"报告期末\", \"direction\": \"unknown\", \"magnitude_text\": \"1,822.2 百万元\", \"metric_key\": \"cash_and_equivalents\", \"metric_note\": null, \"claim_type\": \"risk\", \"verifiable\": true, \"confidence\": 0.85}, {\"text\": \"长期应收款  7.5  融资租赁业务的保证金\", \"subject\": \"公司长期应收款\", \"period_expr\": \"报告期末\", \"direction\": \"unknown\", \"magnitude_text\": \"7.5 百万元\", \"metric_key\": null, \"metric_note\": \"长期应收款（受限部分），字段表中无对应键名\", \"claim_type\": \"risk\", \"verifiable\": true, \"confidence\": 0.8}, {\"text\": \"固定资产  900.1  抵押借款\", \"subject\": \"公司固定资产\", \"period_expr\": \"报告期末\", \"direction\": \"unknown\", \"magnitude_text\": \"900.1 百万元\", \"metric_key\": \"ppe\", \"metric_note\": null, \"claim_type\": \"risk\", \"verifiable\": true, \"confidence\": 0.85}, {\"text\": \"无形资产  194.9  抵押借款\", \"subject\": \"公司无形资产\", \"period_expr\": \"报告期末\", \"direction\": \"unknown\", \"magnitude_text\": \"194.9 百万元\", \"metric_key\": null, \"metric_note\": \"无形资产（受限部分），字段表中无对应键名\", \"claim_type\": \"risk\", \"verifiable\": true, \"confidence\": 0.8}, {\"text\": \"合计  2,924.7\", \"subject\": \"公司受限资产合计\", \"period_expr\": \"报告期末\", \"direction\": \"unknown\", \"magnitude_text\": \"2,924.7 百万元\", \"metric_key\": null, \"metric_note\": \"受限资产合计，字段表中无对应键名\", \"claim_type\": \"risk\", \"verifiable\": true, \"confidence\": 0.8}]}",
   "tokens_in": 1684,
-  "tokens_out": 5
+  "tokens_out": 477
 }

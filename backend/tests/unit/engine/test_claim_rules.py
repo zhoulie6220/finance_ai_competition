@@ -22,6 +22,7 @@ from app.engine.claim_rules import (
     THEMES,
     extract_direction,
     extract_magnitude,
+    extract_period_expr,
     is_pending,
     match_theme,
     resolve_period,
@@ -71,6 +72,28 @@ def test_numeric_prose_is_not_a_table_row(line: str) -> None:
     价值的句子全部丢掉，而且是静默丢掉。
     """
     assert looks_like_table_row(line) is False
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        # ★ 真实数据。附注列把说明文字直接拼在数字后面，多出一个非数字格，
+        # 「非数字格 ≤ 1」那条判据差一格失效；「数字占比 > 0.5」那条退路
+        # 被同一段文字稀释到 0.45 也失效。两条都拦不住，于是这行进了候选句，
+        # 最后出现在会计要逐条判的 P 表第一行上。
+        "应收票据  627  0.2  29,190  8.7  -97.9  新金融工具准则列报项目不同所致主要为2019年执行",
+        "合计  万吨  4,687  4,719  236  0.3  0.2  -2.6注：2019年度销售量中包含销售给宝日汽车板的碳钢产品196.5万吨",
+        "无缝钢管  制造费用及其他  1,425,611,515.00  14.22%  1,653,194,623.00  14.22%  -13.77%说明：报告期，公司钢铁行业的制造费用及其他的",
+    ],
+)
+def test_table_row_with_a_trailing_note_is_still_rejected(line: str) -> None:
+    """★ 附注列把数字行「稀释」成正文，是同一类 bug 的第二种形态。
+
+    前一条测试守的是「表格行吸收下一段正文」，这条守的是**说明文字本来就
+    和数字在同一行**——PDF 里附注列没有分隔符，抽出来的就是一整串。
+    两者都会让数字占比掉到阈值以下，而**都不报错**。
+    """
+    assert looks_like_table_row(line) is True
 
 
 def test_table_row_does_not_absorb_the_following_paragraph() -> None:
@@ -145,6 +168,73 @@ def test_no_magnitude_without_a_number() -> None:
     assert extract_magnitude("销量持续增长，市场份额稳步提升。") is None
 
 
+#: 宝钢每年的「年度经营计划」，一字不改，来自年报原文。
+#: 一句话里五个目标，主判据是 operating_cost，唯一正确的是**最后一个**。
+_PLAN_SENTENCE = (
+    "2018年，宝钢股份计划产铁4563万吨、产钢4737万吨、"
+    "销售商品坯材4568万吨、营业总收入2786亿元、营业成本2420亿元。"
+)
+
+
+def test_multi_target_sentence_picks_the_one_matching_the_metric() -> None:
+    """★ 一句多目标时，要取**主判据对应的**那个数，不是第一个带单位的。
+
+    不传别名的话取到的是「4,563 万吨（产铁）」——拿铁产量去和营业成本比，
+    量纲完全不同，算出来的偏差毫无意义，然后判成「未达成」。**不报错。**
+    """
+    m = extract_magnitude(_PLAN_SENTENCE, ("营业成本", "主营业务成本"))
+    assert m is not None
+    assert m.value == D("2420"), f"取到了 {m.raw}"
+    assert m.unit == "亿元"
+
+
+def test_without_aliases_it_falls_back_to_the_first_unit() -> None:
+    """不传别名时退回旧行为——这个兜底本身也要测。
+
+    只测「传了别名就对」是不够的：把选择逻辑整个删掉、永远返回第一个，
+    那条断言照样过。
+    """
+    m = extract_magnitude(_PLAN_SENTENCE)
+    assert m is not None and m.value == D("4563")
+
+
+def test_plan_marker_is_recorded() -> None:
+    """「计划」这两个字必须变成一个落库的信号。
+
+    判定那一步手上只有 `claim` 表的这一行，回头去原文找「计划」是找不到的。
+    """
+    m = extract_magnitude(_PLAN_SENTENCE, ("营业成本",))
+    assert m is not None and m.is_plan is True
+
+
+def test_a_reported_fact_is_not_marked_as_a_plan() -> None:
+    """上一条的反面——**更要紧的那一面**。
+
+    拿事实去核验事实永远判「支持」，而假的「支持」看不出来。
+    所以「有数字」不等于「是计划」。
+
+    「、」不算分句边界也是有意的：「计划」在句首，管的是整个顿号列表，
+    若把「、」也当边界，「营业成本2420亿元」那一段里就没有「计划」二字了。
+    """
+    m = extract_magnitude("2022年，公司销售商品坯材4,976.3万吨。")
+    assert m is not None
+    assert m.is_plan is False
+
+    # 「，」算边界：计划管不到逗号后面的那一句
+    m2 = extract_magnitude("公司计划提升产能，2022年实际销量4,976.3万吨。")
+    assert m2 is not None and m2.is_plan is False
+
+
+def test_a_year_range_is_not_a_magnitude() -> None:
+    """「2019-2021年规划目标」里的 2019 既不是金额也不是数量。
+
+    只判「数字后面紧跟着年字」会漏掉它——那里跟的是减号。
+    取到之后幅度变成 2019，判定拿它和实际值比，得到一个永远对不上的偏差。
+    """
+    assert extract_magnitude("公司2019-2021年规划目标的收官之年") is None
+    assert extract_magnitude("2019—2021年规划") is None
+
+
 # ---------------------------------------------------------------- 方向
 
 
@@ -201,6 +291,32 @@ def test_forward_claim_targets_the_next_year() -> None:
 def test_forward_mapping_can_be_disabled() -> None:
     """rule_config 的 narrative.forward_verifies_next_year 置 0 时不做下一年映射。"""
     assert resolve_period("公司预计明年销量提升", "2023", forward_verifies_next_year=False) is None
+
+
+def test_a_quantity_is_not_a_year() -> None:
+    """★ 句子里的四位数不等于它是年份。
+
+    年份正则若写成 `(20\\d{2})\\s*年?`（「年」可选），它会匹配任何 20xx 开头的数。
+    首钢 2023 年报原句「铁2147万吨……材2073万吨，同比降低6.5%」于是拿到
+    `period_norm='2073'`——变成一条 **2073 年到期** 的前瞻计划：
+    永远进不了验证、永远不判冲突，却实实在在占着 H 的观测集。
+
+    实测这句在库里存了 3 行，`period_expr` 是「2023年」而 `period_norm` 是
+    «2073»——同一个函数抽出来的两个字段自相矛盾，而页面上看不出哪个算数。
+    所以两个都要断言。
+    """
+    text = "铁2147万吨，同比降低3.4%；钢2222万吨，同比降低4.3%;材2073万吨，同比降低6.5%。"
+    assert resolve_period(text, "2023") is None, "数量词被当成了年份"
+    assert extract_period_expr(text) is None, "期间原文里不该出现 2073"
+
+
+def test_a_real_year_still_resolves() -> None:
+    """上一条的反面：真正带「年」的年份照常认出来。
+
+    只断言「2073 不再是年份」是不够的——把年份识别整个关掉也能让它通过。
+    """
+    assert resolve_period("2024年公司计划实现销量增长", "2023") == "2024"
+    assert extract_period_expr("2024年公司计划实现销量增长") == "2024年"
 
 
 def test_pending_targets_are_excluded_from_the_denominator() -> None:

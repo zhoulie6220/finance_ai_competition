@@ -33,6 +33,7 @@ from app.engine.claim_match import (
     MatchConfig,
     judge,
 )
+from app.skills import claim_scope
 
 #: 判定值 → s 标度。**只有这三个计分**，其余三个不计分也不进分子。
 VERDICT_TO_S: dict[str, Decimal] = {
@@ -164,19 +165,21 @@ def match_and_store(
     cfg = config_from_rules(con)
     facts = facts_index(con, project_id)
 
+    scope, scope_params = claim_scope.scope_sql("c")
     rows = con.execute(
-        """
+        f"""
         SELECT c.claim_id, c.claim_text, c.claim_type, c.direction, c.period_norm,
                c.magnitude_value, c.magnitude_unit, c.magnitude_text,
+               c.magnitude_bound, c.is_plan_target,
                ci.metric_key AS primary_metric, f.period AS report_period
         FROM claim c
         JOIN file f ON f.file_id = c.source_file_id
         LEFT JOIN claim_indicator ci
           ON ci.claim_id = c.claim_id AND ci.role = 'primary'
-        WHERE c.project_id = ?
+        WHERE c.project_id = ?{scope}
         ORDER BY c.claim_id
         """,
-        (project_id,),
+        (project_id, *scope_params),
     ).fetchall()
 
     summary = MatchSummary(project_id=project_id)
@@ -218,7 +221,9 @@ def match_and_store(
                 magnitude_value=magnitude,
                 magnitude_unit=r["magnitude_unit"],
                 magnitude_raw=r["magnitude_text"],
+                bound=r["magnitude_bound"] or "exact",
                 primary_metric=metric,
+                is_plan=bool(r["is_plan_target"]),
             ),
             current=current,
             base=base,
@@ -350,19 +355,21 @@ def project_index_input(
     """
     facts = facts_index(con, project_id)
 
+    scope, scope_params = claim_scope.scope_sql("c")
     rows = con.execute(
-        """
+        f"""
         SELECT c.claim_id, c.claim_type, c.direction, c.period_norm,
                c.magnitude_value, c.magnitude_unit, c.magnitude_text,
+               c.magnitude_bound, c.is_plan_target,
                ci.metric_key AS primary_metric, f.period AS report_period
         FROM claim c
         JOIN file f ON f.file_id = c.source_file_id
         LEFT JOIN claim_indicator ci
           ON ci.claim_id = c.claim_id AND ci.role = 'primary'
-        WHERE c.project_id = ?
+        WHERE c.project_id = ?{scope}
         ORDER BY c.claim_id
         """,
-        (project_id,),
+        (project_id, *scope_params),
     ).fetchall()
 
     cfg = config_from_rules(con)
@@ -404,7 +411,9 @@ def project_index_input(
                 magnitude_value=magnitude,
                 magnitude_unit=r["magnitude_unit"],
                 magnitude_raw=r["magnitude_text"],
+                bound=r["magnitude_bound"] or "exact",
                 primary_metric=metric,
+                is_plan=bool(r["is_plan_target"]),
             ),
             current=cur,
             base=base,

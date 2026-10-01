@@ -1,0 +1,7 @@
+{
+  "cassette_id": "b4a67a165ccae6a9a9695e295fa9a70d",
+  "model_version": "deepseek-flash",
+  "text": "```json\n{\n  \"claims\": [\n    {\n      \"text\": \"公司自主研发的新一代汽车高强钢、取向硅钢、高等级家电用钢、能源海工用钢、桥梁用钢等高端产品处于国际先进水平。\",\n      \"subject\": \"公司\",\n      \"period_expr\": \"报告期内\",\n      \"direction\": \"unknown\",\n      \"magnitude_text\": null,\n      \"metric_key\": null,\n      \"metric_note\": \"高端产品技术水平/竞争力，属于定性描述，无对应量化指标\",\n      \"claim_type\": \"product_mix\",\n      \"verifiable\": false,\n      \"confidence\": 0.4\n    },\n    {\n      \"text\": \"产供销研同步发力，面对严峻的行业形势，公司ROE达到行业89分位，经营业绩持续保持国内行业第一。\",\n      \"subject\": \"公司\",\n      \"period_expr\": \"报告期内\",\n      \"direction\": \"unknown\",\n      \"magnitude_text\": \"行业89分位\",\n      \"metric_key\": \"roe\",\n      \"metric_note\": null,\n      \"claim_type\": \"other\",\n      \"verifiable\": true,\n      \"confidence\": 0.7\n    },\n    {\n      \"text\": \"坚持规划引领，持续以差异化、高市占的“百千十”战略为引领，深入挖掘并引导差异化需求，拓展差异化用途，创新差异化服务，提升市场份额和盈利能力。\",\n      \"subject\": \"公司\",\n      \"period_expr\": \"报告期内\",\n      \"direction\": \"improve\",\n      \"magnitude_text\": null,\n      \"metric_key\": null,\n      \"metric_note\": \"市场份额与盈利能力，属于意向性表述，无具体数值目标\",\n      \"claim_type\": \"product_mix\",\n      \"verifiable\": false,\n      \"confidence\": 0.3\n    }\n  ]\n}\n```",
+  "tokens_in": 1867,
+  "tokens_out": 399
+}

@@ -460,6 +460,17 @@ CREATE TABLE claim (
   magnitude_text  TEXT,
   magnitude_value TEXT,
   magnitude_unit  TEXT,
+  -- 数值的**限定方式**：at_least / at_most 表示「不低于 X」「不超过 X」。
+  -- ⚠ 这两列曾经算出来就丢掉，后果是 is_explicit_target 的第二条分支
+  -- （带界限的绝对量）在活路径上**永远为假**——「成本削减 30 亿元以上」
+  -- 这种教科书式的明确数值目标，被当成没有目标的方向性主张走噪声带。
+  -- 判定那一步手上只有这一行，回头去原文找「不低于」三个字是找不到的。
+  magnitude_bound TEXT CHECK (magnitude_bound IN
+                  ('exact','at_least','at_most','about')),
+  -- 这个数字是不是**计划值**（同分句里有「计划 / 预算 / 目标」）。
+  -- 已发生的事实不能当目标核验——那是拿事实核验事实，永远判「支持」，
+  -- 而假的「支持」会把 H 和 C 一起抬上去。
+  is_plan_target  INTEGER NOT NULL DEFAULT 0 CHECK (is_plan_target IN (0,1)),
   claim_type      TEXT NOT NULL
                   CHECK (claim_type IN ('demand','order','capacity','collection',
                                         'product_mix','cost','risk','macro','other')),

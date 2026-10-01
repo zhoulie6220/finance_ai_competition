@@ -34,7 +34,7 @@ import sqlite3
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Sequence
 
 from app.agents.llm.client import LlmClient, SchemaError
 from app.agents.llm.prompts.registry import PromptRegistry
@@ -47,6 +47,7 @@ from app.db import dictionary
 # 只会让「同一个主张在两种抽取法下指向不同的年度」。
 from app.engine.claim_rules import (
     THEMES,
+    extract_magnitude,
     extract_period_expr,
     resolve_period,
 )
@@ -175,6 +176,8 @@ def extract_claims_llm(
     rows: list[tuple[Any, ...]] = []
     indicators: list[tuple[Any, ...]] = []
     valid_metrics = _valid_metric_keys(con)
+    # 主判据别名，用来在一句多目标时挑对那个数。与规则法取自同一份字段字典。
+    aliases_by_metric = dictionary.metric_aliases(con)
     summary.no_metric = 0
 
     for section in sections:
@@ -258,6 +261,7 @@ def extract_claims_llm(
                     prompt_version=prompt.version,
                     extractor=f"llm:{settings.model}@{prompt.sha256[:8]}",
                     now=stamp,
+                    metric_aliases=aliases_by_metric.get(metric or "", ()),
                 )
             )
 
@@ -290,10 +294,11 @@ def extract_claims_llm(
                 "INSERT OR IGNORE INTO claim (claim_id, project_id, section_id,"
                 " claim_text, subject, action, object, period_expr, period_norm,"
                 " direction, magnitude_text, magnitude_value, magnitude_unit,"
+                " magnitude_bound, is_plan_target,"
                 " claim_type, verifiable, background_only, confidence,"
                 " source_file_id, source_page, source_text, extractor,"
                 " prompt_version, status, created_at)"
-                " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 rows,
             )
             after = con.execute(
@@ -492,6 +497,7 @@ def _build_row(
     prompt_version: str,
     extractor: str,
     now: str,
+    metric_aliases: Sequence[str] = (),
 ) -> tuple[Any, ...]:
     """把一个模型返回的主张转成 `claim` 表的一行。
 
@@ -527,6 +533,23 @@ def _build_row(
     magnitude_value = raw.get("magnitude_value")
     magnitude_text = raw.get("magnitude_text")
 
+    # ★ 幅度的**单位、界限、是不是计划值**同样复用规则法基线。
+    #
+    # 这三个信号原先一个都没落库：单位恒为 NULL、bound 算完就丢。
+    # 后果不是「少了个字段」，而是判定层的两条分支**在活路径上永远为假**——
+    # `is_explicit_target` 要求「比率型」看单位、「带界限的绝对量」看 bound，
+    # 而 LLM 主张的单位永远是 None、bound 永远是默认的 exact。
+    # 于是「增长 5% 以上」这类教科书式的明确数值目标，在模型法抽取下
+    # 全部被当成没有目标的方向性主张走噪声带，**且不报错**。
+    #
+    # 让模型自己给也不行：它的强项是读懂句子，弱项是按我们的口径标准化。
+    # 同一句话在两种抽取法下必须得到同一个 bound / is_plan，
+    # 否则并排对照时两边结论不同，看不出是口径不同还是真的不同。
+    probing = extract_magnitude(text, metric_aliases)
+    magnitude_unit = probing.unit if probing and probing.unit else None
+    magnitude_bound = probing.bound if probing else None
+    is_plan_target = 1 if (probing and probing.is_plan) else 0
+
     return (
         claim_id,
         project_id,
@@ -540,7 +563,9 @@ def _build_row(
         direction,
         magnitude_text,
         str(magnitude_value) if magnitude_value is not None else None,
-        None,
+        magnitude_unit,
+        magnitude_bound,
+        is_plan_target,
         claim_type,
         1 if verifiable else 0,
         # v1.1 与 docs/01 的硬约束：不可验证的主张必须标 background_only

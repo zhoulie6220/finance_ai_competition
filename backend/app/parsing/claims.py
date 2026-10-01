@@ -132,6 +132,29 @@ def looks_like_table_row(line: str) -> bool:
         if numeric >= len(cells) - 1:
             return True
 
+    # 连续的数字单元格 ≥ 3 个 → 表格行。
+    #
+    # ⚠ 为什么不能只靠上面那条「非数字格 ≤ 1」：**附注列会把说明文字
+    # 直接拼在数字后面**，凭空多出一个非数字格，整条判据就失效了：
+    #
+    #     应收票据  627  0.2  29,190  8.7  -97.9  新金融工具准则列报项目不同所致…
+    #     └ 7 个格，5 个是数字 —— 差 1 格没到 len-1，判成正文
+    #
+    # 而「数字占比 > 0.5」那条退路被同一段说明文字稀释掉了（实测 0.89 → 0.45），
+    # 于是这样一行进了候选句，最后出现在会计要逐条判的 P 表里。
+    # 实测 196 条候选里 12 条是这种（6%）。
+    #
+    # 数**连续段**两个问题都没有：正文里的数字被标点和词距隔开，
+    # 不会用双空格排成三列以上。
+    run = 0
+    for cell in cells:
+        if _NUMERIC_CELL_RE.match(cell):
+            run += 1
+            if run >= 3:
+                return True
+        else:
+            run = 0
+
     # 退路：列对齐在提取时丢失、整行几乎全是数字字符的情况
     if len(stripped) >= 8:
         digits = sum(ch.isdigit() for ch in stripped)

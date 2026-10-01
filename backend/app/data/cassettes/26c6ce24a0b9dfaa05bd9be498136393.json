@@ -1,0 +1,7 @@
+{
+  "cassette_id": "26c6ce24a0b9dfaa05bd9be498136393",
+  "model_version": "deepseek-flash",
+  "text": "{\n  \"claims\": [\n    {\n      \"text\": \"2024年，公司计划产铁4,906万吨、产钢5,150万吨、销售商品坯材5,222万吨，营业总收入3,302亿元、营业成本3,034亿元。\",\n      \"subject\": \"公司\",\n      \"period_expr\": \"2024年\",\n      \"direction\": \"unknown\",\n      \"magnitude_text\": \"产铁4,906万吨、产钢5,150万吨、销售商品坯材5,222万吨，营业总收入3,302亿元、营业成本3,034亿元\",\n      \"metric_key\": null,\n      \"metric_note\": \"该句包含多个指标：生铁产量、粗钢产量、商品坯材销量、营业总收入、营业成本。字段表中粗钢产量对应 crude_steel_output，营业总收入对应 total_revenue，营业成本对应 operating_cost，但生铁产量与商品坯材销量无对应字段。\",\n      \"claim_type\": \"demand\",\n      \"verifiable\": true,\n      \"confidence\": 0.9\n    },\n    {\n      \"text\": \"2024年，公司预算安排固定资产投资资金239.2亿元，主要用于宝山基地硅钢四期二步、高效电炉及二高线项目、青山基地硅钢规划系列项目、东山基地零碳薄钢板工厂建设、梅山基地打造第一热轧建设和节能降碳项目等。\",\n      \"subject\": \"公司\",\n      \"period_expr\": \"2024年\",\n      \"direction\": \"unknown\",\n      \"magnitude_text\": \"239.2亿元\",\n      \"metric_key\": \"capex\",\n      \"metric_note\": null,\n      \"claim_type\": \"capacity\",\n      \"verifiable\": true,\n      \"confidence\": 0.85\n    }\n  ]\n}",
+  "tokens_in": 2386,
+  "tokens_out": 387
+}

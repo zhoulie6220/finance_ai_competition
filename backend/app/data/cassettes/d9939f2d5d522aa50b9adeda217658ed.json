@@ -1,0 +1,7 @@
+{
+  "cassette_id": "d9939f2d5d522aa50b9adeda217658ed",
+  "model_version": "deepseek-flash",
+  "text": "{\"claims\": [{\"text\": \"2024年，公司继续保持全球综合性钢铁企业最高信用评级，世界三大评级机构标普、穆迪、惠誉分别给予公司A-稳定、A2稳定、A稳定的信用评级\", \"subject\": \"公司\", \"period_expr\": \"2024年\", \"direction\": \"flat\", \"magnitude_text\": \"A-稳定、A2稳定、A稳定\", \"metric_key\": null, \"metric_note\": \"信用评级（标普/穆迪/惠誉评级结果），字段表中无对应指标\", \"claim_type\": \"other\", \"verifiable\": true, \"confidence\": 0.85}]}",
+  "tokens_in": 1693,
+  "tokens_out": 143
+}

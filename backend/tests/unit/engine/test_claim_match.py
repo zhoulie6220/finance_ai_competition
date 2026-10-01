@@ -140,6 +140,92 @@ def test_target_met_is_supported() -> None:
     assert out.verdict == "supported"
 
 
+def test_an_absolute_amount_target_is_never_silently_contradicted() -> None:
+    """★ 绝对量目标**不能**和相对变化相比——这是算术上的必然，不是精度问题。
+
+    宝钢 2018 年真实一句：「计划营业成本 2,420 亿元」。
+    金额类指标的实测值是**相对变化**（(2,590.85 − 2,484.25) / 2,484.25 = 0.0429），
+    拿 2,420 去减 0.0429，偏差必然是约 −2,420，**任何绝对量目标都判未达成**。
+
+    实测宝钢一次跑出 12 条这样的「未达成」，进 H 的 9 个观测里有 7 个是这么来的。
+    它们有公式、有偏差数字、有理由，和真结论长得一模一样。
+
+    要真判得先换算单位（亿元 → 百万元）、再定「计划成本」的达成方向——
+    **那是会计口径**。所以在定下来之前，一律转人工复核，不擅自判。
+    """
+    c = claim(
+        direction="unknown",
+        primary_metric="operating_cost",
+        magnitude_value=D("2420"),
+        magnitude_unit="亿元",
+        bound="exact",
+        magnitude_raw="2420亿元",
+        is_plan=True,
+    )
+    out = judge(
+        c,
+        current=actual("operating_cost", "2018", "2590.85"),
+        base=actual("operating_cost", "2017", "2484.25"),
+        cfg=CFG,
+    )
+    assert out.verdict == "needs_review", out.reason
+    assert "绝对量" in out.reason
+    assert out.scores is False
+
+
+def test_a_ratio_target_is_still_judged() -> None:
+    """上一条的反面：**比例型**目标照常判，不能被那道闸门一并挡掉。
+
+    只断言「绝对量不再判未达成」是不够的——把整条目标判定删掉也能通过。
+    """
+    c = claim(
+        direction="up",
+        primary_metric="revenue",
+        magnitude_value=D("5"),
+        magnitude_unit="%",
+        bound="at_least",
+        magnitude_raw="5%以上",
+        is_plan=True,
+    )
+    out = judge(
+        c,
+        current=actual("revenue", "2024", "104"),
+        base=actual("revenue", "2023", "100"),
+        cfg=CFG,
+    )
+    assert out.verdict == "contradicted", out.reason
+    assert "未达成" in out.reason
+
+
+def test_a_reported_fact_is_not_a_target() -> None:
+    """上一条的反面，也是**更要紧**的那一面。
+
+    「2022 年公司销售商品坯材 4,976.3 万吨」是**报告**不是承诺。
+    把它当目标核验，等于拿事实核验事实——永远判「支持」，
+    而假的「支持」会把 H 和 C 一起抬上去，且从数字上看不出来。
+
+    所以 `is_plan` 必须由「同一分句里有没有计划模态词」决定，
+    不能靠「有没有数字」。
+    """
+    c = claim(
+        direction="unknown",
+        primary_metric="steel_sales_volume",
+        magnitude_value=D("4976.3"),
+        magnitude_unit="万吨",
+        bound="exact",
+        magnitude_raw="4,976.3万吨",
+        is_plan=False,
+    )
+    out = judge(
+        c,
+        current=actual("steel_sales_volume", "2022", "4976.3"),
+        base=actual("steel_sales_volume", "2021", "4650"),
+        cfg=CFG,
+    )
+    assert out.verdict == "needs_review", out.reason
+    assert "方向" in out.reason
+
+
 def test_approximate_target_is_needs_review_not_a_verdict() -> None:
     """「约 10%」没有公开容差，只展示偏差，**不擅自认定完成或未完成**。"""
     c = claim(

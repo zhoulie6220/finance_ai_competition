@@ -48,6 +48,7 @@ _console.setup()
 
 from app.db.session import connect  # noqa: E402
 from app.engine.attestation import RISK_ITEMS  # noqa: E402
+from app.skills import claim_scope  # noqa: E402
 
 BACKEND_DIR = Path(__file__).resolve().parent.parent / "backend"
 DB_PATH = BACKEND_DIR / "var" / "finance.db"
@@ -220,35 +221,41 @@ def _export_r(con: sqlite3.Connection) -> None:
 def _export_p(con: sqlite3.Connection, limit: int = 400) -> None:
     """P：候选主张清单。
 
-    ⚠ **候选来自规则法与模型法的并集**，而且只导 `verifiable=1` 的——
-    不可验证的主张已经标了 `background_only`，本来就不进 P 分母。
-    全导的话会计要审几千条，而其中一大半根本不是实质经营表述。
+    ⚠ **候选来源只有一个出口**：`app/skills/claim_scope.py`。那里同时管着
+    按抽取器过滤和跨抽取器去重。这里若自己写一套 WHERE，
+    就会和指数、判定表用的不是同一批主张——**而页面上两个数字都算得出来**，
+    看不出它们不是一套。
 
     ⚠ **截断了要说出来。** 排序是 `claim_type, source_page`，超限时砍掉的是
     **排序靠后的那几个主题的全部主张**——不是「随机少一点」，是**按主题整块丢**。
     不吭声的话，界面上表现为「某几类主张怎么一条都没确认过」，
     而谁都想不到是导出时被 LIMIT 掉了。
     """
-    total = con.execute("SELECT COUNT(*) FROM claim WHERE verifiable = 1").fetchone()[0]
+    scope, scope_params = claim_scope.scope_sql("c")
+    total = con.execute(
+        f"SELECT COUNT(*) FROM claim c WHERE c.verifiable = 1{scope}",
+        scope_params,
+    ).fetchone()[0]
     if total > limit:
         print(
             f"  ⚠ P 表候选共 {total} 条，只导出前 {limit} 条（按主题排序截断）。"
             f"**剩下的 {total - limit} 条这次默认「无确认记录」**——"
             f"要全导请在 _export_p 里调大 limit。"
         )
+    print(f"  {claim_scope.describe()}")
     existing = {
         r["claim_id"]: r for r in con.execute("SELECT * FROM p_confirmation")
     }
     rows = []
     for r in con.execute(
-        """
+        f"""
         SELECT c.claim_id, c.claim_text, c.source_page
         FROM claim c
-        WHERE c.verifiable = 1
+        WHERE c.verifiable = 1{scope}
         ORDER BY c.claim_type, c.source_page
         LIMIT ?
         """,
-        (limit,),
+        (*scope_params, limit),
     ):
         e = existing.get(r["claim_id"])
         rows.append(

@@ -1,7 +1,7 @@
 {
   "cassette_id": "76ef4e0bcd20976406265e77fefd9e64",
   "model_version": "deepseek-flash",
-  "text": "{\"claims\":[{\"text\":\"营业收入  291,594  305,081  -4.4\",\"subject\":\"公司\",\"period_expr\":\"本期\",\"direction\":\"down\",\"magnitude_text\":\"-4.4%\",\"metric_key\":\"revenue\",\"metric_note\":null,\"claim_type\":\"other\",\"verifiable\":true,\"confidence\":0.9},{\"text\":\"营业成本  259,871  259,423  0.2\",\"subject\":\"公司\",\"period_expr\":\"本期\",\"direction\":\"up\",\"magnitude_text\":\"0.2%\",\"metric_key\":\"operating_cost\",\"metric_note\":null,\"claim_type\":\"cost\",\"verifiable\":true,\"confidence\":0.9}]}",
+  "text": "{\n  \"claims\": [\n    {\n      \"text\": \"营业收入  291,594  305,081  -4.4\",\n      \"subject\": \"公司\",\n      \"period_expr\": \"本期\",\n      \"direction\": \"down\",\n      \"magnitude_text\": \"-4.4%\",\n      \"metric_key\": \"revenue\",\n      \"metric_note\": null,\n      \"claim_type\": \"other\",\n      \"verifiable\": true,\n      \"confidence\": 0.9\n    },\n    {\n      \"text\": \"营业成本  259,871  259,423  0.2\",\n      \"subject\": \"公司\",\n      \"period_expr\": \"本期\",\n      \"direction\": \"up\",\n      \"magnitude_text\": \"0.2%\",\n      \"metric_key\": \"operating_cost\",\n      \"metric_note\": null,\n      \"claim_type\": \"cost\",\n      \"verifiable\": true,\n      \"confidence\": 0.9\n    }\n  ]\n}",
   "tokens_in": 1646,
-  "tokens_out": 143
+  "tokens_out": 210
 }

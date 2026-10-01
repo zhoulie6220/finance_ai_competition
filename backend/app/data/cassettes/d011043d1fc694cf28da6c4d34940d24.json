@@ -1,0 +1,7 @@
+{
+  "cassette_id": "d011043d1fc694cf28da6c4d34940d24",
+  "model_version": "deepseek-flash",
+  "text": "{\n  \"claims\": [\n    {\n      \"text\": \"2022年，公司计划产铁4,687万吨，产钢5,148万吨，销售商品坯材4,975万吨、营业总收入3,315亿元、营业成本2,971亿元。\",\n      \"subject\": \"公司\",\n      \"period_expr\": \"2022年\",\n      \"direction\": \"unknown\",\n      \"magnitude_text\": \"产铁4,687万吨，产钢5,148万吨，销售商品坯材4,975万吨、营业总收入3,315亿元、营业成本2,971亿元\",\n      \"metric_key\": null,\n      \"metric_note\": \"该句包含多个指标：生铁产量、粗钢产量、商品坯材销量、营业总收入、营业成本。其中营业总收入对应 total_revenue，营业成本对应 operating_cost，但生铁产量、粗钢产量、商品坯材销量在字段表中无对应键（steel_output 为钢材产量、crude_steel_output 为粗钢产量、steel_sales_volume 为钢材销量，均不完全匹配）。因一句多指标，无法用单一 metric_key 表示。\",\n      \"claim_type\": \"demand\",\n      \"verifiable\": true,\n      \"confidence\": 0.9\n    },\n    {\n      \"text\": \"2022年，公司预算安排固定资产投资资金298.9亿元，主要用于宝山基地无取向硅钢产品结构优化、取向硅钢产品结构优化（二步）、青山基地烧结大修及硅钢部CT工序效率提升及在线刻痕改\",\n      \"subject\": \"公司\",\n      \"period_expr\": \"2022年\",\n      \"direction\": \"unknown\",\n      \"magnitude_text\": \"298.9亿元\",\n      \"metric_key\": \"capex\",\n      \"metric_note\": null,\n      \"claim_type\": \"capacity\",\n      \"verifiable\": true,\n      \"confidence\": 0.85\n    }\n  ]\n}",
+  "tokens_in": 2514,
+  "tokens_out": 420
+}
