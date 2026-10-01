@@ -36,7 +36,7 @@ python -m pip install -r requirements.lock.txt
 python scripts/init_db.py --force                # 1. 建库并装载字段字典与规则参数
 python scripts/parse_reports.py --source var/samples   # 2. 解析年报 → 财务事实
 python scripts/parse_mdna.py                     # 3. 解析正文与 MD&A 章节
-python -m pytest                                 # 运行测试（613 条）
+python -m pytest                                 # 运行测试（649 条）
 uvicorn app.main:app --reload                    # 启动服务（默认 127.0.0.1:8000）
 ```
 
@@ -156,7 +156,7 @@ python -m pip install -r requirements.lock.txt
 │   │   ├── observability/     ⬜ 空包，决赛项
 │   │   └── data/seed/         字段字典与规则参数种子
 │   ├── scripts/               init_db / parse_reports / parse_mdna / export_schemas …
-│   └── tests/                 613 条
+│   └── tests/                 649 条
 │
 └── frontend/                 React + Vite + ECharts
     └── src/types/             contract.json / contract.ts ← 后端契约自动生成，勿手改

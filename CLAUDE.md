@@ -44,7 +44,7 @@ backend/
     parsing/       PDF 文本/表格解析、报表定位、行名映射、主张句切分
     agents/        编排状态机 + orchestrator + guards
       llm/          DeepSeek 客户端、传输层、cassette 离线回放
-        prompts/    版本化 Prompt（claim_extract.v1 / v2 + registry + CHANGELOG）
+        prompts/    版本化 Prompt（claim_extract.v1 / v2 + claim_confirm.v1 + registry）
     tools/         Tool 登记表（一份 JSON Schema，REST 与 MCP 共用）
     skills/        Skill 协议 + 注册表，兼工作台侧的取数模块
     mcp/           ⬜ 空包占位（决赛项）
@@ -53,7 +53,8 @@ backend/
     data/seed/     字段字典与规则参数的种子 SQL
     data/cassettes/ LLM 回放录制（离线演示用）
   scripts/         init_db / parse_reports / parse_mdna / dict_csv / export_schemas …
-  tests/           630 条
+                   run_rule_extraction / run_claim_matching / predict_p_confirmations …
+  tests/           649 条
 docs/              设计规则手册（编号文档，见下）
 ```
 
@@ -67,7 +68,7 @@ docs/              设计规则手册（编号文档，见下）
 
 | 模块 | 状态 |
 |---|---|
-| `db/schema.sql`、`db/session.py` | ✅ **44 张表 + 4 个视图**；三条硬规则已落到 CHECK 约束 |
+| `db/schema.sql`、`db/session.py` | ✅ **45 张表 + 4 个视图**；三条硬规则已落到 CHECK 约束 |
 | `app/main.py` + `api/` | ✅ 可启动。两组路由都挂着，见下「两套接口」 |
 | `agents/`（状态机 + 编排器 + guards） | ✅ 骨架冻结，见「冻结的接缝」 |
 | `agents/llm/` | ✅ DeepSeek 客户端 + 版本化 Prompt + 数字守卫 + cassette 回放 |
@@ -76,7 +77,9 @@ docs/              设计规则手册（编号文档，见下）
 | `schemas/` | ✅ **115 个模型**，数据契约的机读真源；74 个导出给前端 |
 | `engine/normalization`、`ratios` | ✅ 周期正常化（19 个 golden case）、同比与比率含拒绝路径 |
 | `engine/checks`、`quality`、`q2` | ✅ 三表勾稽、财务质量、账龄核验 |
-| `engine/claim_rules`、`claim_match` | ✅ 规则法主张抽取 + 主张—事实判定 |
+| `engine/claim_rules`、`claim_match` | ✅ 规则法主张抽取 + 主张—事实判定（宝钢 361 规则法 / 1337 模型法） |
+| `skills/claim_scope.py` | ✅ 「哪些主张进下游」的**唯一开关**：来源过滤 + 跨抽取器去重 |
+| `skills/p_predict.py` | ✅ P 表模型预判；**只出候选，碰不到 `conclusion`**——见下「模型只能提候选」 |
 | `engine/index`、`mapping` | 🟡 引擎完整、闸门可跑；**但真实项目出不了分**——见下「指数卡在人工录入表上」 |
 | `engine/sign`、`attestation` | ✅ 资产减值符号标准化、人工确认留痕 |
 | `engine/narrative.py` | 🟡 **早期的一致性观测，已被 `claim_*` 取代**——还留着，但不在活路径上（见下） |
@@ -274,6 +277,14 @@ uvicorn app.main:app --reload                      # 4. 起服务
 python scripts/parse_mdna.py             # 1. 正文入库（没有它一条主张都抽不出来）
 python scripts/run_rule_extraction.py    # 2. 规则法抽主张（不联网、不要密钥）
 python scripts/run_claim_matching.py     # 3. 主张 × 事实 → claim_match
+python scripts/export_input_templates.py --export   # 4. 给会计的三张表（仓库根目录）
+```
+
+**P 表那一步（可选的预判，只为让会计快一点）：**
+
+```bash
+python scripts/predict_p_confirmations.py            # 联网跑一次，顺手录 cassette
+OFFLINE_MODE=1 python scripts/predict_p_confirmations.py   # 之后断网重跑，0 秒
 ```
 
 第 3 步**极易漏**：`match_and_store` 写好了、测试也盯着，但**曾经零调用者**，
@@ -437,6 +448,27 @@ cd backend
 
 实测 743 条事实里有 207 条存在这种差异——**那是重述，不是解析错误**。
 宝钢十年跨了三次准则切换（新金融工具、新收入、新租赁），差异是真实的。
+
+### ⚠ 表格行会「伪装成正文」溜进 claim 表——三种形态，都靠列对齐认
+
+`parsing/claims.py::looks_like_table_row`。判据**必须靠 PDF 的列对齐**
+（两个以上空格），不能靠「数字占比」——中文句子里数字被标点隔开，占比自然就高，
+按比例判会把最该抽取的句子全丢掉，而且是**静默丢掉**。
+
+三种逃逸形态，各自都是真实数据里撞出来的：
+
+| 形态 | 长什么样 | 认出来的判据 |
+|---|---|---|
+| 普通的数字行 | `冷轧碳钢板卷   41,655  35,695  14.31  -` | ≥3 格且几乎全是数字 |
+| **附注拼在数字后面** | `应收票据  627  0.2  29,190  8.7  -97.9  新金融工具准则列报项目不同所致…` | 多出的中文格让「非数字格 ≤1」失效、把「数字占比」从 0.89 稀释到 0.45 → **数连续数字格** |
+| **说明行被拼进正文** | `粗钢产量  CSPI月均数据来源：wind资讯公司把握国家供给侧结构改革…` | 数据来源 / 单位 / 注 这类行自成一块，正文不许接上去 |
+
+第三种最要紧：它拼出的是**年报上根本不存在的句子**，而 `claim_text` 是证据链的
+终点——「点回原文」会点到一个谁也没写过的句子。
+
+两格的那种（`本期费用化研发投入  3,449`）单独判。**判据要收得很紧**，
+因为正文里也会出现两个空格：`本年度实现营业收入  322,116 百万元。`
+与它只差一点——分开它们的是：**正文的数值带单位、句子带句号；表格行两样都没有。**
 
 ### 已知待办（需要会计同学定口径 / 后续阶段）
 
@@ -774,9 +806,9 @@ v1.1 那条链路的文件职责：
 
 | 项 | 数据从哪来 | 现状 |
 |---|---|---|
-| **R** 风险披露充分度 | 仓库根目录 `人工录入/R_风险检查.csv`（钢铁固定四项 × 每年） | **66 行全是 `pending`** |
-| **P** 模板化惩罚 | `人工录入/P_人工确认.csv`（每条主张标「是不是实质经营表述」） | **422 行全是 `pending`** |
-| **Q2** 应收周转 × 账龄 | `人工录入/Q2_账龄.csv`（从年报抄账龄表，页码由 `账龄表位置.csv` 给出） | **18 行全是 `pending`** |
+| **R** 风险披露充分度 | `人工录入/R_风险检查.csv` 64 行（钢铁固定四项 × 每年） | **全是 `pending`** |
+| **P** 模板化惩罚 | `人工录入/P_人工确认.csv` 185 行（每条主张标「是不是实质经营表述」） | **全是 `pending`** |
+| **Q2** 应收周转 × 账龄 | `人工录入/Q2_账龄.csv` 16 行（从年报抄账龄表） | **全是 `pending`** |
 
 所以**真实项目现在一律返回 `insufficient_evidence`**，`insufficient_reason`
 会逐条写清楚缺什么（这是刻意的：**绝不用 0 分或 50 分代替**）。
@@ -784,8 +816,35 @@ v1.1 那条链路的文件职责：
 ⚠ **这一条直接决定演示视频能不能拍**——界面上会出现一张「证据不足」的指数卡。
 要么催 K 把三张表填了，要么视频里就照实演示这个状态并说明为什么。
 
-模板导出：`python scripts/export_input_templates.py`；
+⚠ **P 不允许抽查**（§4.4）：填 100 行和填 0 行效果一样，只要还剩一条 `pending`
+指数就出不了分。所以材料里写的是「要么全填，要么先只做宝钢那 121 行」。
+
+⚠ **表格发出去之后不要重建库。** `claim_id` 绑当前数据库，
+`init_db --force` 或重跑抽取会让会计填的每一行都作废
+（`--check` 会拦下来，但拦住等于白填）。
+
+模板导出：`python scripts/export_input_templates.py --export`；
 账龄表位置：`python scripts/locate_aging_tables.py`。
+
+### ⚠ 「模型只能提出候选，不能自动定 P」——这条是靠结构保证的
+
+会计口径原话。P 的分子只数 `p_penalty`，所以**`conclusion` 由谁填，P 就是谁定的**。
+预判的存在是为了让会计从「从零填」变成「复核」，不是替他给分。三条约束：
+
+1. **模型产出落 `p_prediction`，与 `p_confirmation` 不相通。**
+   混进同一张表的话，「这条是模型判的还是人确认的」就查不到了——
+   两者在库里的样子**完全一样**。
+2. **`p_prediction` 没有 `conclusion` 列。** 不是靠自觉，是靠**没地方写**。
+3. **导出的 CSV 里 `conclusion` 一律留空**，且有独立的 `预判` 标记列
+   （写的是模型名 + 提示词版本，不是一句「已预判」）与 `预判理由` 列——
+   **只给标签不给依据，复核就退化成「看着顺眼就点头」**。
+
+针对**锚定**（人看到已有答案容易放过），`--check` 会拿交回来的表比对模型原始预判，
+报出「已给 conclusion 的行里有多少行三列原封不动」，≥90% 时提示。
+**只报数，不判对错。**
+
+改这块之前请读 `app/skills/p_predict.py` 的模块 docstring——
+那三条约束写在那里，理由是给以后想「顺手合并两张表」的人看的。
 
 ### ⚠ 闸门不过时**绝不用 0 或 50 代替**
 
