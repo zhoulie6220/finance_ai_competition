@@ -98,7 +98,14 @@ P_COLUMNS = (
     ("missing_elements", "缺哪些要素，用 | 分隔：object|period|metric|result|owner"),
     ("conclusion", "pending / p_penalty / no_penalty / needs_review"),
     ("reviewer", "复核人"),
+    # ↓ 预判相关。**放在最后，且列名带「预判」**——一眼看得出这几列
+    #   不是人填的，改起来也不会碰到前面那几列。
+    ("预判", "← 这一行的前三列是模型预填的。**请注意复核，不要直接采信**"),
+    ("预判理由", "模型给的依据（只读）"),
 )
+
+#: 预判标记列的取值。写的是模型名与提示词版本，便于回溯「这条是谁判的」。
+PREDICTION_MARKER_EMPTY = ""
 
 P_CONCLUSION = ("pending", "p_penalty", "no_penalty", "needs_review")
 
@@ -246,6 +253,9 @@ def _export_p(con: sqlite3.Connection, limit: int = 400) -> None:
     existing = {
         r["claim_id"]: r for r in con.execute("SELECT * FROM p_confirmation")
     }
+    predicted = _load_predictions(con)
+    print(f"  预判：{len(predicted)} 条已预填（列名带「预判」，**复核后再采信**）")
+
     rows = []
     for r in con.execute(
         f"""
@@ -258,6 +268,7 @@ def _export_p(con: sqlite3.Connection, limit: int = 400) -> None:
         (*scope_params, limit),
     ):
         e = existing.get(r["claim_id"])
+        p = predicted.get(r["claim_id"])
         rows.append(
             {
                 "claim_id": r["claim_id"],
@@ -268,14 +279,50 @@ def _export_p(con: sqlite3.Connection, limit: int = 400) -> None:
                 # 实测最长的一句 326 字，取 400 就能全须全尾。
                 "claim_text": (r["claim_text"] or "")[:400],
                 "source_page": r["source_page"],
-                "is_substantive": e["is_substantive"] if e else 1,
-                "is_template": "" if not e else (e["is_template"] or 0),
-                "missing_elements": e["missing_elements"] if e else "",
+                # ⚠ 人填过的以**人为准**；没填过的才拿预判顶上。
+                # 反过来的话，重导一次 CSV 就会把会计已经改过的值盖回去，
+                # 而他会以为自己的修改没生效或者被系统否了。
+                "is_substantive": e["is_substantive"] if e
+                else (p["is_substantive"] if p else 1),
+                "is_template": (e["is_template"] or 0) if e
+                else (p["is_template"] if p and p["is_template"] is not None else ""),
+                "missing_elements": (e["missing_elements"] or "") if e
+                else (p["missing_elements"] if p else ""),
+                # ★ **模型永远不填这一列。**
+                # 会计口径：「模型只能提出候选，不能自动定 P」。P 的分子
+                # 只数 p_penalty，填了就等于让模型定分。
                 "conclusion": e["conclusion"] if e else "pending",
                 "reviewer": e["reviewer"] if e else "",
+                "预判": _marker(p),
+                "预判理由": (p["reason"] or "") if p else "",
             }
         )
     _write(OUT_DIR / "P_人工确认.csv", P_COLUMNS, rows)
+
+
+def _load_predictions(con: sqlite3.Connection) -> dict[str, dict]:
+    """读模型预判。表不存在时返回空——**老库不带这张表**，
+    而导出模板不该因为一个可选功能就跑不起来。"""
+    try:
+        return {
+            r["claim_id"]: dict(r)
+            for r in con.execute("SELECT * FROM p_prediction")
+        }
+    except sqlite3.OperationalError:
+        return {}
+
+
+def _marker(p: dict | None) -> str:
+    """预判标记列。
+
+    ⚠ 写的是**模型名 + 提示词版本**，不是一句「已预判」。会计和评委都可能
+    回头问「这条是谁判的」——只写「是」，答案就查不到了。
+    """
+    if not p:
+        return PREDICTION_MARKER_EMPTY
+    model = str(p.get("model") or "?")
+    version = str(p.get("prompt_version") or "?")
+    return f"模型预填 {model}@{version}"
 
 
 # ---------------------------------------------------------------- 校验 / 导入
@@ -330,6 +377,8 @@ def _check_or_import(con: sqlite3.Connection, *, do_import: bool) -> int:
                 "请先确认库与 CSV 出自同一份数据，再重新 --export 一份发出去。"
             )
 
+    _audit_predictions(con, p_rows)
+
     if problems:
         print(f"✗ 发现 {len(problems)} 处问题，**整体拒绝**（会计口径 §七：不猜、不填 0）：")
         for p in problems[:25]:
@@ -367,6 +416,62 @@ def _num(raw: str, field: str) -> str | None:
     except ValueError:
         raise ValueError(f"{field} 不是数字：{v!r}")
     return v.replace(",", "")
+
+
+def _audit_predictions(con: sqlite3.Connection, p_rows: list[dict]) -> None:
+    """报出「有多少行原封不动地采信了模型预判」。
+
+    ★ 这一条针对的是预判带来的**锚定风险**：会计看到已经有答案，容易直接放过。
+    口径 §4.4 要的是「逐条人工确认」，如果退化成橡皮图章，P 这个分项的
+    正当性就没了——而**从结果上完全看不出来**（值是对的，签名也有）。
+
+    做法：拿 CSV 里的三列描述性判断去和 `p_prediction` 逐条比。
+    一模一样 = 没改过。**只报数，不判对错**——改过的也未必更对，
+    这里只是让「采信了多少」这件事有个数字。
+    """
+    try:
+        predicted = {
+            r["claim_id"]: dict(r) for r in con.execute("SELECT * FROM p_prediction")
+        }
+    except sqlite3.OperationalError:
+        return
+    if not predicted:
+        return
+
+    def _norm_elements(raw: str | None) -> str:
+        return (raw or "").strip().replace("|", "").replace(",", "").replace(" ", "")
+
+    same = 0
+    reviewed = 0
+    for row in p_rows:
+        p = predicted.get((row.get("claim_id") or "").strip())
+        if not p:
+            continue
+        # ⚠ 只统计**已经给了 conclusion 的行**。没给的行当然和预判一致
+        # （原封没动过），把它们算进来会让「采信率」永远接近 100%，
+        # 那个数字就没有信息量了。
+        if (row.get("conclusion") or "pending").strip() == "pending":
+            continue
+        reviewed += 1
+        if (
+            str(row.get("is_substantive", "")).strip() == str(p["is_substantive"])
+            and str(row.get("is_template", "")).strip()
+            == ("" if p["is_template"] is None else str(p["is_template"]))
+            and _norm_elements(row.get("missing_elements"))
+            == _norm_elements(p["missing_elements"])
+        ):
+            same += 1
+
+    # 一条 conclusion 都还没给时不出声：那时候「185 行全部一致」是必然的，
+    # 报出来只会让人以为发现了什么。
+    if not reviewed:
+        return
+    print(f"  预判采信情况：已给 conclusion 的 {reviewed} 行里，{same} 行的三列描述性判断与模型预判完全一致")
+    if same >= reviewed * 0.9:
+        print(
+            "  ⚠ 一致度 ≥90%。口径 §4.4 要的是逐条人工确认——"
+            "**采信本身不是错，但请确认每一条确实看过**。"
+        )
 
 
 def _check_q2(row: dict) -> list[str]:

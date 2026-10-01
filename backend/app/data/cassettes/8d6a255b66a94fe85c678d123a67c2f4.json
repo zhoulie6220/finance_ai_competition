@@ -1,0 +1,7 @@
+{
+  "cassette_id": "8d6a255b66a94fe85c678d123a67c2f4",
+  "model_version": "deepseek-flash",
+  "text": "{\n  \"judgements\": [\n    {\n      \"claim_id\": \"cl-6b278b77900a\",\n      \"is_substantive\": false,\n      \"is_template\": false,\n      \"missing_elements\": [\"object\", \"period\", \"metric\", \"result\", \"owner\"],\n      \"reason\": \"原文说的是「国内投资端」「内需」「新兴产业」等宏观与行业层面的趋势判断，未指向本公司具体业务、期间、指标或结果，属于一般背景介绍与行业综述，非公司实质经营表述。\"\n    }\n  ]\n}",
+  "tokens_in": 932,
+  "tokens_out": 120
+}

@@ -1374,6 +1374,42 @@ CREATE TABLE p_confirmation (
 CREATE INDEX ix_p_claim ON p_confirmation(claim_id);
 CREATE INDEX ix_p_conclusion ON p_confirmation(conclusion);
 
+-- P 的**模型预判**（2026-10-01 加）。
+--
+-- ⚠ 刻意与 `p_confirmation` 分成两张表，不是图省事。
+--   会计口径原话是「**模型只能提出候选，不能自动定 P**」——
+--   混进同一张表的话，「这条到底是模型判的还是人确认的」就查不到了，
+--   而两者在库里的样子会**完全一样**。
+--
+-- 边界划在哪：
+--   · 这张表**没有任何 conclusion 列**。模型碰不到分数，只能给描述性判断。
+--   · `p_confirmation` 不从这里读，两边不相通。
+--   · P 的分母与分子只认 `p_confirmation`。
+--
+-- 它的唯一用途是把候选预填进导出的 CSV，让会计从「从零填」变成「复核」。
+-- 预填值在 CSV 里带独立的 `预判` 标记列，一眼能看出哪些不是人填的。
+CREATE TABLE p_prediction (
+  id               TEXT PRIMARY KEY,
+  claim_id         TEXT NOT NULL REFERENCES claim(claim_id) ON DELETE CASCADE,
+
+  is_substantive   INTEGER NOT NULL CHECK (is_substantive IN (0,1)),
+  is_template      INTEGER CHECK (is_template IN (0,1)),
+  missing_elements TEXT,
+  -- 模型给的理由，导出到 CSV 给会计看。**这一栏比三个标签更要紧**：
+  -- 只给结论不给依据，复核就退化成「看着顺眼就点头」。
+  reason           TEXT,
+
+  model            TEXT NOT NULL,
+  prompt_version   TEXT NOT NULL,
+  prompt_hash      TEXT NOT NULL,
+  llm_call_id      TEXT REFERENCES llm_call(call_id),
+  created_at       TEXT NOT NULL,
+
+  UNIQUE (claim_id)
+);
+
+CREATE INDEX ix_p_pred_claim ON p_prediction(claim_id);
+
 -- =============================================================================
 -- 十、视图：让不可信数据在 SQL 层就进不来
 -- =============================================================================
