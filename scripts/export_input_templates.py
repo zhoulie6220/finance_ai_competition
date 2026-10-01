@@ -261,7 +261,12 @@ def _export_p(con: sqlite3.Connection, limit: int = 400) -> None:
         rows.append(
             {
                 "claim_id": r["claim_id"],
-                "claim_text": (r["claim_text"] or "")[:120],
+                # ⚠ 上限要**够长**。裁短了不只是「少几个字」：会计要判的是
+                # 「这句话有没有对象 / 期间 / 指标 / 结果」，结果部分被砍掉，
+                # 他会把一条完整的表述判成 missing_elements=result——
+                # **判错的是我们造成的，而他看不出来**。
+                # 实测最长的一句 326 字，取 400 就能全须全尾。
+                "claim_text": (r["claim_text"] or "")[:400],
                 "source_page": r["source_page"],
                 "is_substantive": e["is_substantive"] if e else 1,
                 "is_template": "" if not e else (e["is_template"] or 0),

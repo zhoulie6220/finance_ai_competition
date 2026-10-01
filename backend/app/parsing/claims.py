@@ -44,6 +44,17 @@ _NUMERIC_CELL_RE = re.compile(r"^[-−—–\s]*(?:\d[\d,]*(?:\.\d+)?%?)?[-−�
 # 列是靠空白对齐的，而正文里的空格是词距，只会有单个空格。
 _MULTI_SPACE = re.compile(r"\s{2,}|\t")
 
+# 表格的**说明行**：数据来源、单位、附注。这类行自成一块，后面的正文不许接上去。
+#
+# ⚠ 不挡住的话会拼出**年报上根本不存在的句子**：
+#
+#     粗钢产量  CSPI月均数据来源：wind资讯公司把握国家供给侧结构改革、钢铁去产能的机遇…
+#
+# 三段（表头 / 数据来源 / 正文首句）接成一句，而 claim_text 是证据链的终点——
+# 它必须是年报里真实存在的那一句，否则「点回原文」就点到了一段拼接物。
+# 实测宝钢 130 条候选里 4 条是这种。
+_TABLE_CAPTION_RE = re.compile(r"(数据来源|资料来源|单位[:：]|注[:：])")
+
 
 @dataclass(frozen=True)
 class Sentence:
@@ -82,6 +93,8 @@ def join_wrapped_lines(text: str) -> str:
             #     而 claim_text 是证据链的终点，它必须是年报里真实存在的那一句
             and not looks_like_table_row(prev)
             and not HEADING_RE.match(prev.strip())
+            # 表格说明行也是完整的块，理由见 _TABLE_CAPTION_RE
+            and not _TABLE_CAPTION_RE.search(prev)
             and not _starts_new_block(line)
         ):
             out[-1] = prev + line.lstrip()
@@ -95,6 +108,9 @@ def _starts_new_block(line: str) -> bool:
     if not stripped:
         return True
     if HEADING_RE.match(stripped):
+        return True
+    # 表格的说明行（数据来源 / 单位 / 注）自起一行，理由见 _TABLE_CAPTION_RE
+    if _TABLE_CAPTION_RE.match(stripped):
         return True
     # 表格行的各列之间有多空格，不该和上一行接起来
     return bool(_MULTI_SPACE.search(stripped))
@@ -131,6 +147,21 @@ def looks_like_table_row(line: str) -> bool:
         # 最多允许一个非数字单元格（通常是行标签）
         if numeric >= len(cells) - 1:
             return True
+
+    # 两格的表格行：「本期费用化研发投入  3,449」。
+    #
+    # ⚠ 上面那条要求 ≥3 格，这类只有两格，整条判据直接跳过——
+    # 实测宝钢 130 条候选里有 10 条是这种，全是研发投入表的行标签加一个数。
+    #
+    # 判据要收得紧，因为**正文里也会出现两个空格**（PDF 排版如此）：
+    # 「本年度实现营业收入  322,116 百万元。」与它只差一点。
+    # 分开它们的是——正文的数值带单位，句子带句号；表格行两样都没有。
+    if (
+        len(cells) == 2
+        and _NUMERIC_CELL_RE.match(cells[1])
+        and not stripped.endswith(("。", "！", "？", "；", "："))
+    ):
+        return True
 
     # 连续的数字单元格 ≥ 3 个 → 表格行。
     #

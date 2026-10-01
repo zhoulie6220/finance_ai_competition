@@ -96,6 +96,63 @@ def test_table_row_with_a_trailing_note_is_still_rejected(line: str) -> None:
     assert looks_like_table_row(line) is True
 
 
+@pytest.mark.parametrize(
+    "line",
+    [
+        "本期费用化研发投入  3,449",
+        "本期费用化研发投入  8,726",
+        "本期资本化研发投入  1,234",
+    ],
+)
+def test_two_cell_table_rows_are_rejected(line: str) -> None:
+    """★ 只有两格的表格行。
+
+    上面那条判据要求 ≥3 格，这类只有两格，**整条判据直接跳过**——
+    实测宝钢 130 条候选里有 10 条是这种（研发投入表的行标签加一个数），
+    会计要逐条判的表里混着它们。
+    """
+    assert looks_like_table_row(line) is True
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        # ★ 这两句只差一个空格，**不能一起误杀**。
+        # 分开它们的是：正文的数值带单位、句子带句号；表格行两样都没有。
+        "本年度实现营业收入  322,116 百万元。",
+        "营业收入  1,234 万元，同比增长 5%。",
+        "公司粗钢产量  5,150 万吨。",
+    ],
+)
+def test_two_cell_prose_with_units_is_not_a_table_row(line: str) -> None:
+    assert looks_like_table_row(line) is False
+
+
+def test_a_table_caption_does_not_absorb_the_next_sentence() -> None:
+    """★ 「数据来源：wind资讯」是完整的块，后面的正文是另一句。
+
+    接上去会拼出**年报上根本不存在的句子**：
+
+        粗钢产量  CSPI月均数据来源：wind资讯公司把握国家供给侧结构改革、钢铁去产能的机遇…
+
+    而 `claim_text` 是证据链的终点——它必须是年报里真实存在的那一句。
+    拼接物让「点回原文」点到了一段谁也没写过的文字，而且**不报错**。
+    """
+    text = (
+        "粗钢产量  CSPI月均\n"
+        "数据来源：wind资讯\n"
+        "公司把握国家供给侧结构改革、钢铁去产能的机遇。"
+    )
+    joined = join_wrapped_lines(text)
+    assert "数据来源：wind资讯公司" not in joined, "说明行把正文吸进来了"
+
+    # 正文必须**独立成句**——它进 claim 表时 source_text 才是年报里那一句
+    sentences = [s.text for s in iter_sentences(text)]
+    assert any(
+        s.startswith("公司把握国家供给侧结构改革") for s in sentences
+    ), f"正文没有独立成句：{sentences}"
+
+
 def test_table_row_does_not_absorb_the_following_paragraph() -> None:
     """★ 回归：表格行是完整的块，后面的行是新段落。
 
