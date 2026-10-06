@@ -120,6 +120,13 @@ export interface FactGridRow {
   unit_kind: string
   /** 期间 → 格子。**每个年度都有一格**，没数据的是 not_found 而不是缺行。 */
   cells: Record<string, FactCell>
+  /**
+   * 有值的年度数。**后端数出来的**。
+   *
+   * 91 个指标里有近一半整列是空的（还没采集）。下拉里不标出来的话，
+   * 点进走势图是一张空图，**看起来像系统坏了**——而实际是「这一项没采到」。
+   */
+  filled: number
 }
 
 export interface FactGrid {
@@ -352,6 +359,22 @@ export interface NarrativeIndex {
     skipped_no_period: number
     skipped_no_fact: number
   }
+  /**
+   * 闸门四条件的逐条结果。**出分时四条全为 passed**。
+   *
+   * 结构化出来是为了页面上一眼看出「四项里过了三项、只差哪一项」——
+   * 只给一句 `insufficient_reason` 的话，读的人分不出「差一张表」和
+   * 「差得远」，而这两件事该做的事完全不同。
+   * ⚠ 阈值与判定都在后端，前端只渲染 `passed`，不重算。
+   */
+  gate: {
+    key: string
+    /** 如「覆盖率 ≥ 0.60」，阈值已经拼在里面了 */
+    label_cn: string
+    passed: boolean
+    /** 后端给的实测值，如「49/67 = 0.731343」 */
+    detail: string
+  }[]
   insufficient_reason: string | null
   formula: string
   conclusion_boundary: string

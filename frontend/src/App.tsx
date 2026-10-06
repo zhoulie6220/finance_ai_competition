@@ -8,15 +8,17 @@ import OfflineBadge from './components/OfflineBadge'
 /**
  * 工作台外壳。
  *
- * 布局照 Codex 那类客户端：**左侧栏 + 顶栏**。
+ * 布局照 Codex 那类客户端：**一个左边栏，内容全在里面**。
  *
- *   ├ 侧栏：产品名（原来放「ChatGPT Work」的位置）+ 公司下拉 + 能看什么
- *   ├ 顶栏：功能 tab
- *   └ 内容区：数据
+ *   ├ 产品名（原来放「ChatGPT Work」的位置）
+ *   ├ 公司   —— 下拉，选中即切换
+ *   ├ 功能   —— 财务事实 / 叙事一致性
+ *   ├ 能看什么 —— 说明文字
+ *   └ 底部状态
  *
  * 侧栏放「能看什么」而不是「最近打开」——这个系统一次只看一家公司、
  * 两个页面，没有「最近」可言；而新来的人（评委、队友）最需要的恰恰是
- * **一进去就知道这里有什么**。所以那是一块说明文字，不是历史列表。
+ * **一进去就知道这里有什么**。所以那是一块说明，不是历史列表。
  *
  * 用 **HashRouter**（见 main.tsx）而不是 BrowserRouter：演示时用
  * `vite preview` 或任何静态托管，刷新页面不会 404。现场演示时刷新一下
@@ -60,6 +62,18 @@ export default function App() {
             loading={projects.loading}
           />
 
+          <div className="side-label">功能</div>
+          <nav className="side-nav">
+            {projectId && (
+              <>
+                <SideLink to={`/projects/${projectId}/facts`}>财务事实</SideLink>
+                <SideLink to={`/projects/${projectId}/narrative`}>
+                  叙事一致性
+                </SideLink>
+              </>
+            )}
+          </nav>
+
           <div className="side-label">这个工作台能看什么</div>
           <SideHint />
 
@@ -72,15 +86,6 @@ export default function App() {
         </aside>
 
         <div className="main">
-          <nav className="topbar">
-            {projectId && (
-              <>
-                <Tab to={`/projects/${projectId}/facts`}>财务事实</Tab>
-                <Tab to={`/projects/${projectId}/narrative`}>叙事一致性</Tab>
-              </>
-            )}
-          </nav>
-
           <div className="content">
             <Outlet />
           </div>
@@ -90,20 +95,23 @@ export default function App() {
   )
 }
 
-function Tab({ to, children }: { to: string; children: React.ReactNode }) {
+function SideLink({ to, children }: { to: string; children: React.ReactNode }) {
   return (
-    <NavLink to={to} className={({ isActive }) => (isActive ? 'tab active' : 'tab')}>
+    <NavLink
+      to={to}
+      className={({ isActive }) => (isActive ? 'side-link active' : 'side-link')}
+    >
       {children}
     </NavLink>
   )
 }
 
 /**
- * 公司切换：**下拉里的复选框**。
+ * 公司切换：一个普通下拉，**选中即切换**。
  *
- * ⚠ 复选框一次只能勾一个。三家是三个独立的 `project`，接口一次只返回
- * 一家的数据——没有并排接口。允许多勾的话，点了第二家页面上什么也不会变，
- * 那就成了一个假按钮。所以勾选即切换，并在下拉底部写清楚这一点。
+ * 三家是三个独立的 `project`，接口一次只返回一家的数据——没有并排接口。
+ * 所以这里不做多选：允许多选的话，点了第二家页面上什么也不会变，
+ * 那就成了一个假控件。下拉底部写清楚这一点。
  */
 function CompanyPicker({
   projects,
@@ -157,7 +165,9 @@ function CompanyPicker({
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
       >
-        <span className="name">{current?.company_name ?? (loading ? '加载中…' : '—')}</span>
+        <span className="name">
+          {current?.company_name ?? (loading ? '加载中…' : '—')}
+        </span>
         <span className="span mono">{current ? span(current) : ''}</span>
         <span className="caret">⌄</span>
       </button>
@@ -168,20 +178,19 @@ function CompanyPicker({
             const on = p.project_id === current?.project_id
             return (
               <li key={p.project_id}>
-                <label className={on ? 'on' : ''}>
-                  <input
-                    type="checkbox"
-                    checked={on}
-                    onChange={() => go(p)}
-                  />
+                <button
+                  type="button"
+                  className={on ? 'on' : ''}
+                  onClick={() => go(p)}
+                >
                   <span className="nm">{p.company_name}</span>
                   <span className="span mono">{span(p)}</span>
-                </label>
+                </button>
               </li>
             )
           })}
           <li className="menu-note">
-            勾选即切换。演示与出分只用主公司，另两家是估值可比公司。
+            选中即切换。演示与出分只用主公司，另两家是估值可比公司。
           </li>
         </ul>
       )}
@@ -196,8 +205,8 @@ function SideHint() {
       <dl>
         <dt>财务事实</dt>
         <dd>
-          指标 × 年度的大表。点任意一格回到年报原文；数字下面的柱子是
-          <b>比上年</b>，红增绿减。
+          91 个指标 × 10 个年度。选一个指标看它这些年的走势，
+          点任意一格回到年报原文。柱子是<b>比上年</b>，红增绿减。
         </dd>
         <dt>叙事一致性</dt>
         <dd>

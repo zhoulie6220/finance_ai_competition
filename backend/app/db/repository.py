@@ -214,6 +214,19 @@ def fact_grid(
             cell["change_formula"] = formula
             cell["change_inputs"] = inputs
 
+    # 每行给一个「有值的年度数」。**由后端数出来**——让前端去数的话，
+    # 同一个覆盖率就有两处算法，而且前端数出来的东西没法审计。
+    #
+    # 它要解决的是一个真实的体验问题：91 个指标里有 47 个整列是空的
+    # （毛利率、所有行业指标、每股收益……都还没采集）。走势图的下拉里
+    # 不标出来的话，点进去是一张空图，**看起来像系统坏了**，
+    # 而实际是「这一项没采到」——两件事要处理的方式完全不同。
+    for entry in metrics.values():
+        cells = entry["cells"]
+        entry["filled"] = sum(
+            1 for period in periods if (cells.get(period) or {}).get("value") is not None
+        )
+
     return {
         "project_id": project_id,
         "company_name": project["company_name"],

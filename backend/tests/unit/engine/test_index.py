@@ -303,3 +303,71 @@ def test_conclusion_boundary_is_always_present() -> None:
 def test_coverage_line_reads_correctly() -> None:
     result = compute_index(data(n=6, N=10), CFG)
     assert result.coverage_line() == "覆盖率 6/10 = 0.600000"
+
+
+# ---------------------------------------------------------------- 闸门四条件
+
+
+def test_a_passing_condition_is_explicitly_true():
+    """★ **过的那些要显式标 true**，不能「没出现在失败列表里」就算过。
+
+    页面上要画的是四个勾叉，不是「三条没写」。少了这个区别，
+    「没检查」和「检查过了没问题」在界面上长得一模一样。
+    """
+    out = compute_index(data(n=6, N=10))
+    by_key = {g.key: g for g in out.gate}
+    assert out.ok
+    assert [g.key for g in out.gate] == ["coverage", "observations", "hc", "rpq"]
+    assert all(g.passed for g in out.gate), "出分时四条应当全过"
+    assert by_key["coverage"].detail == "6/10 = 0.600000"
+
+
+def test_a_failing_condition_keeps_the_others_marked_passed():
+    """★ 闸门不过时，**过的那些仍然标 true**。
+
+    这才是这一项结构化输出的全部意义：宝钢的真实情况是
+    「覆盖率过、观测数过、H/C 过，只差 R 和 Q 两张人工录入表」——
+    只给一句「证据不足」的话，读的人分不出
+    「差一张表」和「差得远」，而这两件事该做的事完全不同。
+    """
+    bad_risk = comp("risk_shift", "风险披露充分度 R", None, 4, verified=False)
+    _t, template, quality = perfect_rpq()
+    out = compute_index(data(rpq=(bad_risk, template, quality)))
+
+    assert out.score is None
+    by_key = {g.key: g for g in out.gate}
+    assert by_key["coverage"].passed is True
+    assert by_key["observations"].passed is True
+    assert by_key["hc"].passed is True
+    assert by_key["rpq"].passed is False
+    assert "R" in by_key["rpq"].detail
+    # 逐条文案仍然要保留——页面上那段原因列表用的还是它
+    assert out.insufficient_reason
+    assert "风险披露充分度 R" in out.insufficient_reason
+
+
+def test_the_gate_detail_carries_the_backend_numbers():
+    """`detail` 里是**后端算出来的实测值**，页面直接显示。
+
+    前端自己拼「6 条 / 10 条」的话，同一个数就有两处来源；
+    哪天口径改了（比如 N 的定义变了），页面上显示的还是旧算法。
+    """
+    out = compute_index(data(n=3, N=10))
+    by_key = {g.key: g for g in out.gate}
+    assert by_key["observations"].detail == "3 条"
+    assert by_key["hc"].detail == "H 1 条 / C 1 条"
+    assert by_key["coverage"].detail == "3/10 = 0.300000"
+
+
+def test_the_coverage_threshold_is_named_in_the_label():
+    """阈值写在 `label_cn` 里，页面上不用自己拼「≥ 0.6」——
+    拼的话，改了 `IndexConfig.min_coverage` 而页面还写着旧的。"""
+    out = compute_index(data(n=3, N=10))
+    by_key = {g.key: g for g in out.gate}
+    assert str(CFG.min_coverage) in by_key["coverage"].label_cn
+
+
+def test_an_out_of_range_coverage_threshold_is_rejected():
+    """阈值本身要合法。0.6 写成 6 的话覆盖率永远不过，而**不报错**。"""
+    with pytest.raises(ValueError):
+        IndexConfig(min_coverage=Decimal("6"))

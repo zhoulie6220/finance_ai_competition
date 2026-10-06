@@ -333,6 +333,19 @@ def narrative_index(
             "skipped_no_period": diag["skipped_no_period"],
             "skipped_no_fact": diag["skipped_no_fact"],
         },
+        # 闸门四条件的**逐条**结果。页面上画成勾叉，一眼看出
+        # 「四项里过了三项、只差 R 和 Q」——只给一句 insufficient_reason
+        # 的话，读的人分不出「差一点」和「差得远」。
+        # ⚠ 判定与阈值都在引擎里，这里只搬运。
+        "gate": [
+            {
+                "key": c.key,
+                "label_cn": c.label_cn,
+                "passed": c.passed,
+                "detail": c.detail,
+            }
+            for c in result.gate
+        ],
         "insufficient_reason": result.insufficient_reason,
         "formula": result.formula,
         "conclusion_boundary": result.conclusion_boundary,

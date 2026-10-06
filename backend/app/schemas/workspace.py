@@ -166,6 +166,12 @@ class FactGridRowView(BaseModel):
     statement: str
     unit_kind: str
     cells: dict[str, FactCellView] = Field(description="期间 → 格子")
+    filled: int = Field(
+        default=0,
+        description="有值的年度数。**后端数出来的**，前端不重算。"
+                    "91 个指标里有近一半整列是空的（还没采集），"
+                    "不标出来的话点进走势图是一张空图，看起来像系统坏了",
+    )
 
 
 class FactGridView(BaseModel):
@@ -509,6 +515,25 @@ class ScenarioMappingView(BaseModel):
     notes: list[str] = Field(default_factory=list)
 
 
+class GateConditionView(BaseModel):
+    """闸门的一条条件。
+
+    结构化出来是为了页面上能一眼看出「四项里过了三项、只差哪一项」——
+    只给一句 `insufficient_reason` 的话，读的人分不出「差一点」和「差得远」，
+    而这两种情况该做的事完全不同（前者催一张表，后者要重新规划）。
+
+    ⚠ **阈值与判定都在后端**（`engine/index.py`）。前端只渲染 `passed`，
+    不重算，也不比较数字——不然就成了同一个阈值两处各写一份。
+    """
+
+    model_config = ConfigDict(title="闸门条件")
+
+    key: str
+    label_cn: str = Field(description="如「覆盖率 ≥ 0.60」")
+    passed: bool
+    detail: str = Field(description="后端给的实测值，如「49/67 = 0.731343」")
+
+
 class NarrativeIndexView(BaseModel):
     """`GET /api/projects/{id}/narrative/index` 的响应。
 
@@ -526,6 +551,10 @@ class NarrativeIndexView(BaseModel):
     components: IndexComponentsView
     coverage: str | None = None
     counts: IndexCountsView
+    gate: list[GateConditionView] = Field(
+        default_factory=list,
+        description="闸门四条件的逐条结果。出分时四条全为 true",
+    )
     insufficient_reason: str | None = None
     formula: str
     conclusion_boundary: str

@@ -148,6 +148,23 @@ class IndexInput:
 
 
 @dataclass(frozen=True)
+class GateCondition:
+    """闸门的**一条**条件。
+
+    ⚠ 结构化出来是为了页面上能一眼看出「四项里过了三项、只差哪一项」。
+    只拼一句失败文案的话，读的人看到的是「证据不足」四个字加一大段原因，
+    分不出「差一点」和「差得远」——而这两种情况该做的事完全不同。
+
+    **阈值与判定都在这一层**，前端只渲染 `passed`，不重算。
+    """
+
+    key: str
+    label_cn: str
+    passed: bool
+    detail: str
+
+
+@dataclass(frozen=True)
 class IndexResult:
     status: Status
     grade: Grade
@@ -166,6 +183,8 @@ class IndexResult:
     formula: str
     conclusion_boundary: str = CONCLUSION_BOUNDARY
     method_version: str = "index:v1.1"
+    #: 闸门四条件的逐条结果。**出分时四条全是 True**，页面上可以折叠不显示。
+    gate: tuple[GateCondition, ...] = ()
 
     @property
     def ok(self) -> bool:
@@ -199,30 +218,67 @@ def compute_index(data: IndexInput, cfg: IndexConfig | None = None) -> IndexResu
             Decimal(data.observation_count) / Decimal(data.denominator_count)
         ).quantize(PLACES)
 
-    # ---- 闸门四条件，逐条检查并给出**具体**原因 --------------------------
+    # ---- 闸门四条件，逐条检查 --------------------------------------------------
+    #
+    # 判定与阈值都在这一层。同时产出两种形式：
+    #   · `failures` —— 拼成一句话，给 `insufficient_reason` 用（保留原有文案，
+    #     页面上的逐条原因和测试都依赖它）
+    #   · `gate`     —— 结构化的逐条结果，给页面画勾叉用
+    # 两者由**同一批判断**产出，不会分叉。
     failures: list[str] = []
+    gate: list[GateCondition] = []
+
     if coverage is None:
         failures.append("没有可判定的主张（分母为 0）")
-    elif coverage < cfg.min_coverage:
-        failures.append(
-            f"覆盖率 {coverage} 低于要求的 {cfg.min_coverage}"
-            f"（{data.observation_count}/{data.denominator_count}）"
-        )
-    if data.observation_count < cfg.min_observations:
+        gate.append(GateCondition(
+            "coverage", f"覆盖率 ≥ {cfg.min_coverage}", False,
+            "分母为 0，没有可判定的主张",
+        ))
+    else:
+        ok = coverage >= cfg.min_coverage
+        gate.append(GateCondition(
+            "coverage", f"覆盖率 ≥ {cfg.min_coverage}", ok,
+            f"{data.observation_count}/{data.denominator_count} = {coverage}",
+        ))
+        if not ok:
+            failures.append(
+                f"覆盖率 {coverage} 低于要求的 {cfg.min_coverage}"
+                f"（{data.observation_count}/{data.denominator_count}）"
+            )
+
+    ok = data.observation_count >= cfg.min_observations
+    gate.append(GateCondition(
+        "observations", f"有效观测 ≥ {cfg.min_observations} 条", ok,
+        f"{data.observation_count} 条",
+    ))
+    if not ok:
         failures.append(
             f"有效观测 {data.observation_count} 条，少于要求的 "
             f"{cfg.min_observations} 条"
         )
+
+    ok = bool(data.history_scores) and bool(data.current_scores)
+    gate.append(GateCondition(
+        "hc", "H、C 各有观测", ok,
+        f"H {len(data.history_scores)} 条 / C {len(data.current_scores)} 条",
+    ))
     if not data.history_scores:
         failures.append("H（历史兑现度）没有观测——全是本期主张时不输出完整指数")
     if not data.current_scores:
         failures.append("C（当期一致性）没有观测")
+
+    missing = [c.label_cn for c in (data.risk, data.template, data.quality)
+               if not c.computable]
+    gate.append(GateCondition(
+        "rpq", "R、P、Q 均可算且核验完成", not missing,
+        "三项齐全" if not missing else "缺 " + "、".join(missing),
+    ))
     for component in (data.risk, data.template, data.quality):
         if not component.computable:
             failures.append(f"{component.label_cn}不可算或未核验完成：{component.describe()}")
 
     if failures:
-        return _fail("；".join(failures), cfg, data, coverage)
+        return _fail("；".join(failures), cfg, data, coverage, tuple(gate))
 
     assert history is not None and current is not None
     assert data.risk.value is not None
@@ -255,6 +311,7 @@ def compute_index(data: IndexInput, cfg: IndexConfig | None = None) -> IndexResu
         denominator_count=data.denominator_count,
         insufficient_reason=None,
         formula=_formula(history, current, data, cfg, raw),
+        gate=tuple(gate),
     )
 
 
@@ -263,6 +320,7 @@ def _fail(
     cfg: IndexConfig,
     data: IndexInput,
     coverage: Decimal | None,
+    gate: tuple[GateCondition, ...] = (),
 ) -> IndexResult:
     """构造失败结果。**刻意不产出任何分数**。
 
@@ -285,6 +343,7 @@ def _fail(
         denominator_count=data.denominator_count,
         insufficient_reason=reason,
         formula="（未产出总分）",
+        gate=gate,
     )
 
 

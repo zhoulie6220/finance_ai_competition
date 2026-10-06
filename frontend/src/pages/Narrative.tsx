@@ -184,6 +184,22 @@ function IndexCard({ data }: { data: NarrativeIndex }) {
         ) : (
           <>
             <h3>为什么不出分</h3>
+            {/* 闸门四条**逐条画勾叉**。这一块是刻意做的：
+                只给一句「证据不足」加一段原因，读的人分不出
+                「四项过了三项、只差一张表」和「差得远」——
+                而这两件事该做的事完全不同。
+                ⚠ 判定与阈值都在后端（engine/index.py），这里只渲染 passed。 */}
+            {data.gate.length > 0 && (
+              <div className="gate">
+                {data.gate.map((g) => (
+                  <div key={g.key} className={g.passed ? 'gate-row ok' : 'gate-row no'}>
+                    <span className="mark">{g.passed ? '✓' : '✗'}</span>
+                    <span className="lbl">{g.label_cn}</span>
+                    <span className="det">{g.detail}</span>
+                  </div>
+                ))}
+              </div>
+            )}
             {/* 原因**逐条**列出，不是笼统一句「证据不足」——
                 只说要补证据，没人知道补什么 */}
             <ul className="reason-list">
