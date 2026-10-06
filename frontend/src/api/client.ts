@@ -24,7 +24,20 @@ const BASE = '/api'
 declare global {
   interface Window {
     __SNAPSHOT__?: Record<string, unknown>
+    /** 录视频用的那一份：横幅不上屏。见 `hideSnapshotBanner`。 */
+    __SNAPSHOT_HIDE_BANNER__?: boolean
   }
+}
+
+/**
+ * 这一份快照要不要**不显示**横幅。
+ *
+ * ⚠ 只有 `build_offline_page.py --no-banner` 打出来的那一份会为真，
+ * 那是**录视频用**的：录制下来的视频本来就不是实时演示。
+ * **给会计同学浏览的那一份不带这个标记**——他会以为页面是"现在的库"。
+ */
+export function hideSnapshotBanner(): boolean {
+  return typeof window !== 'undefined' && window.__SNAPSHOT_HIDE_BANNER__ === true
 }
 
 /** 当前是不是在离线快照模式（页面上要据此挂横幅）。 */

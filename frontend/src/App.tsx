@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 
-import { isSnapshotMode, useApi } from './api/client'
+import { hideSnapshotBanner, isSnapshotMode, useApi } from './api/client'
 import type { Health, Project } from './api/types'
 import MetricNav from './components/MetricNav'
 import OfflineBadge from './components/OfflineBadge'
@@ -42,13 +42,16 @@ export default function App() {
           列为诚信问题，所以它不许被折叠进侧栏或藏起来。 */}
       <OfflineBadge health={health.data} />
 
-      {/* 离线快照横幅。**这是诚信要求，不是装饰**：docs/00 把
-          「回放时装作实时」列为诚信问题，而快照页比离线回放更"死"——
-          数据是打包那天冻住的，页面上的每一个数字都不会再变。
-          不标出来的话，看的人会以为这是实时算的。
-          与 OfflineBadge 的区别：那个说的是「LLM 走预录磁带」，
-          这个说的是「整页数据都是一份快照」。两者可能同时出现。 */}
-      {isSnapshotMode() && (
+      {/* 离线快照横幅。**这是诚信要求，不是装饰**：一个会被人当场浏览的
+          页面，数据是打包那天冻住的、不会随库变化——不标出来的话，
+          看的人会以为这是实时算的。与 OfflineBadge 的区别：那个说的是
+          「LLM 走预录磁带」，这个说的是「整页数据都是一份快照」。
+
+          ⚠ `__SNAPSHOT_HIDE_BANNER__` 是**录视频用的那一份**专用的：
+          录制下来的视频本来就不是实时演示，横幅在那种场景里是多余的。
+          由 `build_offline_page.py --no-banner` 注入；**给会计浏览的
+          那一份不加这个参数**，横幅照旧。 */}
+      {isSnapshotMode() && !hideSnapshotBanner() && (
         <div className="snapshot-banner" role="status">
           <strong>离线快照</strong>
           <span>

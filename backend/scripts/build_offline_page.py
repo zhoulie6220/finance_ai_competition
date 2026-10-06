@@ -54,7 +54,7 @@ def _safe(text: str) -> str:
     return text.replace("</script", "<\\/script")
 
 
-def build(out_dir: Path) -> int:
+def build(out_dir: Path, *, banner: bool = True) -> int:
     out_dir.mkdir(parents=True, exist_ok=True)
     snapshot_path = out_dir / "_snapshot.json"
 
@@ -162,8 +162,13 @@ def build(out_dir: Path) -> int:
 def main() -> int:
     ap = argparse.ArgumentParser(description="打一个离线单文件工作台")
     ap.add_argument("--out", required=True, help="输出目录")
+    ap.add_argument(
+        "--no-banner", action="store_true",
+        help="不带「离线快照」横幅。**只给录视频用**——那段视频本来就不是"
+             "实时演示；给会计浏览的那一份不要加这个参数。",
+    )
     args = ap.parse_args()
-    return build(Path(args.out))
+    return build(Path(args.out), banner=not args.no_banner)
 
 
 if __name__ == "__main__":
