@@ -186,6 +186,12 @@ def fact_grid(
             "confidence": r["confidence"],
         }
 
+    # ---- 逐格补派生值 ---------------------------------------------------
+    #
+    # ⚠ **必须在同比那一段之前做**：派生值也要有「比上年」那根柱子，
+    #   放到后面的话派生格永远不出同比，而页面上看不出少了什么。
+    _fill_derived(metrics, periods)
+
     # ---- 逐格补「比上年」的同比 ------------------------------------------
     #
     # ⚠ **同比必须在后端算，前端只渲染。** 这是项目铁律里最硬的一条：
@@ -234,6 +240,87 @@ def fact_grid(
         "periods": periods,
         "metrics": list(metrics.values()),
     }
+
+
+def _fill_derived(metrics: dict[str, dict[str, Any]], periods: list[str]) -> None:
+    """把 `is_derived = 1` 的字段**用引擎算出来**填进空格子。
+
+    ## 为什么不落库
+
+    派生值是**某一组基础科目的函数**。落库的话，那些基础科目一旦重述或修正，
+    派生值就成了一个没人知道已过期的旧数字——而它看起来和算出来的**完全一样**。
+    所以每次取网格时现算：代价是几十次 `Decimal` 运算，换来「永远与输入一致」。
+
+    ## 三条约束
+
+    **一、只填空格子。** 年报上如果直接印了这个指标（宝钢某些年报就印了吨钢毛利），
+    那一格是**解析来的原文**，优先级高于算出来的值。覆盖掉的话，证据链会从
+    「年报第几页」变成「我们算的」，而页面上看不出这个区别。
+
+    **二、只喂已验证且可比的值。** 与 `matching.facts_index` 同一条边界——
+    不可比的行连指数都不让进，更不能拿来派生。
+
+    **三、拒绝要有理由。** 算不出来时给 `derived_refused` 与 `derived_formula`，
+    页面上那格仍是「—」，但点开能看见**为什么算不出来、缺哪一个字段**。
+    缺理由的话，「缺一个字段」和「这个指标压根不适用」看起来一模一样。
+    """
+    from decimal import InvalidOperation
+
+    from app.engine import derived
+
+    def lookup(metric: str, period: str) -> Decimal | None:
+        cell = ((metrics.get(metric) or {}).get("cells") or {}).get(period)
+        if not cell or cell.get("value") is None:
+            return None
+        if not cell.get("comparable") or cell.get("status") != "validated":
+            return None
+        try:
+            return Decimal(str(cell["value"]))
+        except InvalidOperation:
+            return None
+
+    for key, spec in derived.SPECS_BY_KEY.items():
+        entry = metrics.get(key)
+        if entry is None:
+            continue
+        for period in periods:
+            cell = entry["cells"].get(period)
+            if cell is None or cell.get("value") is not None:
+                continue
+            result = derived.compute_for(key, period, lookup)
+            if result is None:
+                continue
+            # ⚠ **按 (字段, 期间) 去重。** 派生的分子本身可能是别的派生的组合，
+            #   链式相加会把同一个输入列好几遍。实测毛利率的出处里
+            #   「营业收入」出现了两次——两行**一模一样**，
+            #   读起来像把营业收入算了两遍。
+            sources, seen = [], set()
+            for ref in result.sources:
+                if (ref.metric_key, ref.period) in seen:
+                    continue
+                seen.add((ref.metric_key, ref.period))
+                src_cell = ((metrics.get(ref.metric_key) or {}).get("cells") or {}).get(ref.period) or {}
+                sources.append({
+                    "metric_key": ref.metric_key,
+                    "label_cn": (metrics.get(ref.metric_key) or {}).get("label_cn", ref.metric_key),
+                    "period": ref.period,
+                    "fact_id": src_cell.get("fact_id"),
+                    "value": src_cell.get("value"),
+                    "source_page": src_cell.get("source_page"),
+                })
+            entry["cells"][period] = {
+                **cell,
+                # 拒绝时 value 为 None，状态落 not_found——页面上仍是「—」，
+                # 但 tooltip 与派生面板会给出理由。
+                "value": None if result.value is None else str(result.value),
+                "unit": result.unit,
+                "status": "validated" if result.ok else "not_found",
+                "derived": True,
+                "derived_formula": result.formula,
+                "derived_inputs": dict(result.inputs),
+                "derived_sources": sources,
+                "derived_refused": result.refused,
+            }
 
 
 def _cell_yoy(
