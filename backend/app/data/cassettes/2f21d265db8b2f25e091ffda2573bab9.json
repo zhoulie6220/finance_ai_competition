@@ -1,0 +1,7 @@
+{
+  "cassette_id": "2f21d265db8b2f25e091ffda2573bab9",
+  "model_version": "deepseek-flash",
+  "text": "{\n  \"judgements\": [\n    {\n      \"claim_id\": \"cl-73ea0161bc5d\",\n      \"is_substantive\": false,\n      \"is_template\": false,\n      \"missing_elements\": [\"object\", \"period\", \"metric\", \"result\", \"owner\"],\n      \"reason\": \"原文是调研活动记录页的碎片文字（含日期、机构名、网址、'会电话''议室 沟通'等），并非公司对自身经营活动的完整表述，无法指向公司干了什么。\"\n    },\n    {\n      \"claim_id\": \"cl-9f7b54bdac3d\",\n      \"is_substantive\": false,\n      \"is_template\": false,\n      \"missing_elements\": [\"object\", \"period\", \"metric\", \"result\", \"owner\"],\n      \"reason\": \"同样是调研记录页碎片（'2020年11410会电话''议室 沟通'及网址），只是列出机构名与调研话题词，不是公司对自身经营的实质表述。\"\n    },\n    {\n      \"claim_id\": \"cl-8e9f49d239bd\",\n      \"is_substantive\": false,\n      \"is_template\": false,\n      \"missing_elements\": [\"object\", \"period\", \"metric\", \"result\", \"owner\"],\n      \"reason\": \"原文为调研活动页碎片（'2020年12408会实地''议室 调研'及网址），仅罗列机构与话题词，未构成公司对自身经营情况的表述。\"\n    }\n  ]\n}",
+  "tokens_in": 1110,
+  "tokens_out": 328
+}

@@ -1,0 +1,7 @@
+{
+  "cassette_id": "d4f1258bdaf22eb6e82c42aab9a9811f",
+  "model_version": "deepseek-flash",
+  "text": "{\n  \"judgements\": [\n    {\n      \"claim_id\": \"cl-6bb365296807\",\n      \"is_substantive\": true,\n      \"is_template\": false,\n      \"missing_elements\": [\"period\"],\n      \"reason\": \"原文给出宝武碳业注册资本7.5亿元、经营范围等具体主体信息，属于对该公司情况的实质表述；但未说明该注册资本对应的具体期间（仅'截至2021年末'为时点，非经营期间），故period存疑，此处按缺period处理。\"\n    },\n    {\n      \"claim_id\": \"cl-a9c5b2b6b75e\",\n      \"is_substantive\": true,\n      \"is_template\": false,\n      \"missing_elements\": [],\n      \"reason\": \"原文给出持股71.78%、注册资本7.5亿元、员工3440名等具体数字和主体信息，属于实质表述，非套话；对象、期间、指标、结果、责任主体均有指向。\"\n    },\n    {\n      \"claim_id\": \"cl-388ef5148ce6\",\n      \"is_substantive\": false,\n      \"is_template\": false,\n      \"missing_elements\": [\"object\", \"metric\", \"result\", \"owner\"],\n      \"reason\": \"原文说的是'国内投资端''新兴产业''钢材需求'等行业宏观趋势，未指向本公司具体经营，属于一般背景介绍与行业综述，故is_substantive为false；同时未提及公司自身对象、指标、结果和责任主体。\"\n    }\n  ]\n}",
+  "tokens_in": 1072,
+  "tokens_out": 327
+}

@@ -1,0 +1,7 @@
+{
+  "cassette_id": "19405c615b348ef0c80750399cbb4270",
+  "model_version": "deepseek-flash",
+  "text": "{\n  \"judgements\": [\n    {\n      \"claim_id\": \"cl-0cca6e3c4f26\",\n      \"is_substantive\": false,\n      \"is_template\": false,\n      \"missing_elements\": [\"object\", \"period\", \"metric\", \"result\", \"owner\"],\n      \"reason\": \"该段为投资者关系活动记录表的表格残片，罗列机构名称（中银基金、恒越基金等）与栏目文字（'电工钢生产情况、未来供需形势，汽车板产量情况'、'电话沟通'、'2022年12月30日在互动平台发布的投资者活动记录'），属于表格行标签与登记信息，未构成公司对自身经营活动的完整表述，故判为非实质经营表述。\"\n    }\n  ]\n}",
+  "tokens_in": 1008,
+  "tokens_out": 168
+}
