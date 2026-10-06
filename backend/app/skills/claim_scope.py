@@ -96,11 +96,22 @@ def scope_sql(
         "" if include_background else f" AND {alias}.background_only = 0"
     )
 
-    # 同一句话只留一条。ROW_NUMBER 需要 SQLite ≥ 3.25（Python 3.12 自带的最新版远高于此）。
-    # ⚠ 排序里必须带 claim_id 兜底：同一来源下若真有两行文本相同，
-    # 只按 extractor 排序的话谁赢由查询计划决定，**每次跑可能不一样**，
-    # 而「哪些主张参与判定」跟着变——那种不稳定查不出来。
-    dedup = (
+    return source_clause + background_clause + dedup_sql(alias), params
+
+
+def dedup_sql(alias: str = "c") -> str:
+    """同一句话只留一条。ROW_NUMBER 需要 SQLite ≥ 3.25。
+
+    ⚠ 排序里必须带 claim_id 兜底：同一来源下若真有两行文本相同，
+    只按 extractor 排序的话谁赢由查询计划决定，**每次跑可能不一样**，
+    而「哪些主张参与判定」跟着变——那种不稳定查不出来。
+
+    单独抽出来是因为**有一处要它、但不要按来源过滤**：页面上
+    「抽取法」那一栏要按抽取器分组数条数，按来源过滤就只剩一种了。
+    可它仍然必须去重——实测宝钢不去重是 300 条、去重是 291 条，
+    于是**同一页上两个地方印着两个数字**，而两个都算得出来。
+    """
+    return (
         f" AND {alias}.claim_id IN ("
         "   SELECT claim_id FROM ("
         "     SELECT claim_id,"
@@ -113,7 +124,6 @@ def scope_sql(
         "   ) WHERE rn = 1"
         " )"
     )
-    return source_clause + background_clause + dedup, params
 
 
 def describe() -> str:

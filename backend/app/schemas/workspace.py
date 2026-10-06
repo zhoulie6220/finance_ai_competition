@@ -433,7 +433,7 @@ class ExtractorSummaryView(BaseModel):
     比例更高。**这两件事都不该由代码下结论**，并排放着让人自己判。
     """
 
-    model_config = ConfigDict(title="抽取法对照")
+    model_config = ConfigDict(title="抽取法")
 
     extractor: str = Field(
         description="'rule:claim_v1' 或 'llm:deepseek-chat@<prompt_hash>'"

@@ -241,23 +241,36 @@ def narrative_claims(
 def _extractor_comparison(
     con: sqlite3.Connection, project_id: str
 ) -> list[dict[str, Any]]:
-    """两种抽取法的对照。
+    """每种抽取法的条数、可验证数与主题数。
 
     条数少不代表差**也不代表好**——LLM 版条数少于规则法（它更挑），
     但可验证的比例更高、覆盖的主题更多。这两件事都不该由代码下结论，
     页面上把数字并排放着，让人自己判。
+
+    ⚠ **退休主张不算一种抽取法。** 它们的 `extractor` 被改写成
+    `retired:*`（见 `narrative._prune_stale`），是「这一轮抽不到了、
+    但身上挂着会计确认所以没删」的内部标记。不排掉的话页面上会多出
+    一栏「抽取法：retired:rule_v1」——看的人只会以为我们多了个看不懂的抽取器。
     """
+    from app.skills import claim_scope, narrative
+
+    # ⚠ **去重必须和别处同一套。** 不去重的话宝钢这里是 300 条、
+    #   而同一页的抽取概况印的是 291 条——两个数字都算得出来，
+    #   看不出它们不是一套。所以借 `claim_scope.dedup_sql`，
+    #   但**不要**按来源过滤：按来源过滤就只剩一种抽取法了，
+    #   而这一栏的意义正是把几种并排看。
     rows = con.execute(
-        """
+        f"""
         SELECT extractor,
                COUNT(*) AS total,
                SUM(CASE WHEN verifiable = 1 THEN 1 ELSE 0 END) AS verifiable,
                SUM(CASE WHEN status = 'validated' THEN 1 ELSE 0 END) AS validated,
                COUNT(DISTINCT claim_type) AS theme_count
-        FROM claim WHERE project_id = ?
+        FROM claim c WHERE project_id = ? AND extractor NOT LIKE ? || '%'
+        {claim_scope.dedup_sql("c")}
         GROUP BY extractor ORDER BY total DESC
         """,
-        (project_id,),
+        (project_id, narrative.RETIRED_PREFIX),
     ).fetchall()
     return [dict(r) for r in rows]
 

@@ -116,10 +116,8 @@ export default function Narrative() {
 
       <section className="panel">
         <h3>
-          抽取法对照
-          <span className="subtitle">
-            规则法与模型的结果并存，不互相覆盖
-          </span>
+          抽取法
+          <span className="subtitle">确定性规则抽取，每个数字都能从年报重算</span>
         </h3>
         <AsyncBoundary
           loading={claims.loading}
@@ -825,28 +823,23 @@ function FactLinks({
   )
 }
 
-// ---------------------------------------------------------------- 抽取法对照
+// ---------------------------------------------------------------- 抽取法
 
 /**
- * 两种抽取法的并排对照。
+ * 本次分析用了哪种抽取法、抽出来多少。
  *
- * 这是**验收标准「能和规则法对照」的落点**。数字并排放着，
- * 由人判「哪个更准」——**不由代码下结论**：
- *
- *   · 条数少不代表差，也不代表好（LLM 版更挑）
- *   · 可验证比例高才是它的价值所在
- *   · 主题数多说明它够得着规则法覆盖不到的东西
- */
-/**
- * 两种抽取法的并排对照。
- *
- * ⚠ **只有一种抽取法时也必须显示出来，而且要说明为什么少了一种。**
+ * ⚠ **只有一种抽取法时也必须显示出来，而且要说明为什么只有一种。**
  * 原来写的是 `if (rows.length < 2) return null` —— 整节**静默消失**。
  * 后果是：页面上没有这一块，看的人分不出「这块还没做」和
  * 「这块本来就没有内容」。实测会计同学问的就是这句「怎么啥也没有」。
  *
  * 空白和「没有数据」长得一模一样，而这里两者该说的话完全不同：
  * 一种是「模型法还没跑」（可以跑），一种是「跑了但一条都没抽出来」（有问题）。
+ *
+ * 现在**只跑规则法**（本届只用规则法，见 CLAUDE.md），所以这里就是
+ * 一行说明加一张统计表，不再摆出「左右对照」的架势——没有第二种方法时，
+ * 那张对照表除了让人以为我们少跑了一半，没有别的用处。
+ * 两种方法并在时它自动恢复成对照表，不用改代码。
  */
 function ExtractorComparison({ rows }: { rows?: ExtractorSummary[] }) {
   // ⚠ **必须容忍 undefined**：后端可能是旧版本、字段可能还没上。
@@ -858,26 +851,28 @@ function ExtractorComparison({ rows }: { rows?: ExtractorSummary[] }) {
 
   const hasLlm = rows.some((r) => r.extractor.startsWith('llm:'))
   const hasRule = rows.some((r) => r.extractor.startsWith('rule:'))
+  const both = hasLlm && hasRule
 
   return (
     <details className="extractor-compare" open>
-      <summary>两种抽取法对照</summary>
+      <summary>{both ? '两种抽取法' : '抽取法'}</summary>
 
-      {!(hasLlm && hasRule) && (
-        <p className="empty-note">
-          {hasRule && !hasLlm && (
-            <>
-              本次分析使用<b>规则法</b>抽取：确定性、可复算，同输入必得同输出。
-              模型法抽取的链路（客户端、版本化 Prompt、离线回放层）已就绪，
-              本次未启用；启用后这里会并列显示两种抽取法的条数与可验证占比，
-              两栏互相独立、不覆盖彼此的结果。
-            </>
-          )}
-          {hasLlm && !hasRule && (
-            <>本次分析只产出了模型法抽取结果，没有规则法的对照栏。</>
-          )}
-        </p>
-      )}
+      <p className="empty-note">
+        {both ? (
+          <>
+            两种抽取法**并存、不互相覆盖**——同一句话两边都抽到时会有两条。
+            条数少不代表差、也不代表好；「哪个更准」需要人看着原文判，
+            系统不做裁定。
+          </>
+        ) : hasRule ? (
+          <>
+            本次分析使用<b>规则法</b>抽取：确定性、可复算，同输入必得同输出——
+            每一个数字都能从年报原文重算一遍，这是本系统「结论可追溯」的前提。
+          </>
+        ) : (
+          <>本次分析用的是模型法抽取。</>
+        )}
+      </p>
 
       <table className="plain-table">
         <thead>
@@ -905,10 +900,6 @@ function ExtractorComparison({ rows }: { rows?: ExtractorSummary[] }) {
           ))}
         </tbody>
       </table>
-      <p className="hint">
-        两者的结果**并存、不互相覆盖**——同一句话两边都抽到时会有两条，
-        正是为了能像这样对照。「哪个更准」需要人看着原文判，系统不做裁定。
-      </p>
     </details>
   )
 }
