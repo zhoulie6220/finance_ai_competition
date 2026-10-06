@@ -119,7 +119,11 @@ def test_health_reports_empty_reason(empty_client: TestClient):
     body = empty_client.get("/api/health").json()
     assert body["status"] == "empty"
     assert body["db_ok"] is False
-    assert "导回数据包" in body["db_hint"]
+    # ⚠ 断言的是**本意**（空库要给一句人话、且说明是「没有数据」），
+    #   不是某一句具体文案。原来钉的是「导回数据包」——
+    #   那是给开发看的命令行，出现在页面上不合适，文案改过一次它就挂了。
+    assert body["db_hint"], "空库必须给一句人话，不能什么都不说"
+    assert "没有数据" in body["db_hint"]
 
 
 def test_health_is_ok_when_data_is_present(client: TestClient):

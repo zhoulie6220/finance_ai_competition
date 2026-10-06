@@ -349,10 +349,24 @@ def judge(
             "该主题的主判据在主判据表里没有对应指标，按 v1.1 不降级用代理指标硬判。",
             confidence=0.0,
         )
+    if claim.period_norm is None:
+        # ⚠ **「没有期间」和「有期间但那一年的指标没数据」是两件事，
+        #   而原来的文案把两者说成了一件。** 它写的是
+        #   `f"{claim.period_norm or '目标期间'} 未披露 {metric}"`——
+        #   期间为空时渲染成「目标期间 未披露 营业成本」，
+        #   读的人会以为**这个指标整列没有数据**，而去查数据缺口。
+        #   实测宝钢判成 unverifiable 的 161 条**全部**是这一类，
+        #   而它们的指标**都有 11 条事实**——理由 100% 误诊。
+        return _out(
+            claim, metric, "unverifiable",
+            f"这句话里没有可识别的期间，定位不到「哪一年」的数据来核对。"
+            f"（判据指标是 {metric}）",
+            confidence=0.0,
+        )
     if current is None:
         return _out(
             claim, metric, "unverifiable",
-            f"{claim.period_norm or '目标期间'} 未披露 {metric}，"
+            f"{claim.period_norm} 年未披露 {metric}，"
             f"**主判据未披露时不降级用代理指标判冲突**。",
             confidence=0.0,
         )

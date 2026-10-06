@@ -62,10 +62,14 @@ class RiskItemResult:
     impact_path: str | None = None
     evidence: str | None = None
     reason: str | None = None
+    #: 这一格是哪个年度的。R 的一格 = **一个年度 × 一个固定项**，
+    #: 与导出给会计的 `R_风险检查.csv` 同粒度（宝钢 10 年 × 4 项 = 40 格）。
+    period: str | None = None
 
     @property
     def label(self) -> str:
-        return ITEM_LABELS.get(self.item, self.item)
+        base = ITEM_LABELS.get(self.item, self.item)
+        return f"{base}（{self.period}）" if self.period else base
 
     @property
     def has_three_elements(self) -> bool:
