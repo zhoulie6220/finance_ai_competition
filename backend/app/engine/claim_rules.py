@@ -252,6 +252,22 @@ def _anchored(text: str, term: str, anchors: Sequence[str]) -> bool:
     理由是「营业成本实际上升」。实测这一类在宝钢**相悖里占了大头**，
     而它们说的是效率、竞争力、地位，**根本不是关于成本的主张**。
 
+    ⚠ **往前多看一个分句。** 中文是话题链，对象常常在上一个分句里点过就不再说：
+
+        其中，全年实现销量115万吨，其中汽车板销量92.55万吨，占比进一步提升至80%；
+
+    「提升」所在的分句只有「占比」，对象「销量」在上一个分句。
+    只看本分句会把它判成「没有方向」——**而它明明是在说销量提升了**。
+
+    ⚠ 但**只能多看一个**，不能放宽到整句。反例是这一句：
+
+        ……全面对标找差，打造极致效率，一公司多基地协同优势进一步显现，
+        核心竞争力显著提升，国内碳钢板材领导地位进一步强化。
+
+    整句里到处都是「对标」（降本主题的触发词），放宽到整句会把
+    「核心竞争力提升」重新读成「成本下降」——那正是这条闸门要挡的东西。
+    紧前一个分句里没有「对标」，所以锚定到那里是安全的。
+
     ⚠ **没给 `anchors` 一律放行**，同 `_pick_by_metric` 的
     「没查不等于对不上」：调用方没给主题词表时，我们没有依据说它错位。
     """
@@ -260,11 +276,22 @@ def _anchored(text: str, term: str, anchors: Sequence[str]) -> bool:
     at = text.find(term)
     if at < 0:
         return False
-    start = max((text.rfind(b, 0, at) for b in _CLAUSE_BREAK), default=-1) + 1
-    ends = [text.find(b, at + len(term)) for b in _CLAUSE_BREAK]
-    ends = [e for e in ends if e >= 0]
-    clause = text[start : min(ends) if ends else len(text)]
-    return any(a in clause for a in anchors)
+
+    def _clause_before(pos: int) -> tuple[int, int]:
+        """pos 所在分句的 [起, 止)。"""
+        start = max((text.rfind(b, 0, pos) for b in _CLAUSE_BREAK), default=-1) + 1
+        ends = [e for e in (text.find(b, pos) for b in _CLAUSE_BREAK) if e >= 0]
+        return start, (min(ends) if ends else len(text))
+
+    start, end = _clause_before(at)
+    if any(a in text[start:end] for a in anchors):
+        return True
+    # 紧前一个分句。`start - 1` 是分隔符本身，从它再往前找上一个分句的起点。
+    if start > 0:
+        prev_start, prev_end = _clause_before(start - 1)
+        if prev_end == start - 1 and any(a in text[prev_start:prev_end] for a in anchors):
+            return True
+    return False
 
 
 def _negated(text: str, term: str) -> bool:

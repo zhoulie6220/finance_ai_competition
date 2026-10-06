@@ -6860,7 +6860,7 @@
         "validated",
         "theme_count"
       ],
-      "title": "抽取法对照",
+      "title": "抽取法",
       "type": "object"
     },
     "ClaimsView": {
@@ -7469,11 +7469,19 @@
           "$ref": "#/$defs/IndexCountsView"
         },
         "gate": {
-          "description": "闸门四条件的逐条结果。出分时四条全为 true",
+          "description": "闸门四条件的逐条结果。出工分时四条全为 true",
           "items": {
             "$ref": "#/$defs/GateConditionView"
           },
           "title": "Gate",
+          "type": "array"
+        },
+        "caveats": {
+          "description": "出分时**必须跟着分数一起说**的话。目前只有一条：H 的观测太少导致的低稳健性——H 权重 20 分，一条观测判什么分数就往哪边倒 20 分，**只报分数看的人没法知道它有多脆**（会计口径要求，见 2026-10-06 第六轮答复）",
+          "items": {
+            "type": "string"
+          },
+          "title": "Caveats",
           "type": "array"
         },
         "q2_progress": {

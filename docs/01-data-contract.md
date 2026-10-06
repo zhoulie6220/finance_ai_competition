@@ -205,7 +205,7 @@ python scripts/dict_csv.py --import   # 读回来。先校验后写入，任何�
 | `audit_opinion` | 审计意见类型 | 文本 | text |  |  | 审计意见、审计意见类型 | 内部控制审计意见、审计费用、审计委员会 |
 | `accounting_policy_change` | 会计政策变更 | 文本 | text |  |  | 会计政策变更 | 会计估计变更、前期差错更正、会计政策和会计估计 |
 
-#### 钢铁专属（13 项）
+#### 钢铁专属（14 项）
 
 | 字段键 | 标准名称 | 类型 | 单位 | 派生 | 非经常 | 年报行名别名 | 排除词 |
 |---|---|---|---|:--:|:--:|---|---|
@@ -214,6 +214,7 @@ python scripts/dict_csv.py --import   # 读回来。先校验后写入，任何�
 | `crude_steel_output` | 粗钢产量 | 期间 | ton |  |  | 粗钢产量 | 钢材产量、钢材销量、粗钢产能 |
 | `steel_sales_volume` | 钢材销量 | 期间 | ton |  |  | 钢材销量、销售量 | 粗钢产量、钢材产量、钢材产能、钢材销售收入 |
 | `steel_price_avg` | 钢材平均售价 | 比率 | currency | ✓ |  | — | — |
+| `industry_sales_volume` | 行业聚合销量 | 期间 | ton |  |  | 销售量 | 钢材销量、粗钢产量、钢材产量 |
 | `steel_spread` | 吨钢原料差价 | 比率 | currency | ✓ |  | 吨钢原料差价 | 吨钢毛利、吨钢 EBITDA、吨钢成本 |
 | `steel_gross_profit_per_ton` | 吨钢毛利 | 比率 | currency | ✓ |  | 吨钢毛利 | 吨钢原料差价、吨钢 EBITDA、吨钢成本 |
 | `steel_ebitda_per_ton` | 吨钢 EBITDA | 比率 | currency | ✓ |  | 吨钢 EBITDA | 吨钢毛利、吨钢原料差价、EBITDA 利润率 |
@@ -239,9 +240,9 @@ python scripts/dict_csv.py --import   # 读回来。先校验后写入，任何�
 |---|---|---|---|:--:|:--:|---|---|
 | `environmental_protection_expense` | 环保投入 | 期间 | currency |  |  | 环保投入、环保支出、环保费用 | — |
 
-合计 **95** 个字段。
+合计 **96** 个字段。
 
-#### 例句锚点（50/95 项已填，其中占位符句 50 项）
+#### 例句锚点（51/96 项已填，其中占位符句 50 项）
 
 | 字段键 | 例句 | 来源 | 出处 |
 |---|---|---|---|
@@ -286,6 +287,7 @@ python scripts/dict_csv.py --import   # 读回来。先校验后写入，任何�
 | `steel_output` | 本年度钢材产量为【数值】万吨。 | 占位符句 | — |
 | `crude_steel_output` | 本年度粗钢产量为【数值】万吨。 | 占位符句 | — |
 | `steel_sales_volume` | 本年度钢材销量为【数值】万吨。 | 占位符句 | — |
+| `industry_sales_volume` | 销售量  吨  15,145,857  14,292,628  5.97% | 年报原文 | `华菱钢铁：2016年年度报告.pdf` p.14 |
 | `steel_spread` | 本年度吨钢原料差价为【数值】元/吨。 | 占位符句 | — |
 | `steel_gross_profit_per_ton` | 本年度吨钢毛利为【数值】元/吨。 | 占位符句 | — |
 | `steel_ebitda_per_ton` | 本年度吨钢 EBITDA 为【数值】元/吨。 | 占位符句 | — |
