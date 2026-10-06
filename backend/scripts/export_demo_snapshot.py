@@ -75,7 +75,16 @@ def collect(client) -> dict[str, object]:
         get(f"/projects/{pid}/fact-grid")
         get(f"/projects/{pid}/narrative/index")
         get(f"/projects/{pid}/narrative/matches")
-        get(f"/projects/{pid}/narrative/claims")
+        # ⚠ **查询串是键的一部分，必须和前端请求的一模一样。**
+        #
+        # 前端 `Narrative.tsx` 取主张时显式传了 `limit=2000`（不传的话
+        # 后端默认 300，宝钢多出来的那些会被**静默截掉**）。这里原来冻的是
+        # **不带参数**的 `/narrative/claims`，于是页面去查
+        # `/…/claims?limit=2000` 查不到，报「离线快照里没有这一条」——
+        # 而那条报错说的是真话：**确实是打包漏了**。
+        #
+        # 只冻带参数那一版：不带参数的那版页面从来不请求它。
+        get(f"/projects/{pid}/narrative/claims?limit=2000")
         get(f"/checks?project_id={pid}")
         for key in ("h", "c", "r", "p", "q"):
             get(f"/projects/{pid}/narrative/index/components/{key}")

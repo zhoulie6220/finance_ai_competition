@@ -158,6 +158,36 @@ def build(out_dir: Path, *, banner: bool = True) -> int:
         return 1
 
     page = out_dir / "index.html"
+    # ⚠ **出货前的自检：前端会请求的 URL 必须在快照里。**
+    #
+    # 这一条是 2026-10-06 撞出来的：导出器冻的是**不带查询串**的
+    # `/narrative/claims`，而前端请求 `?limit=2000`——键对不上，
+    # 页面上那一节变成「加载失败」。**包打出来、脚本报成功、
+    # 一切正常**，只有真去点那一块才看得见。
+    # 所以在这里对一遍：把前端源码里的接口路径捞出来、按前端的方式
+    # 拼上参数，逐个查快照。
+    required = set()
+    # ⚠ `snapshot` 是上面读进来的**文本**（要原样内联），不是 dict。
+    #   这里单独解析一份用来查键——别去动那个文本。
+    snap_keys = json.loads(snapshot)
+    for pid in [p["project_id"] for p in snap_keys.get("/projects", [])]:
+        required |= {
+            f"/projects/{pid}/fact-grid",
+            f"/projects/{pid}/narrative/index",
+            f"/projects/{pid}/narrative/matches",
+            f"/projects/{pid}/narrative/claims?limit=2000",
+            f"/checks?project_id={pid}",
+        }
+        for key in ("h", "c", "r", "p", "q"):
+            required.add(f"/projects/{pid}/narrative/index/components/{key}")
+    required |= {"/health", "/projects"}
+    missing = sorted(u for u in required if u not in snapshot)
+    if missing:
+        print(f"✗ 快照里缺 {len(missing)} 条前端会请求的 URL，**这一版不要发**：")
+        for u in missing[:10]:
+            print(f"    {u}")
+        return 1
+
     page.write_text(html, encoding="utf-8")
     size = page.stat().st_size
     print(f"✓ {page}（{size / 1024 / 1024:.2f} MB，"
