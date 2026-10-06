@@ -63,6 +63,16 @@ class Sentence:
     text: str
     index: int          # 在所属 section 内的序号，进 claim_id 的哈希
     offset: int         # 在原始文本里的起始位置，用于回溯与高亮
+    #: 这一句所在的**整段**（`join_wrapped_lines` 接完折行之后的那一行）。
+    #:
+    #: ⚠ 不是装饰。中文省略主语太普遍，「全年我国粗钢产量10.1亿吨」
+    #: 后面紧跟的「钢材产量14.00亿吨」单独看没有任何整体口径词——
+    #: 只有回到段落里才看得出它说的还是全国的数。判定见
+    #: `claim_rules.industry_scope`。
+    #:
+    #: 它**不进 `claim_id` 的哈希**（那里只有 项目|章节|句序|原文），
+    #: 所以加这个字段不会让会计填好的表作废。
+    context: str = ""
 
 
 def join_wrapped_lines(text: str) -> str:
@@ -186,6 +196,60 @@ def looks_like_table_row(line: str) -> bool:
         else:
             run = 0
 
+    # ---- 形态四：两列数据 + 一列说明（受限资产表）--------------------------
+    #
+    #    应收账款  36.6  通过保理业务作为质押物取得短期借款
+    #
+    # 上面那条「非数字格 ≤ 1」要求**只有一个**非数字格，这里有两个（标签 +
+    # 说明），差 1 格没够上，整行进了正文。实测宝钢 353 条主张里 11 条是这种，
+    # 全是「截至报告期末主要资产受限情况」那张表——而它偏偏被抽中，
+    # 是因为行标签「应收票据 / 应收账款」正好是回款主题的触发词，
+    # 别的行（货币资金、固定资产）没触发词，反而没进。
+    #
+    # 判据：恰好**一个**纯数字格，且它**不带单位**（表里的金额本来就不带，
+    # 单位在表头上写着「单位：百万元」），其余格子里没有句末标点。
+    # 「不带单位」这一条是收紧用的：正文里的数值几乎都带单位，
+    # 表格里的数字才光秃秃地待在格子里。
+    if _looks_like_note_row(cells):
+        return True
+
+    # ---- 形态五：两格，数字**紧贴在说明前**（列对齐在提取时丢了）----------
+    #
+    #    应收票据  524质押开票5.1亿元，贴现0.2亿元
+    #    货币资金  1,003财务公司存放中央银行法定准备金存款
+    #
+    # 同样是受限资产表：这一年的 PDF 里数字列与说明列之间只剩一个空格，
+    # `_MULTI_SPACE` 切不开，于是「524质押开票…」成一格，上面两条都判不出来。
+    #
+    # ⚠ 判据必须要求标签里**有汉字**：`3.  2016年公司经营计划并不构成…`
+    #   是一句真的正文，它的第一格是「3.」——只有编号没有汉字。
+    if _looks_like_label_glued_to_number(cells, stripped):
+        return True
+
+    # ---- 形态六：数字**散在文字里**，格子里没有一个纯数字 ----------------
+    #
+    #    研发人员数量占比  13.55%  11.08%  增加2.47百分点
+    #    行业分类  项目  单位  2016年  2015年  同比增减
+    #    人均钢产量研发投入率  1.57个  （钢铁主业正式员工）4.69%  …
+    #
+    # 前面五条都要求「有一个纯数字格」，而这几类的数字**全都带着单位或文字**
+    # （`13.55%`、`2.47百分点`、`2016年`），于是没有一格是纯数字，逐条落空。
+    #
+    # 判据：**≥3 格 + 整行没有句末标点 + 数字字符占比 > 18%**。
+    # 正文里数字被标点和词距隔开，密度到不了这么高；而**句末标点**这一条是关键——
+    # 它把「一句话被 PDF 折成几段」那种误判挡在外面。
+    #
+    # ⚠ **冒号不算句末标点。** 一格是「`2021年：3.12%`」这种写法的表格行
+    # （「人均钢产量研发投入率  1.57个  …  1620吨/人·年2021年：3.12%」）
+    # 就因为有冒号而整条漏掉。
+    #
+    # 实测全语料 249 行命中，逐行看过**全是表格行**；
+    # 其中「3 格且含逗号」（最像正经句子的那种）**一条都没有**。
+    if len(cells) >= 3 and not any(c in "。！？；" for c in stripped):
+        digits = sum(ch.isdigit() for ch in stripped)
+        if digits / len(stripped) > 0.18:
+            return True
+
     # 退路：列对齐在提取时丢失、整行几乎全是数字字符的情况
     if len(stripped) >= 8:
         digits = sum(ch.isdigit() for ch in stripped)
@@ -193,6 +257,51 @@ def looks_like_table_row(line: str) -> bool:
             return True
 
     return False
+
+
+#: 格子里出现这些就说明它是句子、不是单元格
+_CELL_PUNCT = "。！？；："
+
+#: 一个「光秃秃的数」：只有数字、千位分隔符和符号位，没有单位、没有标点
+_BARE_NUMBER_RE = re.compile(r"^[-−—–]?\d[\d,]*(?:\.\d+)?$")
+
+#: 行标签里至少要有这么多汉字才算标签。`3.`（只有编号）不算。
+_LABEL_MIN_HAN = 2
+
+_HAN_RE = re.compile(r"[一-鿿]")
+
+
+def _looks_like_note_row(cells: list[str]) -> bool:
+    """形态四：恰好一个无单位的纯数字格，其余格都不是句子。"""
+    if len(cells) < 3:
+        return False
+    bare = [i for i, c in enumerate(cells) if _BARE_NUMBER_RE.match(c.strip())]
+    if len(bare) != 1:
+        return False
+    return not any(
+        ch in c for i, c in enumerate(cells) if i != bare[0] for ch in _CELL_PUNCT
+    )
+
+
+#: 数字**紧贴**着汉字：`524质押开票…`。列对齐保住的时候数字与下一列之间
+#: 至少有空格（`524  质押开票…`），只有列被挤没了才会粘在一起。
+_GLUED_NUMBER_RE = re.compile(r"^\d[\d,]*(?:\.\d+)?[一-鿿]")
+
+
+def _looks_like_label_glued_to_number(cells: list[str], stripped: str) -> bool:
+    """形态五：两格，第二格是一个**紧贴着汉字**的数字，第一格是个短标签。"""
+    if len(cells) != 2:
+        return False
+    label, rest = cells
+    if not _GLUED_NUMBER_RE.match(rest):
+        return False
+    # 标签要短、要没有标点、要有汉字
+    if len(label) > 14 or any(ch in label for ch in _CELL_PUNCT + "，、（）()"):
+        return False
+    if len(_HAN_RE.findall(label)) < _LABEL_MIN_HAN:
+        return False
+    # 整行不许以句末标点收尾——正文才会那样收尾
+    return not stripped.endswith(("。", "！", "？"))
 
 
 def iter_sentences(text: str, *, min_length: int = 8) -> tuple[Sentence, ...]:
@@ -225,6 +334,7 @@ def iter_sentences(text: str, *, min_length: int = 8) -> tuple[Sentence, ...]:
                         text=piece,
                         index=len(out),
                         offset=base,
+                        context=line,     # 整段，供口径判断用（见 Sentence.context）
                     )
                 )
             base += len(piece)

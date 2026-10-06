@@ -617,6 +617,27 @@ def test_days_band() -> None:
 # ---------------------------------------------------------------- 方向语义
 
 
+def test_improve_means_up_for_volume_metrics() -> None:
+    """★ 「销量改善」＝销量**上升**。
+
+    `_IMPROVING_IS_UP` **不在表里的一律按「改善 = 下降」**——那个默认值对
+    成本、费用、应收、天数是对的，漏掉「销量」就整个反掉：
+    `extract_direction("销量改善")` 得到 improve，映射成 down，
+    而销量实际是上升的，判出来是「相悖」，理由是
+    「steel_sales_volume 的实际变化为 up，方向相反」。**看着完全正常。**
+
+    实测宝钢 2023 年报「实现钢产能的有效发挥」那一类就是这么被判反的。
+    """
+    for metric in ("steel_sales_volume", "revenue", "cfo"):
+        up = judge(
+            claim(direction="improve", primary_metric=metric),
+            current=actual(metric, "2024", "110"),
+            base=actual(metric, "2023", "100"),
+            cfg=CFG,
+        )
+        assert up.verdict == "supported", f"{metric}：改善应当算上升"
+
+
 def test_improve_means_down_for_cost_metrics() -> None:
     """★ 「改善」对不同的指标含义相反。
 

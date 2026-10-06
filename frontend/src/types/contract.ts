@@ -371,6 +371,26 @@ export interface DatabaseStatus {
   error?: string | null;
 }
 
+/**
+ * 派生值的一个输入行。
+ * 
+ * **派生格的出处是几行，不是某一句原文。** 「毛利率 5.45%」在年报里找不到
+ * 出处——它的出处是「营业收入」和「营业成本」那两行。所以这里给的是
+ * 每一行的**字段、期间、页码与那一行自己的原文片段**，界面上点开
+ * 逐行显示，每一行都能再点回它自己的年报页。
+ * 
+ * 少了 `fact_id` 或 `source_page`，这一行就点不回去了——而「点不回去」
+ * 和「这一行本来就没有出处」在界面上长得一样。
+ */
+export interface DerivedSourceView {
+  metric_key: string;
+  label_cn: string;
+  period: string;
+  fact_id?: string | null;
+  value?: string | null;
+  source_page?: number | null;
+}
+
 /** 指数的构成项。页面据此展示「这个分是怎么来的」。 */
 export interface DiagnosisComponent {
   id: string;
@@ -527,6 +547,16 @@ export interface FactCellView {
   change_refused?: string | null;
   change_formula?: string | null;
   change_inputs?: Record<string, string>;
+  /** True = 这一格是引擎算出来的，不是年报上的数 */
+  derived?: boolean;
+  /** 算式原文，如「毛利率 = 毛利 ÷ 营业收入 × 100」 */
+  derived_formula?: string | null;
+  /** 代入公式的数（中文键名） */
+  derived_inputs?: Record<string, string>;
+  /** 参与计算的每一行。**派生值的出处是这几行，不是一页原文** */
+  derived_sources?: DerivedSourceView[];
+  /** 算不出来的原因（缺哪个字段 / 口径未定）。**有理由和没理由是两回事**：缺一个字段和这个指标压根不适用，该做的事完全不同。有 `derived=true` 但值为空时，这里必有理由 */
+  derived_refused?: string | null;
 }
 
 /** 人工修正。只追加增量，旧行保留，绝不原地覆盖。 */
@@ -587,7 +617,7 @@ export interface FactGridRowView {
   unit_kind: string;
   /** 期间 → 格子 */
   cells: Record<string, FactCellView>;
-  /** 有值的年度数。**后端数出来的**，前端不重算。91 个指标里有近一半整列是空的（还没采集），不标出来的话点进走势图是一张空图，看起来像系统坏了 */
+  /** 有值的年度数。**后端数出来的**，前端不重算。部分指标整列为空（尚未纳入采集范围），不标出来的话点进走势图是一张空图，看起来像系统坏了 */
   filled?: number;
 }
 
@@ -979,6 +1009,8 @@ export interface NarrativeIndexView {
   counts: IndexCountsView;
   /** 闸门四条件的逐条结果。出分时四条全为 true */
   gate?: GateConditionView[];
+  /** Q2 逐对比较的进度。**只作展示，不参与闸门** */
+  q2_progress?: Q2ProgressView | null;
   insufficient_reason?: string | null;
   formula: string;
   conclusion_boundary: string;
@@ -1097,9 +1129,8 @@ export type ObservationResolution = "pending" | "adopted" | "rejected";
 /**
  * 年报的一页正文（`GET /api/pages/{id}`、`GET /api/facts/{id}/page`）。
  * 
- * 返回的是**已抽取的正文**而不是 PDF 切片：样例 PDF 有几十 MB，被 .gitignore
- * 挡在仓库外，评委 clone 下来根本没有那些文件。正文在库里、能全文检索、
- * 能高亮，比 PDF 更好用。
+ * 返回的是**已抽取的正文**而不是 PDF 切片：年报 PDF 有几十 MB，
+ * 不随资料包分发。正文在库里、能全文检索、能高亮，比 PDF 更好用。
  * 
  * `prev_page_id` / `next_page_id` 由**后端**给出。前端不自己拼 id——
  * 那种隐式约定一旦和后端的 id 生成规则分叉，表现为「翻页点了没反应」，
@@ -1211,6 +1242,42 @@ export interface ProjectView {
   /** 'active' 或 'archived' */
   status: string;
   created_at: string;
+}
+
+/**
+ * Q2 的一对比较年度。
+ * 
+ * Q2 的判据要逐对比（2015,2016）…（2023,2024），所以「Q 不可算」这句话
+ * 背后可能是「9 对里 1 对判不了」，也可能是「一对都没有数据」——
+ * **两者的含义完全不同**，页面必须分得开。
+ */
+export interface Q2PairView {
+  prior: string;
+  current: string;
+  /** triggered / not_triggered / unavailable / needs_review */
+  status: string;
+  /** 拿到了 triggered / not_triggered 才算判得了 */
+  done: boolean;
+  reason?: string | null;
+}
+
+/**
+ * Q2 的比较进度。
+ * 
+ * **2026-10-06 会计答复明确要求页面展示这个**（原话：
+ * 「页面可以另外展示『8/9组比较已完成，1组因原始披露缺失待核查』，
+ * 但不能直接剔除分母后作为正式 Q 值」）。
+ * 
+ * 所以这个视图是**展示用**的，**不参与闸门判定**——
+ * 闸门那边 Q 仍然是「不完整」，指数照样不出分。两者不矛盾：
+ * 一个是「我们做到哪一步了」，一个是「能不能出正式分数」。
+ */
+export interface Q2ProgressView {
+  done: number;
+  total: number;
+  /** 一句话，如「8/9 组比较已完成，1 组待核查」 */
+  line: string;
+  pairs?: Q2PairView[];
 }
 
 /**

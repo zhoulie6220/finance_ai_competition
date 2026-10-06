@@ -21,6 +21,7 @@ from app.db import repository
 from app.schemas.workspace import (
     ChecksView,
     ClaimsView,
+    ComponentDetailView,
     FactDetailView,
     FactGridView,
     HealthCard,
@@ -87,7 +88,7 @@ def health(con: sqlite3.Connection = Depends(get_con)) -> dict[str, Any]:
         "db_hint": (
             None
             if db_ok
-            else "库里没有数据。重建之后需要跑 python scripts/merge_data_pack.py 导回数据包。"
+            else "库里还没有数据。请先导入年报并完成解析，再打开工作台。"
         ),
         "counts": counts,
         "llm_mode": settings.mode,
@@ -155,9 +156,9 @@ def fact_page(
 ) -> dict[str, Any]:
     """由一笔事实跳回年报原文。证据链的终点。
 
-    返回的是**已抽取的正文**而不是 PDF 切片：样例 PDF 有 94MB，被 .gitignore
-    挡在仓库外，评委 clone 下来根本没有那些文件。而抽出来的正文在库里、
-    能全文检索、能高亮，比 PDF 更好用。
+    返回的是**已抽取的正文**而不是 PDF 切片：年报 PDF 有几十 MB，
+    不随资料包分发。而抽出来的正文在库里、能全文检索、能高亮，
+    比 PDF 更好用。
     """
     page = repository.find_page_for_fact(con, fact_id)
     if page is None:
@@ -276,7 +277,7 @@ def narrative_matches(
     return {
         "project_id": project_id,
         "counts": counts,
-        "hint": None if rows else "尚未跑过匹配。先抽主张再跑匹配。",
+        "hint": None if rows else "这次分析还没有生成判定结果。",
         "matches": rows,
     }
 
@@ -346,6 +347,11 @@ def narrative_index(
             }
             for c in result.gate
         ],
+        # Q2 的比较进度。**只作展示，不参与闸门判定**——会计 2026-10-06
+        # 明确「不能直接剔除分母后作为正式 Q 值」，所以闸门那边 Q 仍是不完整、
+        # 指数照样不出分。两者不矛盾：一个是「做到哪一步了」，
+        # 一个是「能不能出正式分数」。拼成一句话在这里做，前端不重算。
+        "q2_progress": _q2_progress(diag),
         "insufficient_reason": result.insufficient_reason,
         "formula": result.formula,
         "conclusion_boundary": result.conclusion_boundary,
@@ -363,6 +369,58 @@ def narrative_index(
         "user_hint": adjustment.user_hint,
         "method_version": result.method_version,
     }
+
+
+@router.get(
+    "/projects/{project_id}/narrative/index/components/{key}",
+    response_model=ComponentDetailView,
+)
+def narrative_index_component(
+    project_id: str,
+    key: str,
+    limit: int = Query(default=400, ge=1, le=2000),
+    con: sqlite3.Connection = Depends(get_con),
+) -> dict[str, Any]:
+    """某个分项的**下钻明细**：这个分数由哪些记录构成。
+
+    指数卡上的 H/C/R/P/Q 每一格都点得开它。**每一行都带「点回原文」
+    要的东西**——期间、指标、主张原文、出处页码、判定理由、算式与代入的数。
+
+    ⚠ H/C 的明细与指数**走同一次计算**（`matching._scored_claims`）。
+    各写一套的话，下钻里显示 12 条而指数用的是 13 条，
+    两边都算得出来、而且看不出哪个对。
+    """
+    _require_project(con, project_id)
+    from app.skills import matching
+
+    if key not in matching.COMPONENT_META:
+        raise HTTPException(
+            status_code=404,
+            detail=f"分项 {key!r} 不存在，只能是 "
+                   f"{'/'.join(matching.COMPONENT_META)}",
+        )
+    detail = matching.component_detail(con, project_id, key, limit=limit)
+    return {"project_id": project_id, **detail}
+
+
+def _q2_progress(diag: dict[str, Any]) -> dict[str, Any] | None:
+    """把 Q2 的逐对比较拼成页面要显示的那一句话。
+
+    会计 2026-10-06 答复的原话是「8/9组比较已完成，1组因原始披露缺失待核查」。
+    措辞不硬写死：**待核查的原因取自每条 outcome 自己的 reason**，
+    因为「还没人去抄」「年报没披露」「口径是净额」这三种在数据上长得一样，
+    只有 reason 分得开——写死一句话就等于又把它们混回去了。
+    """
+    pairs = diag.get("q2_pairs") or []
+    if not pairs:
+        return None
+    done = diag.get("q2_done", 0)
+    total = diag.get("q2_total", len(pairs))
+    if done == total:
+        line = f"{done}/{total} 组比较已完成"
+    else:
+        line = f"{done}/{total} 组比较已完成，{total - done} 组待核查"
+    return {"done": done, "total": total, "line": line, "pairs": pairs}
 
 
 def _weights_from_rules(con: sqlite3.Connection) -> dict[str, Any]:

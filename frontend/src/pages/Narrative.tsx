@@ -6,6 +6,7 @@ import type {
   ChecksResponse,
   ClaimMatch,
   ClaimsResponse,
+  ComponentDetail,
   ExtractorSummary,
   MatchesResponse,
   NarrativeIndex,
@@ -41,8 +42,12 @@ export default function Narrative() {
   const matches = useApi<MatchesResponse>(
     projectId ? `/projects/${projectId}/narrative/matches` : null,
   )
+  // ⚠ **必须显式传 limit。** 后端默认 300，宝钢有 353 条 →
+  //   53 条被**静默截掉**：那一节「未纳入判定的主张」少显示 53 条，
+  //   而页面上看不出少了什么（条数没标）。分成两页显示的取数口只有这一个。
   const claims = useApi<ClaimsResponse>(
     projectId ? `/projects/${projectId}/narrative/claims` : null,
+    useMemo(() => ({ limit: 2000 }), []),
   )
   const checks = useApi<ChecksResponse>(
     projectId ? `/checks` : null,
@@ -70,7 +75,9 @@ export default function Narrative() {
         error={index.error}
         onRetry={index.reload}
       >
-        {index.data && <IndexCard data={index.data} />}
+        {index.data && projectId && (
+          <IndexCard data={index.data} projectId={projectId} />
+        )}
       </AsyncBoundary>
 
       <VerdictBars counts={matches.data?.counts ?? null} />
@@ -89,7 +96,7 @@ export default function Narrative() {
           loading={matches.loading}
           error={matches.error}
           empty={!!matches.data && matches.data.matches.length === 0}
-          emptyText={matches.data?.hint ?? '还没有判定结果。'}
+          emptyText={matches.data?.hint ?? '这次分析还没有生成判定结果。'}
           onRetry={matches.reload}
         >
           {matches.data && matches.data.matches.length > 0 && (
@@ -161,7 +168,7 @@ export default function Narrative() {
 
 // ---------------------------------------------------------------- 指数卡片
 
-function IndexCard({ data }: { data: NarrativeIndex }) {
+function IndexCard({ data, projectId }: { data: NarrativeIndex; projectId: string }) {
   const scored = data.status === 'scored'
 
   return (
@@ -200,6 +207,27 @@ function IndexCard({ data }: { data: NarrativeIndex }) {
                 ))}
               </div>
             )}
+            {/* Q2 的比较进度。**会计 2026-10-06 答复明确要求页面展示这个**
+                （原话：「8/9组比较已完成，1组因原始披露缺失待核查」）。
+                一句话后面挂着逐对的明细——只给「Q 不可算」的话，
+                读的人分不出「差一对比」和「一对都没有数据」，
+                而这两件事要做的事完全不同。
+                ⚠ 它**不改变闸门结论**：Q 仍是不完整、指数仍不出分。 */}
+            {data.q2_progress && (
+              <details className="q2-progress" open={data.q2_progress.done < data.q2_progress.total}>
+                <summary>{data.q2_progress.line}</summary>
+                <ul>
+                  {data.q2_progress.pairs.map((p) => (
+                    <li key={`${p.prior}-${p.current}`} className={p.done ? 'ok' : 'no'}>
+                      <span className="mark">{p.done ? '✓' : '✗'}</span>
+                      <span className="who mono">{p.prior}→{p.current}</span>
+                      <span className="why">{p.done ? '已判定' : p.reason}</span>
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            )}
+
             {/* 原因**逐条**列出，不是笼统一句「证据不足」——
                 只说要补证据，没人知道补什么 */}
             <ul className="reason-list">
@@ -223,7 +251,7 @@ function IndexCard({ data }: { data: NarrativeIndex }) {
           )}
         </div>
 
-        <ComponentTable data={data} />
+        <ComponentTable data={data} projectId={projectId} />
 
         {/* 估值动作必须显示——指数的作用就是**透明地**影响估值，
             隐去这一步等于把它变回黑箱 */}
@@ -306,45 +334,157 @@ function Count({
 /** H/C 取值 [−1,1]，R/P/Q 取值 [0,1]。**两组的范围不同，展示时要说清楚。** */
 const COMPONENT_ROWS: Array<{
   key: keyof NarrativeIndex['components']
+  /** 后端下钻端点的路径段。**与 `matching.COMPONENT_META` 的键一一对应。** */
+  drill: string
   label: string
   range: string
   meaning: string
 }> = [
-  { key: 'history', label: 'H 历史兑现度', range: '[−1, 1]', meaning: '以前报告的前瞻主张，用后来的实际结果验证' },
-  { key: 'current', label: 'C 当期一致性', range: '[−1, 1]', meaning: '本期主张与同期财务事实的匹配程度' },
-  { key: 'risk', label: 'R 风险披露充分度', range: '[0, 1]', meaning: '四项风险检查中说明了对象、路径与依据的占比' },
-  { key: 'template', label: 'P 缺乏可验证性', range: '[0, 1]', meaning: '缺乏可验证对象、期间或结果的实质表述占比' },
-  { key: 'quality', label: 'Q 财务质量冲突', range: '[0, 1]', meaning: '已确认触发的质量检查占比' },
+  { key: 'history', drill: 'h', label: 'H 历史兑现度', range: '[−1, 1]', meaning: '以前报告的前瞻主张，用后来的实际结果验证' },
+  { key: 'current', drill: 'c', label: 'C 当期一致性', range: '[−1, 1]', meaning: '本期主张与同期财务事实的匹配程度' },
+  { key: 'risk', drill: 'r', label: 'R 风险披露充分度', range: '[0, 1]', meaning: '四项风险检查中说明了对象、路径与依据的占比' },
+  { key: 'template', drill: 'p', label: 'P 缺乏可验证性', range: '[0, 1]', meaning: '缺乏可验证对象、期间或结果的实质表述占比' },
+  { key: 'quality', drill: 'q', label: 'Q 财务质量冲突', range: '[0, 1]', meaning: '已确认触发的质量检查占比' },
 ]
 
-function ComponentTable({ data }: { data: NarrativeIndex }) {
+/**
+ * 分项表。**整行可点**——点开是这一项的构成明细。
+ *
+ * 为什么非有这个不可：指数卡上只有「C = −0.3239」一个数，
+ * 评委问「这 6.48 分是哪些记录构成的」，屏幕上没有答案。
+ * 下钻里每一条都带期间、指标、原文出处与判定理由，答的就是这个问题。
+ *
+ * ⚠ 明细由**后端**算（`/narrative/index/components/{key}`），而且与指数
+ * 走同一次判定。前端只渲染，不重算、不汇总。
+ */
+function ComponentTable({
+  data,
+  projectId,
+}: {
+  data: NarrativeIndex
+  projectId: string
+}) {
+  const [open, setOpen] = useState<string | null>(null)
   return (
-    <table className="plain-table component-table">
-      <thead>
-        <tr>
-          <th>分项</th>
-          <th>取值域</th>
-          <th className="num">取值</th>
-          <th>含义</th>
-        </tr>
-      </thead>
-      <tbody>
-        {COMPONENT_ROWS.map((row) => {
-          const value = data.components[row.key]
-          return (
-            <tr key={row.key}>
-              <td>{row.label}</td>
-              <td className="range">{row.range}</td>
-              <td className="num">
-                {/* 未核验时显示「未核验」而不是 0——0 会被读成「算出来是零」 */}
-                {value === null ? <span className="muted">未核验</span> : value}
-              </td>
-              <td className="msg">{row.meaning}</td>
-            </tr>
-          )
-        })}
-      </tbody>
-    </table>
+    <>
+      <table className="plain-table component-table">
+        <thead>
+          <tr>
+            <th>分项</th>
+            <th>取值域</th>
+            <th className="num">取值</th>
+            <th>含义</th>
+          </tr>
+        </thead>
+        <tbody>
+          {COMPONENT_ROWS.map((row) => {
+            const value = data.components[row.key]
+            const on = open === row.drill
+            return (
+              <tr
+                key={row.key}
+                className={on ? 'row-open' : undefined}
+                onClick={() => setOpen(on ? null : row.drill)}
+                title="点开看这一项由哪些记录构成"
+              >
+                <td>
+                  <span className="caret">{on ? '▾' : '▸'}</span>
+                  {row.label}
+                </td>
+                <td className="range">{row.range}</td>
+                <td className="num">
+                  {/* 未核验时显示「未核验」而不是 0——0 会被读成「算出来是零」 */}
+                  {value === null ? <span className="muted">未核验</span> : value}
+                </td>
+                <td className="msg">{row.meaning}</td>
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
+
+      {open && (
+        <ComponentDrilldown
+          projectId={projectId}
+          drill={open}
+          onClose={() => setOpen(null)}
+        />
+      )}
+    </>
+  )
+}
+
+/**
+ * 一个分项的构成明细。按需取数——**展开才请求**。
+ * 一进站就拉五个分项的话，C 那一项有 71 条、P 有 121 条，页面白等。
+ */
+function ComponentDrilldown({
+  projectId,
+  drill,
+  onClose,
+}: {
+  projectId: string
+  drill: string
+  onClose: () => void
+}) {
+  const detail = useApi<ComponentDetail>(
+    `/projects/${projectId}/narrative/index/components/${drill}`,
+  )
+  const d = detail.data
+
+  return (
+    <section className="card drilldown">
+      <header className="drilldown-head">
+        <h3>{d?.label_cn ?? '载入中…'}</h3>
+        <span className="subtitle">
+          {d ? `共 ${d.total} 条` : ''}
+          {d?.truncated ? '（已截断）' : ''}
+        </span>
+        <button type="button" className="link-btn" onClick={onClose}>
+          收起
+        </button>
+      </header>
+
+      <AsyncBoundary
+        loading={detail.loading}
+        error={detail.error}
+        onRetry={detail.reload}
+      >
+        {d?.note && <p className="drilldown-note">{d.note}</p>}
+        <ul className="drilldown-list">
+          {d?.rows.map((r, i) => (
+            <li key={i} className={`kind-${r.kind}`}>
+              <div className="row-head">
+                <span className={`contrib c-${r.contribution}`}>
+                  {r.contribution}
+                </span>
+                <span className="row-label">{r.label}</span>
+              </div>
+              <div className="row-meta">
+                {r.period && <span>期间 {r.period}</span>}
+                {r.report_period && <span>报告年 {r.report_period}</span>}
+                {r.metric_label && <span>判据 {r.metric_label}</span>}
+                {r.source_page != null && <span>年报第 {r.source_page} 页</span>}
+                {r.reviewer && <span>复核 {r.reviewer}</span>}
+              </div>
+              {r.detail && <div className="row-detail">{r.detail}</div>}
+              {/* 算式与代入的数：**逐条给**，这正是「点结论回到计算过程」 */}
+              {r.formula && <div className="row-formula mono">{r.formula}</div>}
+              {r.inputs.length > 0 && (
+                <div className="row-inputs mono">
+                  {r.inputs.map((x, j) => (
+                    <div key={j}>{x}</div>
+                  ))}
+                </div>
+              )}
+              {r.source_text && (
+                <blockquote className="row-source">{r.source_text}</blockquote>
+              )}
+            </li>
+          ))}
+        </ul>
+      </AsyncBoundary>
+    </section>
   )
 }
 
@@ -382,9 +522,22 @@ function Bars({
   )
 }
 
-/** 判定分布。与下面那张表是同一批数据：柱状看绝对量，表看逐条。 */
+/**
+ * 判定分布。与下面那张表是同一批数据：柱状看绝对量，表看逐条。
+ *
+ * ⚠ **没数据时要说明，不能 `return null`。** 整节静默消失的话，
+ * 看的人分不出「还没跑判定」和「跑了但没有判定结果」——
+ * 而这两件事一个要跑脚本、一个是解析出了问题。
+ */
 function VerdictBars({ counts }: { counts: Record<string, number> | null }) {
-  if (!counts) return null
+  if (!counts) {
+    return (
+      <section className="panel">
+        <h3>判定分布</h3>
+        <p className="empty-note">这次分析还没有生成判定结果。</p>
+      </section>
+    )
+  }
 
   const order: Verdict[] = [
     'unverifiable', 'contradicted', 'supported', 'needs_review', 'neutral',
@@ -402,7 +555,17 @@ function VerdictBars({ counts }: { counts: Record<string, number> | null }) {
     }))
 
   const total = rows.reduce((sum, r) => sum + r.n, 0)
-  if (!rows.length) return null
+  if (!rows.length) {
+    // 走得到这里说明 `counts` 存在但全是 0（后端 GROUP BY 出来的，
+    // 没有判定就一个键都没有）。**照样要说一句**，
+    // 不然这一节仍然是「静默消失」——刚修的正是这个毛病。
+    return (
+      <section className="panel">
+        <h3>判定分布</h3>
+        <p className="empty-note">这次分析还没有生成判定结果。</p>
+      </section>
+    )
+  }
 
   return (
     <section className="panel">
@@ -440,9 +603,20 @@ function VerdictBars({ counts }: { counts: Record<string, number> | null }) {
   )
 }
 
-/** 主张主题分布。数据是后端 `GROUP BY claim_type` 算好的计数。 */
+/**
+ * 主张主题分布。数据是后端 `GROUP BY claim_type` 算好的计数。
+ *
+ * ⚠ 同上： `return null` 会让整节静默消失，分不出「没抽过」和「抽出来是空的」。
+ */
 function ThemeBars({ stats }: { stats: ClaimsResponse['stats'] | null }) {
-  if (!stats) return null
+  if (!stats) {
+    return (
+      <section className="panel">
+        <h3>主张主题分布</h3>
+        <p className="empty-note">这次分析还没有抽到主张。</p>
+      </section>
+    )
+  }
 
   const rows = Object.entries(stats.by_type ?? {})
     .sort((a, b) => b[1] - a[1])
@@ -454,7 +628,15 @@ function ThemeBars({ stats }: { stats: ClaimsResponse['stats'] | null }) {
       color: '#4a7fd4',
     }))
 
-  if (!rows.length) return null
+  if (!rows.length) {
+    // 同 VerdictBars：`stats` 在但 `by_type` 空，也**不能说消失就消失**。
+    return (
+      <section className="panel">
+        <h3>主张主题分布</h3>
+        <p className="empty-note">这次分析还没有抽到主张。</p>
+      </section>
+    )
+  }
 
   return (
     <section className="panel">
@@ -655,15 +837,48 @@ function FactLinks({
  *   · 可验证比例高才是它的价值所在
  *   · 主题数多说明它够得着规则法覆盖不到的东西
  */
+/**
+ * 两种抽取法的并排对照。
+ *
+ * ⚠ **只有一种抽取法时也必须显示出来，而且要说明为什么少了一种。**
+ * 原来写的是 `if (rows.length < 2) return null` —— 整节**静默消失**。
+ * 后果是：页面上没有这一块，看的人分不出「这块还没做」和
+ * 「这块本来就没有内容」。实测会计同学问的就是这句「怎么啥也没有」。
+ *
+ * 空白和「没有数据」长得一模一样，而这里两者该说的话完全不同：
+ * 一种是「模型法还没跑」（可以跑），一种是「跑了但一条都没抽出来」（有问题）。
+ */
 function ExtractorComparison({ rows }: { rows?: ExtractorSummary[] }) {
   // ⚠ **必须容忍 undefined**：后端可能是旧版本、字段可能还没上。
   // 崩溃的代价是整页白屏（实测发生过一次），而这块内容只是页面的一节。
   // 少一节远好过整页打不开——尤其是演示的时候。
-  if (!rows || rows.length < 2) return null
+  if (!rows || rows.length === 0) {
+    return <p className="empty-note">这次分析还没有抽取结果。</p>
+  }
+
+  const hasLlm = rows.some((r) => r.extractor.startsWith('llm:'))
+  const hasRule = rows.some((r) => r.extractor.startsWith('rule:'))
 
   return (
     <details className="extractor-compare" open>
       <summary>两种抽取法对照</summary>
+
+      {!(hasLlm && hasRule) && (
+        <p className="empty-note">
+          {hasRule && !hasLlm && (
+            <>
+              本次分析使用<b>规则法</b>抽取：确定性、可复算，同输入必得同输出。
+              模型法抽取的链路（客户端、版本化 Prompt、离线回放层）已就绪，
+              本次未启用；启用后这里会并列显示两种抽取法的条数与可验证占比，
+              两栏互相独立、不覆盖彼此的结果。
+            </>
+          )}
+          {hasLlm && !hasRule && (
+            <>本次分析只产出了模型法抽取结果，没有规则法的对照栏。</>
+          )}
+        </p>
+      )}
+
       <table className="plain-table">
         <thead>
           <tr>

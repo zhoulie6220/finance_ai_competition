@@ -174,35 +174,97 @@ _MODALITY_TERMS = (
 _NEGATION_TERMS = ("未", "没有", "未能", "无法", "不再", "难以")
 
 
-def extract_direction(text: str) -> tuple[Direction, bool]:
+def extract_direction(
+    text: str, *, anchors: Sequence[str] = ()
+) -> tuple[Direction, bool]:
     """判断句子的方向。返回 (方向, 是否为仅意向表述)。
 
     意向表述（「力争提升」「计划增长」）**不是保证承诺**，v1.1 明确
     「可以跟踪目标完成情况，但**不能据此推断虚假陈述**」。所以这里把它
     标出来，由调用方决定降低置信度，而不是当成实打实的承诺。
+
+    `anchors` 传**主题的触发词**。传了以后，`improve` / `deteriorate`
+    必须和主题的对象**在同一个分句里**才算数——理由见 `_anchored`。
+
+    ⚠ 只对 `improve` / `deteriorate` 上这道闸门，**`up` / `down` 不上**。
+    两者不是一类词：「提升」「优化」「改善」描述的是**某个名词的状态**，
+    「核心竞争力显著提升」里的提升与成本无关；而「上升 9.6%」本身就是一个
+    数值变化，主语就是整句在说的事，再要求同分句出现主题词会把
+    「全年实现『1+1+N』产品销量3,059万吨，**同比上升9.6%**」这种
+    刚认出来的真主张重新丢掉——那正是这一轮要救回来的东西。
     """
     modality_only = any(t in text for t in _MODALITY_TERMS)
 
     # 先看改善/恶化——它们描述的是「状态变好」而不是「数值变大」
     for term in _IMPROVE_TERMS:
-        if term in text:
+        if term in text and _anchored(text, term, anchors):
             return "improve", modality_only
     for term in _DETERIORATE_TERMS:
-        if term in text:
+        if term in text and _anchored(text, term, anchors):
             return "deteriorate", modality_only
     # 再看不带否定的增长/下降
     for term in _UP_TERMS:
-        if term in text and not _negated(text, term):
-            return "up", modality_only
+        if not (term in text and not _negated(text, term)):
+            continue
+        # ⚠ 「提升」同时在两张表里：锚定已经在上面判过它不成立，
+        #   这里必须**同样要求锚定**，否则它会从 `_UP_TERMS` 漏回来——
+        #   「核心竞争力显著提升」照样会变成 `up`，等于闸门白装。
+        if term in _AMBIGUOUS and not _anchored(text, term, anchors):
+            continue
+        return "up", modality_only
     for term in _DOWN_TERMS:
-        if term in text and not _negated(text, term):
-            return "down", modality_only
+        if not (term in text and not _negated(text, term)):
+            continue
+        if term in _AMBIGUOUS and not _anchored(text, term, anchors):
+            continue
+        return "down", modality_only
     if "持平" in text or "基本稳定" in text or "保持稳定" in text:
         return "flat", modality_only
     return "unknown", modality_only
 
 
+#: 同时能当「状态改善」和「数值上升」讲的词，**按更严的那条处理**。
+#:
+#: ⚠ 不能只做集合求交：`_IMPROVE_TERMS` 里有「持续向好」、`_UP_TERMS` 里有
+#: 「向好」，`in` 判断下前者命中时后者也命中，而两者是不同的字符串。
+#: 所以还要把**互为子串**的也算进来。
+_AMBIGUOUS = frozenset(
+    t
+    for t in (*_UP_TERMS, *_DOWN_TERMS)
+    if any(t in i or i in t for i in (*_IMPROVE_TERMS, *_DETERIORATE_TERMS))
+)
+
+
 _CLAUSE_BREAK = "。！？；，,;"
+
+
+def _anchored(text: str, term: str, anchors: Sequence[str]) -> bool:
+    """`term` 所在的分句里有没有主题的对象（`anchors`）。
+
+    ★ 为什么需要这一条。宝钢 2021/2022 年报里有一批这样的句子：
+
+        2021年，公司持续深化改革，全面对标找差，打造极致效率，
+        一公司多基地协同优势进一步显现，**核心竞争力显著提升**……
+
+    它含「成本」类的主题词（「对标找差」「降本」），被归进「降本增效」，
+    方向词是「提升」→ `improve`；而 `improve` 对营业成本的含义是
+    **成本下降**。于是「核心竞争力提升」被判成「相悖」——
+    理由是「营业成本实际上升」。实测这一类在宝钢**相悖里占了大头**，
+    而它们说的是效率、竞争力、地位，**根本不是关于成本的主张**。
+
+    ⚠ **没给 `anchors` 一律放行**，同 `_pick_by_metric` 的
+    「没查不等于对不上」：调用方没给主题词表时，我们没有依据说它错位。
+    """
+    if not anchors:
+        return True
+    at = text.find(term)
+    if at < 0:
+        return False
+    start = max((text.rfind(b, 0, at) for b in _CLAUSE_BREAK), default=-1) + 1
+    ends = [text.find(b, at + len(term)) for b in _CLAUSE_BREAK]
+    ends = [e for e in ends if e >= 0]
+    clause = text[start : min(ends) if ends else len(text)]
+    return any(a in clause for a in anchors)
 
 
 def _negated(text: str, term: str) -> bool:
@@ -457,12 +519,61 @@ def extract_magnitude(
 # 一条 50 年后才到期的前瞻计划——永远进不了验证、永远不判冲突，
 # 却实实在在占用 H 的观测集。**不报错**，只是 H 里混进一条永远不动的。
 _YEAR_RE = re.compile(r"(20\d{2})\s*年")
-# 相对期间
-_RELATIVE = {
-    "本期": 0, "本年度": 0, "本年": 0, "报告期": 0, "当期": 0,
-    "上年": -1, "上年度": -1, "去年": -1, "同期": -1,
-    "下一年": 1, "明年": 1, "次年": 1,
-}
+
+#: 期间表述 → 相对报告年的偏移。**顺序有意义，长的排前面**：
+#: 元组顺序决定了谁先命中，写成字典靠插入顺序是隐式的、改一处就会静默变味。
+_RELATIVE: tuple[tuple[str, int], ...] = (
+    # ---- 指报告年 ----
+    # 「全年」是后补的。原来只认「本期 / 本年度 / 报告期 / 当期」，
+    # 于是「全年实现『1+1+N』产品销量3,059万吨，同比上升9.6%」这类
+    # **公司自己的、带数值带方向的**句子一条都进不了判定——
+    # 年报里「全年」就是报告年，没有第二种解释。
+    ("本报告期", 0), ("本年度", 0), ("报告期", 0), ("本期", 0),
+    ("本年", 0), ("当期", 0), ("全年", 0),
+    # ---- 指上一年 ----
+    ("上年度", -1), ("上年", -1), ("去年", -1), ("同期", -1),
+    # ---- 指下一年 ----
+    ("下一年", 1), ("明年", 1), ("次年", 1),
+)
+
+#: **比较词**：说的是「和上一年同期比」，而主张本身的期间仍是**报告年**。
+#:
+#: ⚠ 与 `_RELATIVE` 分开，是因为它们多一道闸门。年报里「同比」几乎只出现在
+#: 两种句子里：一种是讲本年的实绩（「汽车板产量439.4万吨，同比增长约9%」），
+#: 一种是把**下一年**的展望说出来（「预计基建用钢需求同比有望增长」）。
+#: 后者的「同比」指的不是报告年，锚错了会让一条前瞻主张拿当年的实际值去判——
+#: 判出来的东西有数字、有理由、有公式，**唯独年份是错的，而看不出来**。
+#: 所以句中出现前瞻表述（`_FORWARD_LOOKING`）时比较词不锚定。
+#:
+#: ⚠ **「环比」刻意不收。** 它在宝钢的年报里只出现在「成本环比削减X亿元」
+#: 这类条目上，而那一串条目里**实绩与下一年目标混排**：
+#: 「与年度经营目标比，2022年公司…成本环比削减93.5亿元」（本年实绩）与
+#: 「2023年…努力实现"…成本环比削减29亿元以上"」（下一年目标）长得一模一样，
+#: 目标年写在段落标题「2.2023年公司经营目标、计划与拟开展的重点工作」里，
+#: 按句子切完就丢了。锚到报告年会把下一年目标当成本年实绩去判。
+#: **判不了就不判**——这一批留在「不可验证」，别名不猜。
+_COMPARATIVE: tuple[str, ...] = (
+    "比上年同期", "比去年同期", "较上年同期", "同比",
+)
+
+#: 前瞻表述。出现这些时，句中那些**本身不指年份**的期间词不锚定。
+#:
+#: ⚠ **刻意比 `_MODALITY_TERMS` 窄。** 那一个还含「准备」，而年报里
+#: 「计提资产减值**准备**」「**准备**金」遍地都是——拿它当硬闸门，
+#: 「2017年公司实现净利润204.0亿元……全年经营应得现金410.2亿元」
+#: 会被当成前瞻句挡掉。`_MODALITY_TERMS` 只用来给方向降置信度，那里
+#: 误判的代价是小数变了一点点；这里误判的代价是一条主张凭空消失。
+_FORWARD_LOOKING: tuple[str, ...] = (
+    "预计", "有望", "力争", "计划", "拟将", "将会", "将要",
+    "争取", "旨在", "目标", "展望",
+)
+
+#: `_RELATIVE` 里**需要前瞻闸门**的那些词。
+#:
+#: 「本期 / 本年度 / 报告期」自带指向性，说的是「这一份报告的那一年」，
+#: 前瞻句里用它们也不会指错。**「全年」不一样**——它只说「一整年」，
+#: 「预计全年粗钢产量将有所下降」在 2024 年报里说的是 **2025**。
+_FORWARD_GUARDED: frozenset[str] = frozenset({"全年"})
 
 
 def resolve_period(
@@ -493,11 +604,21 @@ def resolve_period(
     except (ValueError, TypeError):
         return None
 
-    for word, delta in _RELATIVE.items():
-        if word in text:
-            if delta == 1 and not forward_verifies_next_year:
-                return None
-            return str(base + delta)
+    forward = any(t in text for t in _FORWARD_LOOKING)
+    for word, delta in _RELATIVE:
+        if word not in text:
+            continue
+        if word in _FORWARD_GUARDED and forward:
+            continue
+        if delta == 1 and not forward_verifies_next_year:
+            return None
+        return str(base + delta)
+
+    # 比较词：只在句子**没有前瞻表述**时才认。
+    if not forward:
+        for word in _COMPARATIVE:
+            if word in text:
+                return str(base)
     return None
 
 
@@ -512,9 +633,74 @@ def extract_period_expr(text: str) -> str | None:
     if m:
         # 归一成「YYYY年」，不带出原文里的空白
         return f"{m.group(1)}年"
-    for word in _RELATIVE:
+    for word, _ in _RELATIVE:
         if word in text:
             return word
+    for word in _COMPARATIVE:
+        if word in text:
+            return word
+    return None
+
+
+# ---------------------------------------------------------------- 口径
+
+#: 行业整体口径的**数据来源标记**。
+#:
+#: ⚠ 光看机构名（「中钢协」）不够：「首钢股份…被工信部科技司及**中钢协**
+#: 评为优秀案例」里它是颁奖方，「按照湖南省科技厅、**统计局**等主管部门
+#: 要求调整研发费用的归集范围」里它是主管部门——两处都跟行业数据无关，
+#: 按机构名判会把这些**公司自己的**句子一起挡掉。所以要求机构名后面
+#: 紧跟「统计 / 数据显示 / 发布 / 测算」这类**在报数**的说法。
+_INDUSTRY_SOURCE_RE = re.compile(
+    r"(?:中钢协|中国钢铁工业协会|国家统计局|统计局|钢联资讯|海关总署|wind资讯)"
+    r"[^，。；]{0,10}?(?:统计|数据|发布|公布|显示|测算|监测)"
+    r"|据(?:中钢协|中国钢铁工业协会|国家统计局|钢联资讯|海关总署)"
+)
+
+#: 整体口径的**主语 + 总量名词**：「我国粗钢产量」「国内生产总值」
+#: 「全国规模以上企业工业增加值」。两个词必须挨在一起。
+#:
+#: ⚠ 不写「行业」单独一个词：「铁水成本保持行业前十」「行业引领」都是
+#: 公司自己的话。也不写「钢铁行业整体」：「受益于钢铁行业整体盈利水平
+#: 的改善，公司下属子公司…实现净利润 26.09 亿元」的主语是**公司自己**，
+#: 行业只是一句背景。
+#:
+#: ⚠ 也不收「汽车 / 家电」这类下游行业词：「国内汽车板市场占有率」是公司
+#: 自己的口径，收了会把宝钢销量类的句子一起挡掉。实测它们在语料里
+#: 一条也没多挡住什么，去掉不亏。
+_INDUSTRY_SCOPE_RE = re.compile(
+    r"(?:我国|全国|国内|中国|全行业|全球)"
+    r"(?:规模以上[^，。；、]{0,8})?"
+    r"(?:粗钢|钢材|生铁|焦炭|水泥|有色金属|发电|原煤|"
+    r"工业增加值|生产总值|经济总量|经济)"
+)
+
+
+def industry_scope(text: str) -> str | None:
+    """这段话讲的是不是**全行业**，而不是这家公司。命中返回一句理由。
+
+    ★ 为什么必须有这一条。`resolve_period` 补上「全年」之后，
+
+        全年我国粗钢产量10.1亿吨，同比下降1.7%；
+
+    会拿到报告年，随后被拿去和**宝钢自己的钢材销量**比。两个数一个是全国
+    的、一个是公司的，比出来的方向却常常**一致**（都跟着钢周期走），
+    判成「支持」，页面上看不出任何异常。**比错对象而结果看起来合理，
+    比重错更危险**——它会被当成一条有力的证据。
+
+    ⚠ 判据要**按段落**用，不能只看这一句：中文省略主语太普遍了。
+
+        国家统计局数据显示，2024年中国粗钢产量10.05亿吨，同比下降1.7%；
+        钢材产量14.00亿吨，同比增长1.1%。
+
+    后半句单独拿出来，一个整体口径词都没有。
+    """
+    m = _INDUSTRY_SOURCE_RE.search(text)
+    if m:
+        return f"这段话引的是「{m.group(0)}」发布的行业数据，不是公司自己的数。"
+    m = _INDUSTRY_SCOPE_RE.search(text)
+    if m:
+        return f"「{m.group(0)}」是全行业口径，不是公司自己的数。"
     return None
 
 

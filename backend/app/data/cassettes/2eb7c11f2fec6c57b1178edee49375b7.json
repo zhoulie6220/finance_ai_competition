@@ -1,0 +1,7 @@
+{
+  "cassette_id": "2eb7c11f2fec6c57b1178edee49375b7",
+  "model_version": "deepseek-flash",
+  "text": "{\n  \"judgements\": [\n    {\n      \"claim_id\": \"cl-21673c5f95dc\",\n      \"is_substantive\": true,\n      \"is_template\": false,\n      \"missing_elements\": [\"metric\"],\n      \"reason\": \"公司自述2021年干了什么（动态调整购销策略和生产组织适应性调整、深化对标找差）及干成什么样（核心经营目标全面完成），指向本公司经营；但未给出任何量化指标，故缺metric。\"\n    },\n    {\n      \"claim_id\": \"cl-1cf386af55fd\",\n      \"is_substantive\": false,\n      \"is_template\": false,\n      \"missing_elements\": [\"object\", \"owner\"],\n      \"reason\": \"主体是CSPI指数、普氏指数等钢价与原料价格走势，属行业价格背景综述，不是这家公司自身的经营表述；仅末句“公司当年盈利空间持续收窄”涉及公司，但无具体对象与责任主体。\"\n    },\n    {\n      \"claim_id\": \"cl-9bca70a5465c\",\n      \"is_substantive\": true,\n      \"is_template\": false,\n      \"missing_elements\": [\"metric\"],\n      \"reason\": \"公司自述2022年聚焦“降本、增效、变革”并推进产线效率提升、采购变革、技术降本、产品结构优化等具体行动，且有结果“全年利润总额持续保持国内行业第一”，指向本公司；但未给出利润总额等具体数值，故缺metric。\"\n    }\n  ]\n}",
+  "tokens_in": 1092,
+  "tokens_out": 334
+}

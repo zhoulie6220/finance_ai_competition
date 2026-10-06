@@ -4,6 +4,7 @@ import { useParams } from 'react-router-dom'
 import { useApi } from '../api/client'
 import type { FactCell, FactGrid, FactGridRow } from '../api/types'
 import AsyncBoundary from '../components/AsyncBoundary'
+import DerivedModal from '../components/DerivedModal'
 import EvidenceModal from '../components/EvidenceModal'
 import { formatRatio, groupDigits, statementLabel } from '../format'
 
@@ -24,6 +25,13 @@ export default function FactTable() {
   const { projectId } = useParams<{ projectId: string }>()
   const [factId, setFactId] = useState<string | null>(null)
   const [year, setYear] = useState<string | null>(null)
+  // 派生格的「怎么算出来的」。与证据抽屉是**两个**弹窗：
+  // 前者给算式与参与计算的那几行，后者给某一行的年报原文。
+  const [derived, setDerived] = useState<{
+    label: string
+    period: string
+    cell: FactCell
+  } | null>(null)
 
   const grid = useApi<FactGrid>(
     projectId ? `/projects/${projectId}/fact-grid` : null,
@@ -53,11 +61,7 @@ export default function FactTable() {
       <AsyncBoundary loading={grid.loading} error={grid.error} onRetry={grid.reload}>
         {grid.data && grid.data.metrics.length === 0 && (
           <div className="async-state async-empty">
-            <div className="async-detail">
-              这个项目还没有财务事实。若刚重建过库，需要按顺序补跑：
-              <code>python scripts/parse_reports.py --source var/samples</code>
-              <code>python scripts/parse_mdna.py</code>
-            </div>
+<div className="async-detail">这家公司还没有可用的财务事实。</div>
           </div>
         )}
 
@@ -119,9 +123,12 @@ export default function FactTable() {
                         {grid.data!.periods.map((period) => (
                           <Cell
                             key={period}
+                            label={r.label_cn}
+                            period={period}
                             cell={r.cells[period]}
                             on={year === period}
                             onOpen={setFactId}
+                            onOpenDerived={setDerived}
                           />
                         ))}
                       </tr>
@@ -135,6 +142,20 @@ export default function FactTable() {
       </AsyncBoundary>
 
       <EvidenceModal factId={factId} onClose={() => setFactId(null)} />
+      {/* 派生格里点「参与计算的记录」那一行 → 关掉这个、开证据抽屉。
+          两个弹窗**不叠着开**：叠着的话返回时不知道该退回哪一层。 */}
+      {derived && (
+        <DerivedModal
+          metricLabel={derived.label}
+          period={derived.period}
+          cell={derived.cell}
+          onClose={() => setDerived(null)}
+          onOpenFact={(id) => {
+            setDerived(null)
+            setFactId(id)
+          }}
+        />
+      )}
     </div>
   )
 }
@@ -143,18 +164,62 @@ export default function FactTable() {
 
 function Cell({
   cell,
+  label,
+  period,
   on,
   onOpen,
+  onOpenDerived,
 }: {
   cell: FactCell | undefined
+  label: string
+  period: string
   on: boolean
   onOpen: (factId: string) => void
+  onOpenDerived: (d: { label: string; period: string; cell: FactCell }) => void
 }) {
   const cls = on ? 'num col-on' : 'num'
 
   if (!cell) {
     // 视图是完整的指标 × 年度笛卡尔积，理论上到不了这里。
     return <td className={`${cls} cell-missing`} title="这一格没有从视图返回">?</td>
+  }
+
+  // ---- 派生格 -----------------------------------------------------------
+  //
+  // ⚠ **派生格必须一眼看得出和别的格子不同。** 它的值不是从年报抄的，
+  //   出处是另外几行；画成一样的话，看的人会以为
+  //   「毛利率 5.45%」也能点回年报的某一页——而那一页不存在。
+  //   所以：左上角一个小三角 + 点击打开的是算式面板而不是原文页。
+  if (cell.derived) {
+    const has = cell.value !== null
+    return (
+      <td className={`${cls} ${has ? 'cell-derived' : 'cell-derived-empty'}`}>
+        <span className="cell-stack">
+          {has ? (
+            <button
+              type="button"
+              className="cell-button"
+              onClick={() => onOpenDerived({ label, period, cell })}
+              title={`派生值，非年报原文。点开看算式与参与计算的记录`}
+            >
+              {groupDigits(cell.value as string)}
+            </button>
+          ) : (
+            // 算不出来也**可点**——理由（缺哪个字段、口径未定）比那个「—」有用得多。
+            // 不可点的话，这一格和「年报里没有这一项」就完全分不出来了。
+            <button
+              type="button"
+              className="cell-button muted"
+              onClick={() => onOpenDerived({ label, period, cell })}
+              title="派生值，当前数据算不出来。点开看缺什么"
+            >
+              —
+            </button>
+          )}
+          {has && <Yoy cell={cell} />}
+        </span>
+      </td>
+    )
   }
 
   if (!cell.comparable) {

@@ -43,7 +43,7 @@ def _resolve_project(con, project_id: str | None) -> tuple[str | None, str | Non
 
     rows = con.execute("SELECT project_id, name FROM project ORDER BY created_at").fetchall()
     if not rows:
-        return None, "库里还没有任何项目。灌入演示数据：python scripts/seed_demo.py"
+        return None, "库里还没有任何项目。"
     if len(rows) > 1:
         names = "、".join(r["name"] for r in rows)
         return None, f"有 {len(rows)} 个项目，请在请求里指定 project_id：{names}"

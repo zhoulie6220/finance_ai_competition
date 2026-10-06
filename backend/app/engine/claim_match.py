@@ -98,8 +98,25 @@ _SIGN_TO_BETTER: dict[str, Literal["higher", "lower"]] = {
 
 # 方向词 → 期望的变化方向。'improve'/'deteriorate' 描述的是「状态」，
 # 对不同的指标含义不同：毛利率改善是上升，成本改善是下降。
-_IMPROVING_IS_UP = ("gross_margin", "net_margin", "ebit_margin", "ebitda_margin",
-                    "roe", "roic", "cash_conversion")
+#
+# ⚠ **不在这个表里的一律按「改善 = 下降」**，所以漏一个就是方向整个反掉。
+# 「钢材销量」原来就不在里面：`extract_direction("销量改善")` 得到 improve，
+# 这里映射成 **down**，而销量实际是上升的——判出来是「相悖」，
+# 理由是「steel_sales_volume 的实际变化为 up，方向相反」，**看着完全正常**。
+# 同一棵树上「回款改善」＝应收下降、「成本改善」＝成本下降，默认值对它们是对的，
+# 对的越多越不容易发现漏了谁。
+#
+# 判据：这个指标的「改善」是不是意味着**数值变大**。
+# 量（销量、收入、产量）是；代价（成本、费用、应收、天数）不是。
+_IMPROVING_IS_UP = (
+    # 利润率类：改善就是变大
+    "gross_margin", "net_margin", "ebit_margin", "ebitda_margin",
+    "roe", "roic", "cash_conversion",
+    # 规模类：卖得更多、收得更多，就是改善
+    "steel_sales_volume", "steel_output",
+    "revenue", "total_revenue", "cfo",
+    "capacity_utilization",
+)
 
 
 @dataclass(frozen=True)
@@ -349,10 +366,24 @@ def judge(
             "该主题的主判据在主判据表里没有对应指标，按 v1.1 不降级用代理指标硬判。",
             confidence=0.0,
         )
+    if claim.period_norm is None:
+        # ⚠ **「没有期间」和「有期间但那一年的指标没数据」是两件事，
+        #   而原来的文案把两者说成了一件。** 它写的是
+        #   `f"{claim.period_norm or '目标期间'} 未披露 {metric}"`——
+        #   期间为空时渲染成「目标期间 未披露 营业成本」，
+        #   读的人会以为**这个指标整列没有数据**，而去查数据缺口。
+        #   实测宝钢判成 unverifiable 的 161 条**全部**是这一类，
+        #   而它们的指标**都有 11 条事实**——理由 100% 误诊。
+        return _out(
+            claim, metric, "unverifiable",
+            f"这句话里没有可识别的期间，定位不到「哪一年」的数据来核对。"
+            f"（判据指标是 {metric}）",
+            confidence=0.0,
+        )
     if current is None:
         return _out(
             claim, metric, "unverifiable",
-            f"{claim.period_norm or '目标期间'} 未披露 {metric}，"
+            f"{claim.period_norm} 年未披露 {metric}，"
             f"**主判据未披露时不降级用代理指标判冲突**。",
             confidence=0.0,
         )

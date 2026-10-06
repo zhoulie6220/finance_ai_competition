@@ -56,7 +56,9 @@ _YEAR_RE = re.compile(r"(20\d{2})\s*年")
 _TITLE_PREFIX_RE = re.compile(r"^\s*[0-9]{1,2}\s*[、.．]\s*")
 
 
-def parse_number(text: str) -> tuple[Decimal | None, bool]:
+def parse_number(
+    text: str, *, allow_percent: bool = False
+) -> tuple[Decimal | None, bool]:
     """单元格文本 → 数字。
 
     返回 `(值, 是否破折号)`：
@@ -68,12 +70,18 @@ def parse_number(text: str) -> tuple[Decimal | None, bool]:
     **破折号不当 0。** 它是「本期无金额」，0 是「本期金额为零」——两者在
     比率里做分母的意义完全不同。上层同样不落库，但解析报告里要分开统计，
     混在一起就没法判断解析对不对。
+
+    `allow_percent` 默认 **False**，主表走这个默认值：`97%` 在主表里不是数值格，
+    收下它会让百分比列被当成一个数据列。只有明确知道某一列是百分比时才开
+    （见 `extra.py::_parse_named_columns` 的产能利用率）。
     """
     t = text.strip().replace(" ", "")
     if not t:
         return None, False
     if t in _DASHES:
         return None, True
+    if allow_percent and t.endswith("%"):
+        t = t[:-1]
     if not _NUMBER_RE.match(t):
         return None, False
     negative = t.startswith("(") or t.startswith("（")
@@ -122,13 +130,13 @@ def _is_note_cell(cell: Cell) -> bool:
     return bool(NOTE_CELL_RE.match(t))
 
 
-def _value_cells(line: LogicalLine) -> list[Cell]:
+def _value_cells(line: LogicalLine, *, allow_percent: bool = False) -> list[Cell]:
     """这一行里「长得像数值」的单元格。"""
     out = []
     for cell in line.cells():
         if not cell.text:
             continue
-        val, is_dash = parse_number(cell.text)
+        val, is_dash = parse_number(cell.text, allow_percent=allow_percent)
         if val is not None or is_dash:
             out.append(cell)
     return out
@@ -147,11 +155,18 @@ class Column:
     span_left: float
 
 
-def _cluster_columns(samples: list[Cell]) -> list[Column]:
+def _cluster_columns(
+    samples: list[Cell], *, min_rows: int = MIN_ROWS_PER_COLUMN
+) -> list[Column]:
     """按右边界把数值单元格聚成列。
 
     用右边界而不是中心：数值右对齐，长数字和 `-` 的中心能差 45pt，
     右边界只差 0.2pt（实测同一列 367.13 / 367.25 / 367.26）。
+
+    `min_rows` 是「贡献了这个列的数值格至少要有几个」。主表用默认的 3
+    （防某一行的孤立数字自成一列）；附加表要放低——「近三年主要会计数据」
+    里的时点那半张表**只有两行**（归母净资产、总资产），按 3 判会一列都认不出来，
+    表现为「那半张表一行都没读出来」，而**不会报错**。
     """
     if not samples:
         return []
@@ -171,7 +186,7 @@ def _cluster_columns(samples: list[Cell]) -> list[Column]:
             right_max=max(x.x1 for x in g),
             span_left=min(x.x0 for x in g),
         ), g)
-        for g in groups if len(g) >= MIN_ROWS_PER_COLUMN
+        for g in groups if len(g) >= min_rows
     ]
     kept = [(c, g) for c, g in sized if not _looks_like_note_column(g)]
     # 只在还剩下别的列时才丢附注列：整张表都被判成附注列说明判据在这份年报上
@@ -477,6 +492,8 @@ def _parse_rows(
     columns: list[Column],
     page_index: dict[int, int],
     page_no: int,
+    *,
+    allow_percent: bool = False,
 ) -> list[M.ParsedRow]:
     """按列切出一行行数据。
 
@@ -487,7 +504,7 @@ def _parse_rows(
 
     out: list[M.ParsedRow] = []
     for ln in body:
-        cells = _value_cells(ln)
+        cells = _value_cells(ln, allow_percent=allow_percent)
         if not cells:
             continue
         n = len(columns)
@@ -498,7 +515,7 @@ def _parse_rows(
             i = _column_of(cell, columns)
             if i is None:
                 continue
-            val, is_dash = parse_number(cell.text)
+            val, is_dash = parse_number(cell.text, allow_percent=allow_percent)
             if val is not None:
                 values[i] = val
                 hit = True

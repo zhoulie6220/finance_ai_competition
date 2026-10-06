@@ -82,6 +82,16 @@ class AgingYear:
     revenue: Decimal | None
     #: 与 `q2_aging.status` 的枚举一致
     status: str = "validated"
+    #: 会计在 `q2_aging.note` 里写的理由。
+    #: **非 `validated` 时由 CHECK 约束强制非空**，所以判定层可以放心把它
+    #: 带进失败原因里——那正是「查过了、确认拿不到」和「还没人去抄」的分界。
+    note: str | None = None
+    #: 回链：这一行的数据抄自哪一页、原文是什么、谁复核的。
+    #: **下钻面板要用**——评委问「这一对比较是怎么判的」，答案不只是
+    #: 两个比率，还包括「这两个数从哪来、谁签的字」。
+    source_page: int | None = None
+    source_text: str | None = None
+    reviewer: str | None = None
 
     @property
     def usable(self) -> bool:
@@ -195,6 +205,26 @@ def judge_q2(
                 triggered=None,
                 reason=f"{label}（{row.period}）只有净额（proxy_net），"
                        f"口径与账面余额不同，不能参与正式判定。",
+            )
+        # ⚠ `needs_review` 必须**单独说**，而且要带上会计写的理由。
+        #
+        # 它原来落到下面那条 `not row.complete` 上，于是页面显示
+        # 「上期（2015）缺账面余额、1 年以上余额或营业收入」——
+        # 而实际上账面余额**填了**（9,681,299,431.81），缺的只有 1 年以上余额，
+        # 且会计在 note 里写清楚了为什么拿不到：
+        # 「年报仅对组合计提部分披露账龄，单项计提/大额应收账款未按账龄拆分」。
+        #
+        # 打成「缺数据」的后果不是报错，是**把一次负责任的拒绝读成一次敷衍**——
+        # 与上面 `pending` / `unavailable_disclosure` 要分开说是同一个道理，
+        # 只是这里是第三种：**查过了，确认拿不到，并说明了原因**。
+        if row.status == "needs_review":
+            why = (row.note or "").strip()
+            return Q2Outcome(
+                status=NEEDS_REVIEW,
+                triggered=None,
+                reason=f"{label}（{row.period}）的账龄数据**查过了、判定为待复核**"
+                       + (f"：{why}" if why else "（会计未写明原因）")
+                       + " **缺数据不等于未触发。**",
             )
         if not row.complete:
             return Q2Outcome(

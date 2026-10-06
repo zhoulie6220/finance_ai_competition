@@ -266,9 +266,13 @@ def check_inventory_vs_sales(
         applicable=True,
         verified=True,
         triggered=triggered,
+        # ⚠ 比率要**取整到 4 位**再印。`sales_volume_change` 是 Decimal 除法
+        #   的原始结果，直接 f-string 会印出
+        #   `-0.005973025048169556840077071291` —— 一整行数字，
+        #   而且这个字符串会一路流到页面上。
         detail=(
             f"存货周转天数同比 {inventory_days_gap:+} 天，"
-            f"销量同比 {sales_volume_change:+}"
+            f"销量同比 {sales_volume_change.quantize(Decimal('0.0001')):+}"
         ),
     )
 
@@ -298,17 +302,60 @@ def build_checklist(
     inventory_days_gap: Decimal | None = None,
     sales_volume_change: Decimal | None = None,
     deduped: tuple[str, ...] = (),
+    receivable_aging_handled_elsewhere: bool = False,
 ) -> QualityChecklist:
-    """跑完三项检查。"""
+    """跑完三项检查。
+
+    `receivable_aging_handled_elsewhere=True` 表示 Q2 由
+    `app/engine/q2.py::judge_q2` 那一路真实判定（用的是会计逐条抄录的账龄数据），
+    本函数里这一项只作**占位**。
+
+    ⚠ **占位项必须标成「不适用」，不能只是喂 None。** 这是 2026-10-06 修的一个
+    真 bug，而且它藏了很久：
+
+        调用方写的是 `receivable_days_gap=None, aging_share_gap=None`
+        （注释「归 Q2 管，不重复计」），于是 `check_receivable_aging` 返回
+        `applicable=True, verified=False` 的一项；
+        `QualityChecklist.all_verified` 要求**所有适用项**都 verified
+        → 恒为 False → `to_component().verified` 恒为 False
+        → **Q 永远算不出来，不管账龄数据抄得多完整。**
+
+    之前没人发现，是因为在它修掉之前 Q 本来就因缺账龄数据算不出来——
+    「占位项恒不过」和「真的缺数据」在页面上**一模一样**：
+    都是「Q 不可算或未核验完成」。修完这一处，Q 的可用性才真正由数据决定。
+    """
+    aging_item = (
+        _receivable_aging_delegated()
+        if receivable_aging_handled_elsewhere
+        else check_receivable_aging(
+            receivable_days_gap=receivable_days_gap, aging_share_gap=aging_share_gap
+        )
+    )
     items = (
         check_cfo_vs_net_income(
             cfo_by_year=cfo_by_year, net_income_by_year=net_income_by_year, years=years
         ),
-        check_receivable_aging(
-            receivable_days_gap=receivable_days_gap, aging_share_gap=aging_share_gap
-        ),
+        aging_item,
         check_inventory_vs_sales(
             inventory_days_gap=inventory_days_gap, sales_volume_change=sales_volume_change
         ),
     )
     return QualityChecklist(items=items, deduped=deduped)
+
+
+def _receivable_aging_delegated() -> QualityItem:
+    """Q2 的占位项：由 `app/engine/q2.py` 判定，这里标「不适用」。
+
+    `applicable=False` 让它既不进分子分母、也不参与 `all_verified`——
+    因为它和 `judge_q2` 判的是**同一件事**，两处各算一遍的话，
+    汇总出来的 Q 里同一个风险会被数两次，而两个数都算得出来。
+    """
+    return QualityItem(
+        key="receivable_days_and_aging",
+        label_cn="Q2 应收周转天数与账龄同时恶化",
+        applicable=False,
+        verified=True,
+        triggered=None,
+        detail="",
+        note="由 app/engine/q2.py::judge_q2 判定（用会计抄录的账龄数据），此处不重复计",
+    )

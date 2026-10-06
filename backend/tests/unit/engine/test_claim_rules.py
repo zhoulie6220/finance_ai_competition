@@ -23,6 +23,7 @@ from app.engine.claim_rules import (
     extract_direction,
     extract_magnitude,
     extract_period_expr,
+    industry_scope,
     is_pending,
     match_theme,
     resolve_period,
@@ -125,6 +126,60 @@ def test_two_cell_table_rows_are_rejected(line: str) -> None:
     ],
 )
 def test_two_cell_prose_with_units_is_not_a_table_row(line: str) -> None:
+    assert looks_like_table_row(line) is False
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        # 形态四：受限资产表（标签 + 一个不带单位的数 + 一句说明）
+        "应收账款  36.6  通过保理业务作为质押物取得短期借款",
+        "应收票据  1,051  票据池质押融资、附有追索权未终止确认的应收票据",
+        "货币资金  1,529.0  财务公司存放中央银行法定准备金存款",
+        # 形态五：同一张表，数字列被挤没了，和说明粘在一起
+        "应收票据  524质押开票5.1亿元，贴现0.2亿元",
+        "货币资金  1,003财务公司存放中央银行法定准备金存款",
+    ],
+)
+def test_restricted_asset_table_rows_are_dropped(line: str) -> None:
+    """★ 受限资产表的两种形态。
+
+    这张表偏偏会被抽中，是因为行标签「应收票据 / 应收账款」正好是
+    **回款主题的触发词**——同一张表里「货币资金」「固定资产」没触发词，
+    反而一条都没进。所以不是「表格没剔干净」，是**剔漏的那几行恰好有毒**。
+    """
+    assert looks_like_table_row(line) is True
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        # 形态六：数字散在文字里，一个纯数字格都没有
+        "研发人员数量占比  13.55%  11.08%  增加2.47百分点",
+        "行业分类  项目  单位  2016年  2015年  同比增减",
+        "人均钢产量研发投入率  1.57个  （钢铁主业正式员工）4.69%  56..2%9%百分点",
+    ],
+)
+def test_rows_without_a_bare_number_cell_are_dropped(line: str) -> None:
+    """★ 数字带着单位（`13.55%`、`2016年`）时前面五条判据**逐条落空**。
+
+    全语料 239 行命中，逐行看过全是表格行；「3 格且含逗号」
+    （最像正经句子的那种）一条都没有。
+    """
+    assert looks_like_table_row(line) is True
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        # ★ 只差一个「汉字」：编号开头的正文不能跟着被误杀
+        "3.  2016年公司经营计划并不构成公司对投资者业绩的承诺，请投资者对此保持足够的风险意识。",
+        # 数值**带单位**、中间有空格的是正文，不是「数字粘着说明」
+        "公司粗钢产量  5,150 万吨，同比下降 3%。",
+        "本年度实现营业收入  322,116 百万元。",
+    ],
+)
+def test_glued_number_rule_does_not_kill_prose(line: str) -> None:
     assert looks_like_table_row(line) is False
 
 
@@ -361,10 +416,19 @@ def test_a_quantity_is_not_a_year() -> None:
     实测这句在库里存了 3 行，`period_expr` 是「2023年」而 `period_norm` 是
     «2073»——同一个函数抽出来的两个字段自相矛盾，而页面上看不出哪个算数。
     所以两个都要断言。
+
+    ⚠ 这句现在会返回 **2023**（报告年）而不是 None ——那是补上「同比」这条
+    比较词之后的结果，不是数量词又变成了年份。首钢自己当年的产销量，
+    期间就是它自己那份年报的那一年。断言因此写成「不能是 2073」，
+    比「必须是 None」更贴近这条测试真正要防的东西。
     """
     text = "铁2147万吨，同比降低3.4%；钢2222万吨，同比降低4.3%;材2073万吨，同比降低6.5%。"
-    assert resolve_period(text, "2023") is None, "数量词被当成了年份"
-    assert extract_period_expr(text) is None, "期间原文里不该出现 2073"
+    period = resolve_period(text, "2023")
+    assert period != "2073", "数量词被当成了年份"
+    assert period == "2023", "「同比」应当锚到报告年"
+    expr = extract_period_expr(text)
+    assert expr != "2073年", "期间原文里不该出现 2073"
+    assert expr == "同比", "原文里写的就是「同比」"
 
 
 def test_a_real_year_still_resolves() -> None:
@@ -376,6 +440,50 @@ def test_a_real_year_still_resolves() -> None:
     assert extract_period_expr("2024年公司计划实现销量增长") == "2024年"
 
 
+def test_a_state_word_must_sit_next_to_the_theme_object() -> None:
+    """★ 「提升」改的是**谁**，决定它算不算这个主题的方向。
+
+    宝钢 2021/2022 年报里有一批这样的句子：
+
+        2021年，公司持续深化改革，全面对标找差，打造极致效率，
+        一公司多基地协同优势进一步显现，核心竞争力显著提升……
+
+    它含「对标找差」这个降本增效的触发词，方向词是「提升」→ `improve`；
+    而 `improve` 对营业成本的含义是**成本下降**。于是「核心竞争力提升」
+    被判成「相悖」，理由是「营业成本实际上升」——**理由看着完全正常**，
+    而那句话根本不是关于成本的。实测这一类在宝钢的「相悖」里占大头。
+    """
+    cost = ("降本", "增效", "成本", "费用", "对标")
+    sentence = (
+        "2021年，公司持续深化改革，全面对标找差，打造极致效率，"
+        "一公司多基地协同优势进一步显现，核心竞争力显著提升，"
+        "国内碳钢板材领导地位进一步强化。"
+    )
+    assert extract_direction(sentence, anchors=cost)[0] == "unknown"
+
+    # 反面：方向词和成本在同一个分句里，就该认
+    assert extract_direction(
+        "公司通过全面对标找差，成本同比显著改善。", anchors=cost
+    )[0] == "improve"
+
+    # 不传主题词表时**不检查**——同 `_pick_by_metric` 的「没查不等于对不上」
+    assert extract_direction(sentence)[0] == "improve"
+
+
+def test_an_ambiguous_word_does_not_leak_back_through_the_other_list() -> None:
+    """★ 「提升」同时是「状态改善」和「数值上升」，两张表里都有。
+
+    锚定只装在 `improve` 那一边时，它会从 `_UP_TERMS` 漏回来——
+    「核心竞争力显著提升」照样变成 `up`，闸门等于白装。
+    所以互为子串的（「向好」对「持续向好」）也要一起按严的那条处理。
+    """
+    from app.engine.claim_rules import _AMBIGUOUS
+
+    assert {"提升", "提高", "向好"} <= _AMBIGUOUS
+    # 「增长」「下降」是纯粹的数值词，不该被牵连
+    assert "增长" not in _AMBIGUOUS and "下降" not in _AMBIGUOUS
+
+
 def test_pending_targets_are_excluded_from_the_denominator() -> None:
     """未到期的计划不进覆盖率分母——它在逻辑上无法判定，
     算进去只会稀释覆盖率、把 n/N 压到闸门以下。"""
@@ -383,6 +491,93 @@ def test_pending_targets_are_excluded_from_the_denominator() -> None:
     assert is_pending("2025", known) is True
     assert is_pending("2023", known) is False
     assert is_pending(None, known) is False
+
+
+def test_whole_year_means_the_report_year() -> None:
+    """★ 「全年」＝报告年，和「本期」是一回事。
+
+    漏掉它之前，「全年实现『1+1+N』产品销量 3,059 万吨，同比上升 9.6%」
+    这类**公司自己的、带数值带方向的**句子一条都进不了判定——
+    而它们恰恰是最该被核的那一批。实测宝钢一家因此少认 13 条。
+    """
+    assert resolve_period("全年实现产品销量3059万吨，同比上升9.6%", "2023") == "2023"
+    assert resolve_period("全年公司成本削减11.5亿元", "2021") == "2021"
+
+
+def test_yoy_anchors_to_the_report_year() -> None:
+    """「同比」说的是「和上一年同期比」，主张本身的期间是**报告年**。
+
+    锚不上之前，「汽车板产量439.4万吨，同比增长约9%」这类句子全落在
+    「不可验证」里——不是它们不可核，是我们没读出期间。
+    """
+    assert resolve_period("汽车板产量439.4万吨，同比增长约9%", "2024") == "2024"
+    assert resolve_period("管理费用同比略有下降", "2023") == "2023"
+    assert extract_period_expr("管理费用同比略有下降") == "同比"
+
+
+def test_yoy_does_not_anchor_a_forward_looking_sentence() -> None:
+    """★ 前瞻句里的「同比」指的不是报告年，**不许锚**。
+
+    「预计基建用钢需求同比有望增长」出现在 2020 年报里，说的是 2021 年。
+    锚到 2020 会让它拿 2020 年的实际值去判——**有数字、有理由、有公式，
+    唯独年份是错的，而页面上看不出来**。
+    """
+    assert resolve_period("预计基建用钢需求同比有望增长", "2020") is None
+    assert resolve_period("力争全年费用同比下降", "2020") is None
+
+
+def test_huanbi_is_deliberately_not_anchored() -> None:
+    """★ 「环比」刻意不收。留着这条测试是为了让下一个人知道那是**决定**。
+
+    它在宝钢年报里只出现在「成本环比削减 X 亿元」这类条目上，而那一串里
+    **本年实绩与下一年目标混排**：「与年度经营目标比，2022年公司…
+    成本环比削减93.5亿元」和「2023年…努力实现"…成本环比削减29亿元以上"」
+    长得一模一样，目标年写在段落标题里，按句子切完就丢了。
+    锚到报告年会把下一年目标当成本年实绩判。判不了就不判。
+    """
+    assert resolve_period("成本环比削减29亿元以上", "2022") is None
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "全年我国粗钢产量10.1亿吨，同比下降1.7%；",
+        "受“双限”、“双控”政策影响，全年我国粗钢产量10.3亿吨，同比下降3%；",
+        "国家统计局数据显示，2024年中国粗钢产量10.05亿吨，同比下降1.7%；",
+        "中钢协统计数据显示，2022年全国粗钢产量10.13亿吨，同比下降2.1%；",
+        "全年国内生产总值126万亿元，同比增长5.2%。",
+    ],
+)
+def test_industry_aggregates_are_flagged_out_of_scope(text: str) -> None:
+    """★ 全行业的数字不是这家公司的数。
+
+    补上「全年」之后这类句子会拿到报告年，随后被拿去和**公司自己的钢材销量**
+    比：一个全国一个公司，方向却常常一致（都跟着钢周期走），判成「支持」，
+    页面上看不出任何异常。**比错对象而结果看着合理，比重错更危险。**
+    """
+    assert industry_scope(text) is not None
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        # 「行业整体」只是背景，主语是公司自己的子公司
+        "1.  受益于钢铁行业整体盈利水平的改善，公司下属子公司华菱湘钢报告期实现净利润26.09亿元。",
+        # 「统计局」在这里是**主管部门**，不是在报数
+        "1-报告期，公司按照湖南省科技厅、统计局等相关主管部门要求调整研发费用的归集范围。",
+        # 「中钢协」在这里是**颁奖方**
+        "公司质量数字化解决方案被工信部科技司及中钢协评为优秀案例。",
+        # 公司自己的产销，只是句首提了一句行业形势
+        "随着国家“双碳”战略推进，公司电工钢高端产品占比63%，同比提高15个百分点。",
+    ],
+)
+def test_company_sentences_are_not_flagged_out_of_scope(text: str) -> None:
+    """反例：这几句都**提到**了行业机构或行业词，但说的是公司自己。
+
+    按机构名或「行业」二字判定会把它们一起挡掉——挡掉的后果不是报错，
+    是「可验证」的条数无声地掉下去。
+    """
+    assert industry_scope(text) is None
 
 
 # ---------------------------------------------------------------- 主题

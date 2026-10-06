@@ -41,6 +41,7 @@ from app.engine.claim_rules import (
     extract_direction,
     extract_magnitude,
     extract_period_expr,
+    industry_scope,
     is_pending,
     match_theme,
     resolve_period,
@@ -69,8 +70,16 @@ class ExtractionSummary:
     sentences_scanned: int = 0
     claims_inserted: int = 0
     claims_skipped_existing: int = 0
+    #: 这一轮不再抽到、已经从库里删掉的旧主张数（多为收紧规则后露出来的表格行）
+    pruned: int = 0
+    #: 想删但身上挂着人工确认、**没有删**的。必须有人处理，见 warnings。
+    prune_blocked: list[str] = field(default_factory=list)
     by_theme: dict[str, int] = field(default_factory=dict)
     unverifiable: int = 0
+    #: 其中因为讲的是**全行业**而不是本公司而不进判定的。
+    #: 与「没有期间」分开报——两件事该做的事完全不同：
+    #: 一个去补抽取规则，一个本来就不该核。
+    out_of_scope: int = 0
     pending: int = 0
     warnings: list[str] = field(default_factory=list)
 
@@ -81,7 +90,11 @@ class ExtractionSummary:
         ]
         if self.claims_skipped_existing:
             parts.append(f"已存在 {self.claims_skipped_existing} 条")
+        if self.pruned:
+            parts.append(f"清掉过期 {self.pruned} 条")
         parts.append(f"不可验证 {self.unverifiable} 条")
+        if self.out_of_scope:
+            parts.append(f"（其中全行业口径 {self.out_of_scope} 条）")
         if self.pending:
             parts.append(f"未到期 {self.pending} 条")
         return "；".join(parts)
@@ -129,7 +142,13 @@ def extract_and_store(
             if match is None:
                 continue
 
-            direction, modality_only = extract_direction(sentence.text)
+            # ⚠ 把主题的触发词传给方向抽取：`improve` / `deteriorate` 这类
+            #   **状态词**必须和主题的对象在同一个分句里才算数。不传的话，
+            #   「核心竞争力显著提升」会被读成「成本下降」，再拿去和营业成本
+            #   的实际变化比，判出一条理由看着完全正常的「相悖」。
+            direction, modality_only = extract_direction(
+                sentence.text, anchors=match.rule.trigger_terms
+            )
             # 别名用来在一句多目标时挑对那个数。宝钢的年度经营计划是
             # 「计划产铁X万吨、…、营业成本Z亿元」，不传别名会取到产铁的吨数。
             magnitude = extract_magnitude(
@@ -143,11 +162,26 @@ def extract_and_store(
             if direction == "unknown" and magnitude is None:
                 continue
 
-            period = resolve_period(
-                sentence.text,
-                section["period"],
-                # 取自 rule_config，这里给默认值；调用方可以覆盖
-                forward_verifies_next_year=True,
+            # ★ **全行业口径的数字不锚定到本公司的报告年。**
+            #
+            # 「全年我国粗钢产量10.1亿吨，同比下降1.7%」拿到期间之后会被拿去
+            # 和宝钢自己的钢材销量比：两个数一个是全国的、一个是公司的，
+            # 而方向常常一致（都跟着钢周期走），判成「支持」，页面上看不出
+            # 任何异常。**比错对象而结果看着合理，比重错更危险。**
+            #
+            # ⚠ 判据用的是 `sentence.context`（整段）而不是这一句——中文省略
+            #   主语，「钢材产量14.00亿吨」单独看一个整体口径词都没有。
+            scope_note = industry_scope(sentence.context or sentence.text)
+
+            period = (
+                None
+                if scope_note is not None
+                else resolve_period(
+                    sentence.text,
+                    section["period"],
+                    # 取自 rule_config，这里给默认值；调用方可以覆盖
+                    forward_verifies_next_year=True,
+                )
             )
             if is_pending(period, known_periods):
                 summary.pending += 1
@@ -155,6 +189,8 @@ def extract_and_store(
             verifiable = match.usable and period is not None
             if not verifiable:
                 summary.unverifiable += 1
+                if scope_note is not None:
+                    summary.out_of_scope += 1
 
             claim_id = _claim_id(
                 project_id, section["section_id"], sentence.index, sentence.text
@@ -221,17 +257,7 @@ def extract_and_store(
         before = con.execute(
             "SELECT COUNT(*) FROM claim WHERE project_id = ?", (project_id,)
         ).fetchone()[0]
-        con.executemany(
-            "INSERT OR IGNORE INTO claim (claim_id, project_id, section_id,"
-            " claim_text, subject, action, object, period_expr, period_norm,"
-            " direction, magnitude_text, magnitude_value, magnitude_unit,"
-            " magnitude_bound, is_plan_target, magnitude_metric_aligned,"
-            " claim_type, verifiable, background_only, confidence,"
-            " source_file_id, source_page, source_text, extractor,"
-            " prompt_version, status, created_at)"
-            " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-            rows,
-        )
+        con.executemany(_UPSERT_CLAIM, rows)
         con.executemany(
             "INSERT OR IGNORE INTO claim_indicator (id, claim_id, metric_key,"
             " role, match_confidence, matched_by) VALUES (?,?,?,?,?,?)",
@@ -240,10 +266,126 @@ def extract_and_store(
         after = con.execute(
             "SELECT COUNT(*) FROM claim WHERE project_id = ?", (project_id,)
         ).fetchone()[0]
+        summary.pruned, summary.prune_blocked = _prune_stale(
+            con, project_id, {row[0] for row in rows}
+        )
 
     summary.claims_inserted = after - before
     summary.claims_skipped_existing = len(rows) - summary.claims_inserted
+    if summary.prune_blocked:
+        summary.warnings.append(
+            f"{len(summary.prune_blocked)} 条主张这一轮没再抽到，但它们身上有"
+            f"会计的人工确认，**没有删**（删了会连确认一起级联删掉）。"
+            f"请先跑 scripts/export_input_templates.py --rekey 把确认改挂到新编号上。"
+        )
     return summary
+
+
+#: 落库语句。**必须是 UPSERT，不能是 INSERT OR IGNORE。**
+#:
+#: ⚠ 用 `OR IGNORE` 时，抽取规则改了、重跑，「已经存在」的那些主张
+#: **一个字段都不会更新** —— 改了 `resolve_period` 或口径守卫再跑一遍，
+#: 进度照走、条数照报，库里的 `verifiable` / `period_norm` 却全是从前的值。
+#: 表现出来就是「我明明改了，页面上数字一点没动」，
+#: 和「改了但没重启服务」是同一种看不见的失败。
+#:
+#: `claim_id` 是确定性的（项目|章节|句序|归一化原文），所以冲突时更新的
+#: 必然是**同一句话**，改它的属性是安全的——而且只有这样，
+#: 会计已经填好的 `p_confirmation` 才不会被牵连（它按 claim_id 外键级联）。
+_UPSERT_CLAIM = """
+INSERT INTO claim (claim_id, project_id, section_id, claim_text, subject,
+    action, object, period_expr, period_norm, direction, magnitude_text,
+    magnitude_value, magnitude_unit, magnitude_bound, is_plan_target,
+    magnitude_metric_aligned, claim_type, verifiable, background_only,
+    confidence, source_file_id, source_page, source_text, extractor,
+    prompt_version, status, created_at)
+VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+ON CONFLICT(claim_id) DO UPDATE SET
+    period_expr = excluded.period_expr,
+    period_norm = excluded.period_norm,
+    direction = excluded.direction,
+    magnitude_text = excluded.magnitude_text,
+    magnitude_value = excluded.magnitude_value,
+    magnitude_unit = excluded.magnitude_unit,
+    magnitude_bound = excluded.magnitude_bound,
+    is_plan_target = excluded.is_plan_target,
+    magnitude_metric_aligned = excluded.magnitude_metric_aligned,
+    claim_type = excluded.claim_type,
+    verifiable = excluded.verifiable,
+    background_only = excluded.background_only,
+    confidence = excluded.confidence,
+    source_file_id = excluded.source_file_id,
+    source_page = excluded.source_page,
+    source_text = excluded.source_text,
+    status = excluded.status
+"""
+
+
+def _prune_stale(
+    con: sqlite3.Connection, project_id: str, fresh_ids: set[str]
+) -> tuple[int, list[str]]:
+    """删掉这一轮**不再抽到**的旧主张。返回 (删了几条, 因故没删的 id)。
+
+    ⚠ 为什么要删：只加不删的话，规则一收紧，老的坏主张会永远留在表里——
+    分母虚高、页面上一堆已经不该存在的行，**而且不报错**。
+
+    ⚠ 但删之前必须确认它身上**没有会计填的确认**：`p_confirmation.claim_id`
+    是**级联删除**的，删一条主张会连带删掉那一行的复核记录，而那是人的活儿
+    （2026-10-06 撞过一次同类事故：重建库把 121 行确认全作废）。
+
+    做法：先按**归一化原文**把确认改挂到新编号上——编号漂了但原文没变，
+    这正是 `scripts/export_input_templates.py --rekey` 的思路，这里用同一套
+    判据（**只在唯一定位时才挂**）。挂不上就**不删**，交给调用方写进 warnings
+    让人来处理。**不猜**。
+    """
+    stale = [
+        r[0]
+        for r in con.execute(
+            "SELECT claim_id FROM claim WHERE project_id = ? AND extractor = ?",
+            (project_id, EXTRACTOR),
+        )
+        if r[0] not in fresh_ids
+    ]
+    if not stale:
+        return 0, []
+
+    by_text: dict[str, list[str]] = {}
+    for cid, text in con.execute(
+        "SELECT claim_id, claim_text FROM claim WHERE project_id = ? AND extractor = ?",
+        (project_id, EXTRACTOR),
+    ):
+        if cid in fresh_ids:
+            by_text.setdefault(" ".join((text or "").split()), []).append(cid)
+
+    blocked: list[str] = []
+    doomed: list[str] = []
+    for cid in stale:
+        row = con.execute(
+            "SELECT p.claim_id FROM p_confirmation p WHERE p.claim_id = ?", (cid,)
+        ).fetchone()
+        if row is None:
+            doomed.append(cid)
+            continue
+        text = con.execute(
+            "SELECT claim_text FROM claim WHERE claim_id = ?", (cid,)
+        ).fetchone()
+        key = " ".join((text[0] if text else "").split())
+        hit = by_text.get(key, [])
+        # 目标编号上**已经有确认**时也不能挂 —— `p_confirmation` 上
+        # 有 UNIQUE(claim_id)，硬挂会撞约束、整批回滚。
+        if len(hit) == 1 and con.execute(
+            "SELECT 1 FROM p_confirmation WHERE claim_id = ?", (hit[0],)
+        ).fetchone() is None:
+            con.execute(
+                "UPDATE p_confirmation SET claim_id = ? WHERE claim_id = ?",
+                (hit[0], cid),
+            )
+            doomed.append(cid)
+        else:
+            blocked.append(cid)
+
+    con.executemany("DELETE FROM claim WHERE claim_id = ?", [(c,) for c in doomed])
+    return len(doomed), blocked
 
 
 def _claim_id(
