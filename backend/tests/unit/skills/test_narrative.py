@@ -78,6 +78,104 @@ def test_claim_id_is_deterministic(con: sqlite3.Connection) -> None:
     assert {r["claim_id"] for r in list_claims(con, "p1")} == first_ids
 
 
+def test_rerunning_updates_attributes_instead_of_ignoring_them(
+    con: sqlite3.Connection,
+) -> None:
+    """★ 重跑必须**更新**已存在主张的属性，不能只「已存在，跳过」。
+
+    这一条原来写的是 `INSERT OR IGNORE`。改了抽取规则再跑，进度照走、
+    条数照报，库里的 `period_norm` / `verifiable` 却**全是旧值**——
+    表现出来就是「我明明改了，页面上数字一点没动」，
+    和「改了但没重启服务」是同一种看不见的失败。
+    """
+    extract_and_store(con, "p1", now=NOW)
+    victim = list_claims(con, "p1")[0]
+    # 手工把它改成一个明显错误的状态，模拟「上一版规则的产物」
+    con.execute(
+        "UPDATE claim SET period_norm = '1999', verifiable = 0,"
+        " background_only = 1 WHERE claim_id = ?",
+        (victim["claim_id"],),
+    )
+    con.commit()
+
+    extract_and_store(con, "p1", now=NOW)
+
+    after = con.execute(
+        "SELECT period_norm, verifiable, background_only FROM claim"
+        " WHERE claim_id = ?",
+        (victim["claim_id"],),
+    ).fetchone()
+    assert after["period_norm"] != "1999", "重跑没有把属性刷新，还是旧值"
+
+
+def test_stale_claims_are_pruned(con: sqlite3.Connection) -> None:
+    """★ 这一轮不再抽到的旧主张要删掉，不能让它们永远留在表里。
+
+    只加不删的话，规则一收紧，老的坏主张会一直占着分母——
+    页面上是一堆已经不该存在的行，而且**不报错**。
+    """
+    extract_and_store(con, "p1", now=NOW)
+    total = claim_stats(con, "p1")["total"]
+
+    # 手工塞一条这一轮抽不出来的假主张
+    con.execute(
+        "INSERT INTO claim (claim_id, project_id, section_id, claim_text,"
+        " period_norm, direction, magnitude_metric_aligned, claim_type,"
+        " verifiable, background_only, confidence, source_file_id, source_page,"
+        " source_text, extractor, prompt_version, status, created_at)"
+        " VALUES ('cl-stale','p1','s1','上一版规则留下的主张', '2024','up',1,"
+        " 'cost', 0, 1, 0.7, 'f1', 12, '上一版规则留下的主张',"
+        " 'rule:claim_v1', 'rule:none', 'needs_review', ?)",
+        (NOW,),
+    )
+    con.commit()
+    assert claim_stats(con, "p1")["total"] == total + 1
+
+    summary = extract_and_store(con, "p1", now=NOW)
+
+    assert summary.pruned == 1
+    assert claim_stats(con, "p1")["total"] == total
+
+
+def test_a_stale_claim_carrying_a_human_confirmation_is_not_deleted(
+    con: sqlite3.Connection,
+) -> None:
+    """★ 身上挂着会计人工确认的旧主张，**宁可留着也不许删**。
+
+    `p_confirmation.claim_id` 是**级联删除**的。删一条主张会连带删掉那一行
+    的复核记录，而那是人的活儿——2026-10-06 撞过一次同类事故
+    （重建库把 121 行确认一起作废）。挂不上新编号就不删，写进 warnings
+    让人来处理。**不猜。**
+    """
+    extract_and_store(con, "p1", now=NOW)
+    con.execute(
+        "INSERT INTO claim (claim_id, project_id, section_id, claim_text,"
+        " period_norm, direction, magnitude_metric_aligned, claim_type,"
+        " verifiable, background_only, confidence, source_file_id, source_page,"
+        " source_text, extractor, prompt_version, status, created_at)"
+        " VALUES ('cl-human','p1','s1','会计已经判过的一句', '2024','up',1,"
+        " 'cost', 1, 0, 0.7, 'f1', 12, '会计已经判过的一句',"
+        " 'rule:claim_v1', 'rule:none', 'validated', ?)",
+        (NOW,),
+    )
+    con.execute(
+        "INSERT INTO p_confirmation (id, claim_id, is_substantive, conclusion,"
+        " reviewer, created_at) VALUES ('pc-1','cl-human',1,'no_penalty',"
+        " '赵雨洁', ?)",
+        (NOW,),
+    )
+    con.commit()
+
+    summary = extract_and_store(con, "p1", now=NOW)
+
+    assert "cl-human" in summary.prune_blocked
+    assert summary.pruned == 0
+    assert con.execute(
+        "SELECT COUNT(*) FROM p_confirmation WHERE claim_id = 'cl-human'"
+    ).fetchone()[0] == 1
+    assert any("人工确认" in w for w in summary.warnings)
+
+
 # ---------------------------------------------------------------- 内容
 
 
