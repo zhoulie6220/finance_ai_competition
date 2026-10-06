@@ -111,6 +111,13 @@ R_COLUMNS = (
 R_CONCLUSION = ("pending", "sufficient", "insufficient", "not_applicable", "needs_review")
 
 P_COLUMNS = (
+    # ⚠ **`project_id` 必须有。** 这一份导出**不带项目过滤**（三家公司混在一个
+    #   文件里），而 `claim_id` 是 `cl-` + 哈希，看不出属于谁。
+    #   2026-10-06 赵雨洁就是因此把整份表原样退回的——原话：
+    #   「全部主张编号均为 `cl-...`，与说明中"只有 p-000932 开头的 26 条是华菱"
+    #     不一致，因而无法可靠定位应复核的 26 条」。
+    #   **她判断得对，是导出漏了一列。**
+    ("project_id", "项目编号（只读）——`p-600019` 宝钢 / `p-000932` 华菱钢铁 / `p-000959` 首钢"),
     ("claim_id", "主张编号，不要改"),
     ("claim_text", "主张原文（只读，供你判断）"),
     ("source_page", "页码（只读）"),
@@ -257,10 +264,14 @@ def _export_p(con: sqlite3.Connection, limit: int = 400) -> None:
     就会和指数、判定表用的不是同一批主张——**而页面上两个数字都算得出来**，
     看不出它们不是一套。
 
-    ⚠ **截断了要说出来。** 排序是 `claim_type, source_page`，超限时砍掉的是
-    **排序靠后的那几个主题的全部主张**——不是「随机少一点」，是**按主题整块丢**。
-    不吭声的话，界面上表现为「某几类主张怎么一条都没确认过」，
+    ⚠ **截断了要说出来。** 排序是 `project_id, claim_type, source_page`，
+    超限时砍掉的是**末尾那一整块**（最后一家公司的后几个主题的全部主张）——
+    不是「随机少一点」，是**整块丢**。不吭声的话，
+    界面上表现为「某几类主张怎么一条都没确认过」，
     而谁都想不到是导出时被 LIMIT 掉了。
+
+    ⚠ **这一份不带项目过滤**，三家公司混在一个文件里，所以
+    `project_id` 那一列是**必须**的（见 `P_COLUMNS`）。
     """
     scope, scope_params = claim_scope.scope_sql("c")
     total = con.execute(
@@ -283,10 +294,10 @@ def _export_p(con: sqlite3.Connection, limit: int = 400) -> None:
     rows = []
     for r in con.execute(
         f"""
-        SELECT c.claim_id, c.claim_text, c.source_page
+        SELECT c.project_id, c.claim_id, c.claim_text, c.source_page
         FROM claim c
         WHERE c.verifiable = 1{scope}
-        ORDER BY c.claim_type, c.source_page
+        ORDER BY c.project_id, c.claim_type, c.source_page
         LIMIT ?
         """,
         (*scope_params, limit),
@@ -295,6 +306,7 @@ def _export_p(con: sqlite3.Connection, limit: int = 400) -> None:
         p = predicted.get(r["claim_id"])
         rows.append(
             {
+                "project_id": r["project_id"],
                 "claim_id": r["claim_id"],
                 # ⚠ 上限要**够长**。裁短了不只是「少几个字」：会计要判的是
                 # 「这句话有没有对象 / 期间 / 指标 / 结果」，结果部分被砍掉，
@@ -592,6 +604,8 @@ def _rekey(con: sqlite3.Connection) -> int:
         return _match_by_text(by_text, text)
 
     changed, failed, skipped = [], [], 0
+    dropped_ids: set[str] = set()
+    dropped: list[tuple[str, str]] = []
     for row in rows:
         cid = (row.get("claim_id") or "").strip()
         if not cid or cid in known:
@@ -599,14 +613,33 @@ def _rekey(con: sqlite3.Connection) -> int:
             continue
         new_id, how = _lookup(row.get("claim_text", ""))
         if new_id is None:
+            # ★ **还是 `pending` 的行直接丢掉。**
+            #
+            # 它对应的主张已经不在库里了（规则一收紧，那句就不该是主张），
+            # 按原文也定位不到，所以这一行**没有任何东西可挂**。
+            # 留着的话会卡死整批导入——`--check` 是「整体拒绝」，
+            # 一条对不上的 P 行会让**会计填好的 R 和 Q2 也一起进不来**。
+            #
+            # ⚠ 只丢 `pending` 的。**已经有结论的一律不丢**——那是人的活儿，
+            #   哪怕暂时挂不上也要留下来让人看见（见下面的 failed）。
+            if (row.get("conclusion") or "").strip() == "pending":
+                dropped_ids.add(cid)
+                dropped.append((cid, row.get("claim_text", "")[:60]))
+                continue
             failed.append((cid, how))
             continue
         changed.append((cid, new_id, how))
         row["claim_id"] = new_id
 
-    if not changed and not failed:
+    if not changed and not failed and not dropped:
         print(f"✓ 全部 {len(rows)} 行的编号都对得上，不用改")
         return 0
+
+    if dropped:
+        print(f"  · {len(dropped)} 行**已从表里删掉**：主张已不存在、按原文也定位不到，"
+              f"且它们还是 `pending`（没有结论，丢了不损失任何人的判定）：")
+        for cid, text in dropped:
+            print(f"      {cid} | {text}")
 
     if failed:
         print(f"✗ {len(failed)} 行换不了，**这些行没有改动**：")
@@ -615,8 +648,12 @@ def _rekey(con: sqlite3.Connection) -> int:
         print("  换不了就请会计重判这几行，或者人工核对后手工填 claim_id。")
         print("  **不要自己猜一个编号**——判定会挂到别的主张上，而两行看起来都正常。")
 
-    _write_preserving(path, fieldnames, rows)
-    print(f"✓ 已重编号 {len(changed)} 行（原文件原地重写）")
+    # 丢掉的行要从**写回的内容**里去掉——只收集不删除的话，
+    # 报告会说「已删掉 6 行」而文件里一行没少，接着 `--check` 照样卡住。
+    kept = [r for r in rows if (r.get("claim_id") or "").strip() not in dropped_ids]
+    _write_preserving(path, fieldnames, kept)
+    print(f"✓ 已重编号 {len(changed)} 行、删掉 {len(dropped_ids)} 行"
+          f"（原文件原地重写，{len(rows)} → {len(kept)}）")
     for old, new, how in changed[:10]:
         print(f"  · {old} → {new}   （{how}）")
     if len(changed) > 10:
@@ -660,7 +697,15 @@ def _write_preserving(path: Path, fieldnames: list[str], rows: list[dict]) -> No
 #:   · 括注（`130（宝钢2016年报）`）——**这一页在另一份年报里**。
 #:     宝钢 2015 的全口径账龄是印在 2016 年报的「年初余额」列里的，
 #:     不把这个说明留住，复核的人拿 2015 年报翻到 130 页会什么都找不到。
-_PAGE_RE = re.compile(r"^\d{1,4}(\s*[-–—]\s*\d{1,4})?(\s*[（(].*[）)])?$")
+#:   · 多页（`21,27-28`）——风险那几项的依据分散在好几页上。
+#:     入库取**第一页**（证据链的落点），整串写进 note。
+#:     这一条是 2026-10-06 赵雨洁交回华菱 R 表时才补的：她写的是
+#:     `21,27-28`，而当时只认单页和区间，于是**两张表都卡在校验上、
+#:     一行都导不进去**——她填得没错，是我们的格式太窄。
+_PAGE_ITEM = r"\d{1,4}(\s*[-–—]\s*\d{1,4})?"
+_PAGE_RE = re.compile(
+    rf"^{_PAGE_ITEM}(\s*[、,，]\s*{_PAGE_ITEM})*(\s*[（(].*[）)])?$"
+)
 
 
 def _page_value(raw: str) -> tuple[int | None, str | None]:
@@ -670,10 +715,16 @@ def _page_value(raw: str) -> tuple[int | None, str | None]:
     而「这张表还印到了哪一页」写进 note——**不能只留起始页就完事**：
     复核的人按起始页翻过去，会发现「1 年以上」那几行其实在下一页。
     括注同理：它说的是「这一页在哪份年报里」，丢了就找不到原件。
+    多页（`21,27-28`）同样取第一页，整串进 note。
     """
     v = (raw or "").strip()
     if not v:
         return None, None
+    # 多页：逗号/顿号分开的一串。第一项是入库的落点，整串进 note。
+    if re.match(rf"^{_PAGE_ITEM}(\s*[、,，]\s*{_PAGE_ITEM})+", v):
+        first = re.match(rf"^({_PAGE_ITEM})", v).group(1)
+        start = re.match(r"^\d{1,4}", first).group(0)
+        return int(start), f"依据分散在多页：{v}"
     m = re.match(r"^(\d{1,4})\s*[-–—]\s*(\d{1,4})\s*(.*)$", v)
     if m:
         note = f"该表跨页：{m.group(1)}–{m.group(2)}"

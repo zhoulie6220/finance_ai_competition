@@ -397,3 +397,67 @@ def test_pending_and_unavailable_say_different_things() -> None:
     assert "尚未录入" not in absent.reason
 
     assert pending.reason != absent.reason, "两种原因说成了同一句话"
+
+
+# ---------------------------------------------------------------- Q3
+
+
+def test_q3_is_not_applicable_when_the_sales_volume_has_no_comparable_basis():
+    """★ 会计 2026-10-06 答复（选项 C）：**同口径销量口径不可得 → 判不适用**。
+
+    原话：
+
+    > Q3 在同口径销量不可得时标记为"不适用"，不阻断 Q 完整性；
+    > 同时从 Q3 分母剔除，并在覆盖率中单独披露，
+    > **不能把缺失当作"无冲突"**。
+
+    背景：华菱「钢铁行业」、首钢「冶金」两个聚合行的销量，年报没有说明
+    是钢材还是粗钢，会计裁定**不映射**进 `steel_sales`。于是这两家
+    `sales_volume_change` 恒为 None，而原来的写法是
+    `applicable=True, verified=False` —— Q 的完整性被永久钉死，
+    **华菱和首钢永远出不了分**。
+    """
+    from app.engine.quality import check_inventory_vs_sales
+
+    item_out = check_inventory_vs_sales(
+        inventory_days_gap=Decimal("20"), sales_volume_change=None
+    )
+    assert item_out.applicable is False, "口径不可得应当判不适用，不是未核验"
+    assert item_out.triggered is None, "不适用时 triggered 必须是 None，不是 False"
+    # ⚠ 披露不能省：少了这句话，「查不了」和「没触发」在页面上长得一样
+    assert "不适用" in item_out.note and "不是「没触发」" in item_out.note
+
+
+def test_q3_missing_inventory_data_is_our_gap_not_a_scope_question():
+    """反面：**存货周转算不出来是「我们的数据缺口」，不是「口径不可得」**。
+
+    这一条判 `verified=False`（去补数据），不能跟着 Q3 一起变成「不适用」——
+    那会把「还没采到」洗成「本来就不用看」，而这两件事该做的事完全不同。
+    """
+    from app.engine.quality import check_inventory_vs_sales
+
+    item_out = check_inventory_vs_sales(
+        inventory_days_gap=None, sales_volume_change=Decimal("-0.05")
+    )
+    assert item_out.applicable is True
+    assert item_out.verified is False
+    assert "存货周转天数" in item_out.note
+
+
+def test_q3_not_applicable_does_not_block_the_checklist():
+    """不适用的一项不许参与 `all_verified` —— 否则 Q 还是算不出来。"""
+    from app.engine.quality import build_checklist
+
+    checklist = build_checklist(
+        cfo_by_year={"2023": Decimal("10"), "2024": Decimal("20")},
+        net_income_by_year={"2023": Decimal("5"), "2024": Decimal("6")},
+        years=("2023", "2024"),
+        inventory_days_gap=Decimal("20"),
+        sales_volume_change=None,
+        receivable_aging_handled_elsewhere=True,
+    )
+    q3 = next(
+        i for i in checklist.items if i.key == "inventory_days_and_sales_volume"
+    )
+    assert q3.applicable is False
+    assert checklist.all_verified is True

@@ -115,7 +115,13 @@ class QualityChecklist:
         lines = []
         for i in self.items:
             if not i.applicable:
-                lines.append(f"· {i.label_cn}：不适用")
+                # ⚠ 「不适用」也必须带上理由。会计 2026-10-06 对 Q3 的答复要求
+                #   「在覆盖率中**单独披露**，不能把缺失当作无冲突」——
+                #   只印一个「不适用」，读的人分不出是「本来就不适用」
+                #   还是「数据缺所以跳过了」，而这两件事含义相反。
+                lines.append(
+                    f"· {i.label_cn}：不适用" + (f"（{i.note}）" if i.note else "")
+                )
             elif not i.verified:
                 lines.append(f"· {i.label_cn}：**未核验完成**（{i.note}）")
             else:
@@ -239,12 +245,28 @@ def check_inventory_vs_sales(
 
     两个条件必须**同时**成立。只看存货积压可能是为旺季备货；
     只看销量下降可能是主动减产保价。两者同时恶化才值得看。
+
+    ## 两种「算不出来」是两件事（会计 2026-10-06 答复，选项 C）
+
+    这个函数里有两个输入，缺哪一个都判不了，但**缺的原因不同、该做的事也不同**：
+
+    | 缺什么 | 为什么缺 | 判成 |
+    |---|---|---|
+    | 存货周转天数 | **我们的数据缺口**（存货/营业成本没采到） | `applicable=True, verified=False` → 去补数据 |
+    | 同口径钢材销量 | **口径上不可得**——会计已裁定华菱/首钢的聚合行不映射进该字段 | **`applicable=False`（不适用）** |
+
+    答复原话：
+
+    > Q3 在同口径销量不可得时标记为"不适用"，不阻断 Q 完整性；
+    > 同时从 Q3 分母剔除，并在覆盖率中单独披露，**不能把缺失当作"无冲突"**。
+
+    所以 `applicable=False` 让它既不进分子也不进分母（Q 完整性不再被它钉死），
+    而那句披露写进 `note` 并一路流到页面——**「不适用」不等于「未触发」**，
+    这两件事在页面上必须看得出区别。
     """
     missing = []
     if inventory_days_gap is None:
         missing.append("存货周转天数（需要两期存货与营业成本）")
-    if sales_volume_change is None:
-        missing.append("钢材销量")
     if missing:
         return QualityItem(
             key="inventory_days_and_sales_volume",
@@ -254,6 +276,22 @@ def check_inventory_vs_sales(
             triggered=None,
             detail="",
             note="缺" + "、".join(missing),
+        )
+
+    if sales_volume_change is None:
+        return QualityItem(
+            key="inventory_days_and_sales_volume",
+            label_cn="Q3 存货周转天数上升且同口径销量下降",
+            applicable=False,
+            verified=True,
+            triggered=None,
+            detail="",
+            note=(
+                "该公司无**同口径**钢材销量（年报只给了行业聚合口径，"
+                "会计 2026-10-06 裁定不映射进该字段），按口径本项判**不适用**，"
+                "不计入 Q 的分子与分母。"
+                "⚠ 这是「查不了」，**不是「没触发」**——不能当成财务质量无冲突。"
+            ),
         )
 
     triggered = (
