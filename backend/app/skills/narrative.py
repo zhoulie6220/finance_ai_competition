@@ -142,7 +142,13 @@ def extract_and_store(
             if match is None:
                 continue
 
-            direction, modality_only = extract_direction(sentence.text)
+            # ⚠ 把主题的触发词传给方向抽取：`improve` / `deteriorate` 这类
+            #   **状态词**必须和主题的对象在同一个分句里才算数。不传的话，
+            #   「核心竞争力显著提升」会被读成「成本下降」，再拿去和营业成本
+            #   的实际变化比，判出一条理由看着完全正常的「相悖」。
+            direction, modality_only = extract_direction(
+                sentence.text, anchors=match.rule.trigger_terms
+            )
             # 别名用来在一句多目标时挑对那个数。宝钢的年度经营计划是
             # 「计划产铁X万吨、…、营业成本Z亿元」，不传别名会取到产铁的吨数。
             magnitude = extract_magnitude(

@@ -154,8 +154,26 @@ def test_restricted_asset_table_rows_are_dropped(line: str) -> None:
 @pytest.mark.parametrize(
     "line",
     [
+        # 形态六：数字散在文字里，一个纯数字格都没有
+        "研发人员数量占比  13.55%  11.08%  增加2.47百分点",
+        "行业分类  项目  单位  2016年  2015年  同比增减",
+        "人均钢产量研发投入率  1.57个  （钢铁主业正式员工）4.69%  56..2%9%百分点",
+    ],
+)
+def test_rows_without_a_bare_number_cell_are_dropped(line: str) -> None:
+    """★ 数字带着单位（`13.55%`、`2016年`）时前面五条判据**逐条落空**。
+
+    全语料 239 行命中，逐行看过全是表格行；「3 格且含逗号」
+    （最像正经句子的那种）一条都没有。
+    """
+    assert looks_like_table_row(line) is True
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
         # ★ 只差一个「汉字」：编号开头的正文不能跟着被误杀
-        "3.  2016年公司经营计划并不构成公司对投资者业绩的承诺，请投资者保持风险意识。",
+        "3.  2016年公司经营计划并不构成公司对投资者业绩的承诺，请投资者对此保持足够的风险意识。",
         # 数值**带单位**、中间有空格的是正文，不是「数字粘着说明」
         "公司粗钢产量  5,150 万吨，同比下降 3%。",
         "本年度实现营业收入  322,116 百万元。",
@@ -420,6 +438,50 @@ def test_a_real_year_still_resolves() -> None:
     """
     assert resolve_period("2024年公司计划实现销量增长", "2023") == "2024"
     assert extract_period_expr("2024年公司计划实现销量增长") == "2024年"
+
+
+def test_a_state_word_must_sit_next_to_the_theme_object() -> None:
+    """★ 「提升」改的是**谁**，决定它算不算这个主题的方向。
+
+    宝钢 2021/2022 年报里有一批这样的句子：
+
+        2021年，公司持续深化改革，全面对标找差，打造极致效率，
+        一公司多基地协同优势进一步显现，核心竞争力显著提升……
+
+    它含「对标找差」这个降本增效的触发词，方向词是「提升」→ `improve`；
+    而 `improve` 对营业成本的含义是**成本下降**。于是「核心竞争力提升」
+    被判成「相悖」，理由是「营业成本实际上升」——**理由看着完全正常**，
+    而那句话根本不是关于成本的。实测这一类在宝钢的「相悖」里占大头。
+    """
+    cost = ("降本", "增效", "成本", "费用", "对标")
+    sentence = (
+        "2021年，公司持续深化改革，全面对标找差，打造极致效率，"
+        "一公司多基地协同优势进一步显现，核心竞争力显著提升，"
+        "国内碳钢板材领导地位进一步强化。"
+    )
+    assert extract_direction(sentence, anchors=cost)[0] == "unknown"
+
+    # 反面：方向词和成本在同一个分句里，就该认
+    assert extract_direction(
+        "公司通过全面对标找差，成本同比显著改善。", anchors=cost
+    )[0] == "improve"
+
+    # 不传主题词表时**不检查**——同 `_pick_by_metric` 的「没查不等于对不上」
+    assert extract_direction(sentence)[0] == "improve"
+
+
+def test_an_ambiguous_word_does_not_leak_back_through_the_other_list() -> None:
+    """★ 「提升」同时是「状态改善」和「数值上升」，两张表里都有。
+
+    锚定只装在 `improve` 那一边时，它会从 `_UP_TERMS` 漏回来——
+    「核心竞争力显著提升」照样变成 `up`，闸门等于白装。
+    所以互为子串的（「向好」对「持续向好」）也要一起按严的那条处理。
+    """
+    from app.engine.claim_rules import _AMBIGUOUS
+
+    assert {"提升", "提高", "向好"} <= _AMBIGUOUS
+    # 「增长」「下降」是纯粹的数值词，不该被牵连
+    assert "增长" not in _AMBIGUOUS and "下降" not in _AMBIGUOUS
 
 
 def test_pending_targets_are_excluded_from_the_denominator() -> None:

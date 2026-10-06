@@ -174,35 +174,97 @@ _MODALITY_TERMS = (
 _NEGATION_TERMS = ("未", "没有", "未能", "无法", "不再", "难以")
 
 
-def extract_direction(text: str) -> tuple[Direction, bool]:
+def extract_direction(
+    text: str, *, anchors: Sequence[str] = ()
+) -> tuple[Direction, bool]:
     """判断句子的方向。返回 (方向, 是否为仅意向表述)。
 
     意向表述（「力争提升」「计划增长」）**不是保证承诺**，v1.1 明确
     「可以跟踪目标完成情况，但**不能据此推断虚假陈述**」。所以这里把它
     标出来，由调用方决定降低置信度，而不是当成实打实的承诺。
+
+    `anchors` 传**主题的触发词**。传了以后，`improve` / `deteriorate`
+    必须和主题的对象**在同一个分句里**才算数——理由见 `_anchored`。
+
+    ⚠ 只对 `improve` / `deteriorate` 上这道闸门，**`up` / `down` 不上**。
+    两者不是一类词：「提升」「优化」「改善」描述的是**某个名词的状态**，
+    「核心竞争力显著提升」里的提升与成本无关；而「上升 9.6%」本身就是一个
+    数值变化，主语就是整句在说的事，再要求同分句出现主题词会把
+    「全年实现『1+1+N』产品销量3,059万吨，**同比上升9.6%**」这种
+    刚认出来的真主张重新丢掉——那正是这一轮要救回来的东西。
     """
     modality_only = any(t in text for t in _MODALITY_TERMS)
 
     # 先看改善/恶化——它们描述的是「状态变好」而不是「数值变大」
     for term in _IMPROVE_TERMS:
-        if term in text:
+        if term in text and _anchored(text, term, anchors):
             return "improve", modality_only
     for term in _DETERIORATE_TERMS:
-        if term in text:
+        if term in text and _anchored(text, term, anchors):
             return "deteriorate", modality_only
     # 再看不带否定的增长/下降
     for term in _UP_TERMS:
-        if term in text and not _negated(text, term):
-            return "up", modality_only
+        if not (term in text and not _negated(text, term)):
+            continue
+        # ⚠ 「提升」同时在两张表里：锚定已经在上面判过它不成立，
+        #   这里必须**同样要求锚定**，否则它会从 `_UP_TERMS` 漏回来——
+        #   「核心竞争力显著提升」照样会变成 `up`，等于闸门白装。
+        if term in _AMBIGUOUS and not _anchored(text, term, anchors):
+            continue
+        return "up", modality_only
     for term in _DOWN_TERMS:
-        if term in text and not _negated(text, term):
-            return "down", modality_only
+        if not (term in text and not _negated(text, term)):
+            continue
+        if term in _AMBIGUOUS and not _anchored(text, term, anchors):
+            continue
+        return "down", modality_only
     if "持平" in text or "基本稳定" in text or "保持稳定" in text:
         return "flat", modality_only
     return "unknown", modality_only
 
 
+#: 同时能当「状态改善」和「数值上升」讲的词，**按更严的那条处理**。
+#:
+#: ⚠ 不能只做集合求交：`_IMPROVE_TERMS` 里有「持续向好」、`_UP_TERMS` 里有
+#: 「向好」，`in` 判断下前者命中时后者也命中，而两者是不同的字符串。
+#: 所以还要把**互为子串**的也算进来。
+_AMBIGUOUS = frozenset(
+    t
+    for t in (*_UP_TERMS, *_DOWN_TERMS)
+    if any(t in i or i in t for i in (*_IMPROVE_TERMS, *_DETERIORATE_TERMS))
+)
+
+
 _CLAUSE_BREAK = "。！？；，,;"
+
+
+def _anchored(text: str, term: str, anchors: Sequence[str]) -> bool:
+    """`term` 所在的分句里有没有主题的对象（`anchors`）。
+
+    ★ 为什么需要这一条。宝钢 2021/2022 年报里有一批这样的句子：
+
+        2021年，公司持续深化改革，全面对标找差，打造极致效率，
+        一公司多基地协同优势进一步显现，**核心竞争力显著提升**……
+
+    它含「成本」类的主题词（「对标找差」「降本」），被归进「降本增效」，
+    方向词是「提升」→ `improve`；而 `improve` 对营业成本的含义是
+    **成本下降**。于是「核心竞争力提升」被判成「相悖」——
+    理由是「营业成本实际上升」。实测这一类在宝钢**相悖里占了大头**，
+    而它们说的是效率、竞争力、地位，**根本不是关于成本的主张**。
+
+    ⚠ **没给 `anchors` 一律放行**，同 `_pick_by_metric` 的
+    「没查不等于对不上」：调用方没给主题词表时，我们没有依据说它错位。
+    """
+    if not anchors:
+        return True
+    at = text.find(term)
+    if at < 0:
+        return False
+    start = max((text.rfind(b, 0, at) for b in _CLAUSE_BREAK), default=-1) + 1
+    ends = [text.find(b, at + len(term)) for b in _CLAUSE_BREAK]
+    ends = [e for e in ends if e >= 0]
+    clause = text[start : min(ends) if ends else len(text)]
+    return any(a in clause for a in anchors)
 
 
 def _negated(text: str, term: str) -> bool:

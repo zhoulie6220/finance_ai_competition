@@ -98,8 +98,25 @@ _SIGN_TO_BETTER: dict[str, Literal["higher", "lower"]] = {
 
 # 方向词 → 期望的变化方向。'improve'/'deteriorate' 描述的是「状态」，
 # 对不同的指标含义不同：毛利率改善是上升，成本改善是下降。
-_IMPROVING_IS_UP = ("gross_margin", "net_margin", "ebit_margin", "ebitda_margin",
-                    "roe", "roic", "cash_conversion")
+#
+# ⚠ **不在这个表里的一律按「改善 = 下降」**，所以漏一个就是方向整个反掉。
+# 「钢材销量」原来就不在里面：`extract_direction("销量改善")` 得到 improve，
+# 这里映射成 **down**，而销量实际是上升的——判出来是「相悖」，
+# 理由是「steel_sales_volume 的实际变化为 up，方向相反」，**看着完全正常**。
+# 同一棵树上「回款改善」＝应收下降、「成本改善」＝成本下降，默认值对它们是对的，
+# 对的越多越不容易发现漏了谁。
+#
+# 判据：这个指标的「改善」是不是意味着**数值变大**。
+# 量（销量、收入、产量）是；代价（成本、费用、应收、天数）不是。
+_IMPROVING_IS_UP = (
+    # 利润率类：改善就是变大
+    "gross_margin", "net_margin", "ebit_margin", "ebitda_margin",
+    "roe", "roic", "cash_conversion",
+    # 规模类：卖得更多、收得更多，就是改善
+    "steel_sales_volume", "steel_output",
+    "revenue", "total_revenue", "cfo",
+    "capacity_utilization",
+)
 
 
 @dataclass(frozen=True)
