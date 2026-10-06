@@ -108,12 +108,20 @@ a { color: var(--link); }
   overflow-y: auto;
 }
 
-/* 产品名。**别缩字号去凑一行**——13px 是录视频时侧栏的下限。 */
+/* 产品名。**别缩字号去凑一行**——13px 是录视频时侧栏的下限，
+   现在是 15px。**两行是排版定下的**（见 App.tsx 的注释），所以要
+   `nowrap` 挡住自动折行：不挡的话窄侧栏会把它折在「分析」和「与」
+   之间，读出来是半句话。 */
 .side-brand {
-  padding: 6px 8px 4px;
-  font-size: 13px;
+  padding: 8px 8px 6px;
+  font-size: 15px;
   font-weight: 600;
-  line-height: 1.4;
+  line-height: 1.35;
+}
+
+.side-brand-line {
+  display: block;
+  white-space: nowrap;
 }
 
 .side-label {

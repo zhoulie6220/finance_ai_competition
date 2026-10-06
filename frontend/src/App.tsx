@@ -67,9 +67,14 @@ export default function App() {
 
       <div className="app">
         <aside className="side">
-          {/* 原来这里写的是「ChatGPT Work ⌄」 */}
+          {/* 原来这里写的是「ChatGPT Work ⌄」。
+              ⚠ 两行是**手动断的**，不让它自己折：这个标题 20 个字，
+              侧栏一窄就会折在「分析」和「与」之间，读起来是半句话。
+              两行也正好对应系统做的一件事的**两半**——
+              上面是把说法和事实对起来，下面是据此看估值。 */}
           <div className="side-brand">
-            财报叙事一致性分析与情景估值投研工作台
+            <span className="side-brand-line">财报叙事一致性分析</span>
+            <span className="side-brand-line">情景估值投研工作台</span>
           </div>
 
           <div className="side-label">公司</div>
