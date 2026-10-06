@@ -347,39 +347,71 @@ a { color: var(--link); }
   box-shadow: 0 6px 24px rgba(0, 0, 0, 0.12);
 }
 
-.metric-menu .grp {
-  padding: 8px 8px 3px;
-  color: var(--ink-3);
-  font-size: var(--fs-meta);
-  font-weight: 600;
-  letter-spacing: 0.4px;
-}
-
-.metric-menu button {
+/* ---- 第一级：报表（纯文字，不带图标）---- */
+.metric-menu .metric-group {
   display: flex;
-  align-items: baseline;
-  gap: 10px;
+  align-items: center;
+  gap: 6px;
   width: 100%;
-  padding: 5px 8px;
+  padding: 7px 8px;
   border: 0;
   border-radius: var(--r-sm);
   background: none;
   font: inherit;
   font-size: var(--fs-sm);
+  font-weight: 600;
   color: var(--ink);
   cursor: pointer;
   text-align: left;
 }
 
-.metric-menu button:hover { background: var(--shell-hover); }
-.metric-menu button.on { background: var(--shell-select); font-weight: 600; }
-.metric-menu button .key {
-  margin-left: auto;
+.metric-menu .metric-group:hover { background: var(--shell-hover); }
+.metric-menu .metric-group .caret {
+  flex: none;
+  width: 10px;
+  color: var(--ink-3);
+  font-size: 10px;
+}
+.metric-menu .metric-group .nm { flex: 1; }
+.metric-menu .metric-group .cnt {
   color: var(--ink-3);
   font-size: var(--fs-meta);
-  font-family: var(--mono);
   font-weight: 400;
 }
+
+.metric-menu .grp-note {
+  padding: 8px;
+  color: var(--ink-3);
+  font-size: var(--fs-meta);
+}
+
+/* ---- 第二级：指标。**缩进排在报表下面**，和参考图里那个
+   「文件夹行 + 缩进子项」是同一个层级关系。 ---- */
+.metric-menu .metric-item {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  width: 100%;
+  /* 缩进到和报表行的文字对齐（左边距 8 + caret 10 + gap 6） */
+  padding: 5px 8px 5px 24px;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: none;
+  font: inherit;
+  font-size: var(--fs-sm);
+  font-weight: 400;
+  color: var(--ink-2);
+  cursor: pointer;
+  text-align: left;
+}
+
+.metric-menu .metric-item:hover { background: var(--shell-hover); color: var(--ink); }
+.metric-menu .metric-item.on {
+  background: var(--shell-select);
+  color: var(--ink);
+  font-weight: 600;
+}
+.metric-menu .metric-item .nm { flex: 1; }
 
 /* ---- 闸门四条件：勾叉 ----
    一眼看出「四项里过了三项、只差哪一项」。只给一句「证据不足」的话，
@@ -1141,15 +1173,15 @@ dl.kv { margin: 0; }
 /* 指标下拉里的覆盖数：`8/10` 或「未采集」。
    没有它的话，选到一个空指标会看到一张空图——那看起来像系统坏了，
    而实际是「这一项还没采集」。两件事要处理的方式完全不同。 */
-.metric-menu button .fill {
+.metric-menu .metric-item .fill {
   flex: none;
   color: var(--ink-3);
   font-size: var(--fs-meta);
   font-weight: 400;
 }
 
-.metric-menu button.empty { color: var(--ink-4); }
-.metric-menu button.empty .fill { color: var(--warn); }
+.metric-menu .metric-item.empty { color: var(--ink-4); }
+.metric-menu .metric-item.empty .fill { color: var(--warn); }
 
 /* ---- 侧栏的「财务事实」组：可展开，里面是指标下拉 + 总表 ---- */
 

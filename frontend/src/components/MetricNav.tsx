@@ -22,6 +22,10 @@ export default function MetricNav({ projectId }: { projectId: string }) {
   const inFacts = /\/facts(\/|$)/.test(pathname)
   const [open, setOpen] = useState(inFacts)
   const [menuOpen, setMenuOpen] = useState(false)
+  // 两级折叠：面板里先列报表，点开一个才看到它下面的指标。
+  // **默认展开当前指标所在的那一组** —— 全折着的话，打开面板看不到
+  // 自己站在哪儿，每换一次指标都要点两下。
+  const [openGroup, setOpenGroup] = useState<string | null>(null)
   const box = useRef<HTMLDivElement>(null)
   const navigate = useNavigate()
 
@@ -61,6 +65,11 @@ export default function MetricNav({ projectId }: { projectId: string }) {
   const current = grid.data?.metrics.find((m) => m.metric_key === metricKey) ?? null
   const total = grid.data?.periods.length ?? 0
 
+  // 网格到了、当前指标也认出来了，就把那一组展开
+  useEffect(() => {
+    if (current) setOpenGroup(current.statement)
+  }, [current])
+
   const pick = (key: string) => {
     setMenuOpen(false)
     navigate(`/projects/${projectId}/facts/${key}`)
@@ -98,31 +107,50 @@ export default function MetricNav({ projectId }: { projectId: string }) {
 
           {menuOpen && (
             <ul className="metric-menu side">
-              {grid.loading && <li className="grp">正在加载指标…</li>}
-              {groups.map(([statement, list]) => (
-                <li key={statement}>
-                  <div className="grp">{statementLabel(statement)}</div>
-                  {list.map((m) => (
+              {grid.loading && <li className="grp-note">正在加载指标…</li>}
+              {groups.map(([statement, list]) => {
+                const expanded = openGroup === statement
+                return (
+                  <li key={statement}>
+                    {/* 第一级：报表。**纯文字，不带图标** —— 指标是数据不是文档，
+                        给每一行配个图标反而更乱。 */}
                     <button
-                      key={m.metric_key}
                       type="button"
-                      className={
-                        (m.metric_key === metricKey ? 'on' : '') +
-                        (m.filled === 0 ? ' empty' : '')
-                      }
-                      onClick={() => pick(m.metric_key)}
+                      className="metric-group"
+                      onClick={() => setOpenGroup(expanded ? null : statement)}
+                      aria-expanded={expanded}
                     >
-                      {m.label_cn}
-                      {/* 覆盖数：**后端数好的**，前端不重算。
-                          91 个指标里有 47 个整列是空的，不标出来的话
-                          点进去是一张空图，看起来像系统坏了 */}
-                      <span className="fill mono">
-                        {m.filled === 0 ? '未采集' : `${m.filled}/${total}`}
-                      </span>
+                      <span className="caret">{expanded ? '▾' : '▸'}</span>
+                      <span className="nm">{statementLabel(statement)}</span>
+                      <span className="cnt mono">{list.length}</span>
                     </button>
-                  ))}
-                </li>
-              ))}
+
+                    {/* 第二级：指标。缩进排在报表下面，和参考图里那个
+                        「文件夹行 + 缩进子项」是同一个层级关系。 */}
+                    {expanded &&
+                      list.map((m) => (
+                        <button
+                          key={m.metric_key}
+                          type="button"
+                          className={
+                            'metric-item' +
+                            (m.metric_key === metricKey ? ' on' : '') +
+                            (m.filled === 0 ? ' empty' : '')
+                          }
+                          onClick={() => pick(m.metric_key)}
+                        >
+                          <span className="nm">{m.label_cn}</span>
+                          {/* 覆盖数：**后端数好的**，前端不重算。
+                              91 个指标里有 47 个整列是空的，不标出来的话
+                              点进去是一张空图，看起来像系统坏了 */}
+                          <span className="fill mono">
+                            {m.filled === 0 ? '未采集' : `${m.filled}/${total}`}
+                          </span>
+                        </button>
+                      ))}
+                  </li>
+                )
+              })}
             </ul>
           )}
           </div>
