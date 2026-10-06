@@ -35,6 +35,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from app.db.dictionary import metric_aliases
+from app.skills import claim_scope
 
 from app.engine.claim_rules import (
     Magnitude,
@@ -52,6 +53,12 @@ EXTRACTOR = "rule:claim_v1"
 # 规则法没有提示词，但这一列 NOT NULL——如实写「无」，
 # 不要填一个看起来像 prompt 版本号的假值。
 PROMPT_VERSION = "rule:none"
+
+#: 退休主张的 extractor。见 `_prune_stale`：那一批「这一轮抽不到了、
+#: 但身上挂着会计确认所以不能删」的主张会被改写成这个前缀。
+#: 用途是让 `claim_scope`（`LIKE 'rule:%'`）与 `claim_stats` 自然把它们排除——
+#: **它们仍然留在表里，但已经不是主张了**，留着只为不把人工确认连带删掉。
+RETIRED_EXTRACTOR = "retired:rule_v1"
 
 # 规则的置信度：按「命中主题词数 + 是否有方向 + 是否有数值」给一个档。
 # **不用模型给的分**——规则法的确定性恰恰是它的价值，编一个模型式的
@@ -72,8 +79,9 @@ class ExtractionSummary:
     claims_skipped_existing: int = 0
     #: 这一轮不再抽到、已经从库里删掉的旧主张数（多为收紧规则后露出来的表格行）
     pruned: int = 0
-    #: 想删但身上挂着人工确认、**没有删**的。必须有人处理，见 warnings。
-    prune_blocked: list[str] = field(default_factory=list)
+    #: 身上挂着人工确认、**没有删**、改为降级为背景的那些主张。
+    #: 降级 ≠ 放着不管：它们不再进判定表与指数，但仍留在页面上。
+    prune_demoted: list[str] = field(default_factory=list)
     by_theme: dict[str, int] = field(default_factory=dict)
     unverifiable: int = 0
     #: 其中因为讲的是**全行业**而不是本公司而不进判定的。
@@ -266,17 +274,18 @@ def extract_and_store(
         after = con.execute(
             "SELECT COUNT(*) FROM claim WHERE project_id = ?", (project_id,)
         ).fetchone()[0]
-        summary.pruned, summary.prune_blocked = _prune_stale(
+        summary.pruned, summary.prune_demoted = _prune_stale(
             con, project_id, {row[0] for row in rows}
         )
 
     summary.claims_inserted = after - before
     summary.claims_skipped_existing = len(rows) - summary.claims_inserted
-    if summary.prune_blocked:
+    if summary.prune_demoted:
         summary.warnings.append(
-            f"{len(summary.prune_blocked)} 条主张这一轮没再抽到，但它们身上有"
-            f"会计的人工确认，**没有删**（删了会连确认一起级联删掉）。"
-            f"请先跑 scripts/export_input_templates.py --rekey 把确认改挂到新编号上。"
+            f"{len(summary.prune_demoted)} 条主张这一轮没再抽到，但它们身上有"
+            f"会计的人工确认——**没有删**（删了会连确认一起级联删掉），"
+            f"改为降级为背景：不再进判定表与指数，但仍留在「未纳入判定的主张」里。"
+            f"人工确认本身不受影响。"
         )
     return summary
 
@@ -317,6 +326,9 @@ ON CONFLICT(claim_id) DO UPDATE SET
     source_file_id = excluded.source_file_id,
     source_page = excluded.source_page,
     source_text = excluded.source_text,
+    -- 规则改回去时让退休的主张复活：不改这一列的话，
+    -- 同一句话即使重新抽到也还是 retired，页面上永远看不到它。
+    extractor = excluded.extractor,
     status = excluded.status
 """
 
@@ -324,19 +336,28 @@ ON CONFLICT(claim_id) DO UPDATE SET
 def _prune_stale(
     con: sqlite3.Connection, project_id: str, fresh_ids: set[str]
 ) -> tuple[int, list[str]]:
-    """删掉这一轮**不再抽到**的旧主张。返回 (删了几条, 因故没删的 id)。
+    """处理这一轮**不再抽到**的旧主张。返回 (删了几条, 降级为背景的 id)。
 
-    ⚠ 为什么要删：只加不删的话，规则一收紧，老的坏主张会永远留在表里——
+    ⚠ 为什么不能只加不删：规则一收紧，老的坏主张会永远留在表里——
     分母虚高、页面上一堆已经不该存在的行，**而且不报错**。
 
-    ⚠ 但删之前必须确认它身上**没有会计填的确认**：`p_confirmation.claim_id`
+    ⚠ 但**挂着会计人工确认的那一类不能删**：`p_confirmation.claim_id`
     是**级联删除**的，删一条主张会连带删掉那一行的复核记录，而那是人的活儿
     （2026-10-06 撞过一次同类事故：重建库把 121 行确认全作废）。
 
-    做法：先按**归一化原文**把确认改挂到新编号上——编号漂了但原文没变，
-    这正是 `scripts/export_input_templates.py --rekey` 的思路，这里用同一套
-    判据（**只在唯一定位时才挂**）。挂不上就**不删**，交给调用方写进 warnings
-    让人来处理。**不猜**。
+    所以先按**归一化原文**试着把确认改挂到新编号上（编号漂了但原文没变，
+    同 `scripts/export_input_templates.py --rekey` 的判据，**只在唯一定位时才挂**）；
+    挂不上的走第二档——**降级为背景，不删**：
+
+        verifiable = 0 / background_only = 1 / status = 'needs_review'
+
+    ⚠ **降级不等于「放着不管」。** 只保留原样的话，那条主张**照样进判定表、
+    照样算进指数**——它的主题判定已经被修掉了，数字却还在动，而没有任何
+    地方看得出这件事。降级之后它不再进评分，但仍留在
+    「未纳入判定的主张」里，页面上找得到、点得回原文。
+
+    2026-10-06 实测：宝钢 16 条、华菱钢铁 1 条、首钢 1 条走到这一档
+    （都是「产销」从「生产销售」里拼错那一类），全部降级。
     """
     stale = [
         r[0]
@@ -357,13 +378,12 @@ def _prune_stale(
         if cid in fresh_ids:
             by_text.setdefault(" ".join((text or "").split()), []).append(cid)
 
-    blocked: list[str] = []
+    demoted: list[str] = []
     doomed: list[str] = []
     for cid in stale:
-        row = con.execute(
-            "SELECT p.claim_id FROM p_confirmation p WHERE p.claim_id = ?", (cid,)
-        ).fetchone()
-        if row is None:
+        if con.execute(
+            "SELECT 1 FROM p_confirmation WHERE claim_id = ?", (cid,)
+        ).fetchone() is None:
             doomed.append(cid)
             continue
         text = con.execute(
@@ -382,10 +402,16 @@ def _prune_stale(
             )
             doomed.append(cid)
         else:
-            blocked.append(cid)
+            demoted.append(cid)
 
     con.executemany("DELETE FROM claim WHERE claim_id = ?", [(c,) for c in doomed])
-    return len(doomed), blocked
+    if demoted:
+        con.executemany(
+            "UPDATE claim SET verifiable = 0, background_only = 1,"
+            " status = 'needs_review', extractor = ? WHERE claim_id = ?",
+            [(RETIRED_EXTRACTOR, c) for c in demoted],
+        )
+    return len(doomed), demoted
 
 
 def _claim_id(
@@ -469,23 +495,39 @@ def list_claims(
 
 
 def claim_stats(con: sqlite3.Connection, project_id: str) -> dict[str, Any]:
-    """抽取概况。页面首屏用。"""
+    """抽取概况。页面首屏用。
+
+    ⚠ **必须走 `claim_scope`（唯一的那个开关），不能自己 `FROM claim`。**
+
+    这里算出来的 `verifiable / total` 就是页面上那个「可验证占比」。
+    自己写 WHERE 的话，两种抽取法都跑时它会**把同一句话数两遍**
+    （分母虚高、比例看着更低），而**判定表与指数用的是去重后的那一套**——
+    两个数字都算得出来，看不出它们不是一套。
+
+    同样地，**已经退休的主张也不算**：那一批是「这一轮抽不到了、
+    但身上挂着会计确认所以没删」的（见 `_prune_stale`），
+    它们的 `extractor` 被改写成 `retired:*`，这里就自然排除了。
+    留它们只是为了不把人工确认连带删掉，**它们已经不是主张了**。
+    """
+    # ⚠ include_background=True：这一处**要**把背景主张数出来报给页面，
+    #   排除掉的话「不可验证 N 条」永远是 0，看起来像一条都没有。
+    scope, params = claim_scope.scope_sql("c", include_background=True)
     row = con.execute(
-        """
+        f"""
         SELECT COUNT(*) AS total,
-               SUM(CASE WHEN verifiable = 1 THEN 1 ELSE 0 END) AS verifiable,
-               SUM(CASE WHEN background_only = 1 THEN 1 ELSE 0 END) AS background_only,
-               SUM(CASE WHEN status = 'validated' THEN 1 ELSE 0 END) AS validated
-        FROM claim WHERE project_id = ?
+               SUM(CASE WHEN c.verifiable = 1 THEN 1 ELSE 0 END) AS verifiable,
+               SUM(CASE WHEN c.background_only = 1 THEN 1 ELSE 0 END) AS background_only,
+               SUM(CASE WHEN c.status = 'validated' THEN 1 ELSE 0 END) AS validated
+        FROM claim c WHERE c.project_id = ?{scope}
         """,
-        (project_id,),
+        (project_id, *params),
     ).fetchone()
     by_type = {
         r[0]: r[1]
         for r in con.execute(
-            "SELECT claim_type, COUNT(*) FROM claim WHERE project_id = ?"
-            " GROUP BY claim_type",
-            (project_id,),
+            f"SELECT c.claim_type, COUNT(*) FROM claim c"
+            f" WHERE c.project_id = ?{scope} GROUP BY c.claim_type",
+            (project_id, *params),
         )
     }
     return {

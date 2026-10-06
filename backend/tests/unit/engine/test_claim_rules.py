@@ -470,6 +470,24 @@ def test_a_state_word_must_sit_next_to_the_theme_object() -> None:
     assert extract_direction(sentence)[0] == "improve"
 
 
+def test_a_trigger_word_is_not_assembled_across_two_words() -> None:
+    """★ 「产销」不许命中「生**产销**售」。
+
+    子公司经营范围的套话「主要经营范围为化工原料及产品的生产销售」
+    因此被归进「需求与产销」——实测 9 条主张进了判定，
+    而这句和产销毫无关系。同「否定词不能用单字」是同一类坑：
+    **命中读起来完全正常，只有把括号填回去才看得出它是拼的。**
+    """
+    boilerplate = (
+        "截至2016年底，公司拥有其100%的股权，该公司注册资本人民币21.1亿元，"
+        "主要经营范围为化工原料及产品的生产销售，经营自产产品的出口业务等。"
+    )
+    assert match_theme(boilerplate) is None
+
+    # 反面：「产销」真的作为一个词出现时要照常认
+    assert match_theme("强化产销协同，全年产销量创历史新高。") is not None
+
+
 def test_an_ambiguous_word_does_not_leak_back_through_the_other_list() -> None:
     """★ 「提升」同时是「状态改善」和「数值上升」，两张表里都有。
 

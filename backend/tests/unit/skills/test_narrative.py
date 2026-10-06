@@ -137,15 +137,22 @@ def test_stale_claims_are_pruned(con: sqlite3.Connection) -> None:
     assert claim_stats(con, "p1")["total"] == total
 
 
-def test_a_stale_claim_carrying_a_human_confirmation_is_not_deleted(
+def test_a_stale_claim_carrying_a_human_confirmation_is_demoted_not_deleted(
     con: sqlite3.Connection,
 ) -> None:
-    """★ 身上挂着会计人工确认的旧主张，**宁可留着也不许删**。
+    """★ 身上挂着会计人工确认的旧主张：**不许删，但也不许继续计分**。
 
-    `p_confirmation.claim_id` 是**级联删除**的。删一条主张会连带删掉那一行
-    的复核记录，而那是人的活儿——2026-10-06 撞过一次同类事故
-    （重建库把 121 行确认一起作废）。挂不上新编号就不删，写进 warnings
-    让人来处理。**不猜。**
+    两件事都要做对，只做一件都是错的：
+
+    · `p_confirmation.claim_id` 是**级联删除**的。删一条主张会连带删掉那一行
+      的复核记录，而那是人的活儿——2026-10-06 撞过一次同类事故
+      （重建库把 121 行确认一起作废）。所以**不删**。
+    · 但**只留着也不行**：这条主张之所以不再被抽到，是因为它的主题判定
+      被修掉了（实测那一批是「产销」从「生产销售」里拼错）。原样留着，
+      它**照样进判定表、照样算进指数**，而没有任何地方看得出这件事。
+
+    做法：降级为背景——`verifiable=0` / `background_only=1` /
+    `status='needs_review'`。不再计分，但仍留在「未纳入判定的主张」里。
     """
     extract_and_store(con, "p1", now=NOW)
     con.execute(
@@ -168,11 +175,20 @@ def test_a_stale_claim_carrying_a_human_confirmation_is_not_deleted(
 
     summary = extract_and_store(con, "p1", now=NOW)
 
-    assert "cl-human" in summary.prune_blocked
+    assert "cl-human" in summary.prune_demoted
     assert summary.pruned == 0
+    # 人的活儿留着
     assert con.execute(
         "SELECT COUNT(*) FROM p_confirmation WHERE claim_id = 'cl-human'"
     ).fetchone()[0] == 1
+    # 但不再计分
+    after = con.execute(
+        "SELECT verifiable, background_only, status FROM claim"
+        " WHERE claim_id = 'cl-human'"
+    ).fetchone()
+    assert after["verifiable"] == 0
+    assert after["background_only"] == 1
+    assert after["status"] == "needs_review"
     assert any("人工确认" in w for w in summary.warnings)
 
 

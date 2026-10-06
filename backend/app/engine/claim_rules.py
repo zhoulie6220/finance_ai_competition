@@ -731,6 +731,47 @@ class ThemeMatch:
         return self.rule.implementable
 
 
+#: 触发词被**跨词拼出来**的坑。键是触发词，值是（左邻字, 右邻字）——
+#: 两者同时命中才算它落在那个更大的词里，这一处出现就不作数。
+_TRIGGER_GUARD: dict[str, tuple[str, str]] = {
+    # 「产销」不许命中「生**产销**售」
+    "产销": ("生", "售"),
+}
+
+
+def _occurs(text: str, term: str) -> bool:
+    """`term` 是不是真的作为一个词出现过。
+
+    ★ 触发词是按**子串**匹配的，而中文没有词边界。实测：
+
+        主要经营范围为化工原料及产品的**生产销售**……
+
+    这句子公司经营范围的套话里有「生产销售」，「产销」**跨着「生产」和
+    「销售」两个字**被拼了出来，于是它被归进「需求与产销」，
+    并有 9 条主张因此进了判定——**而这句和产销毫无关系**。
+
+    同「否定词不能用单字」是同一类坑：**命中读起来完全正常，
+    只有把括号填回去才看得出它是拼的**。
+
+    ⚠ 不能简单地把「产销」从词表里删掉——「产销量」「产销协同」
+    「产销平衡」都是真主张。要挡的是**跨词那一种**。
+    """
+    guard = _TRIGGER_GUARD.get(term)
+    if guard is None:
+        return term in text
+    left, right = guard
+    start = 0
+    while True:
+        at = text.find(term, start)
+        if at < 0:
+            return False
+        before = text[at - 1] if at > 0 else ""
+        after = text[at + len(term)] if at + len(term) < len(text) else ""
+        if not (before == left and after == right):
+            return True
+        start = at + 1
+
+
 def match_theme(text: str) -> ThemeMatch | None:
     """找出句子对应的主题。命中词最多者胜，同分时取主题表里靠前的。
 
@@ -740,7 +781,7 @@ def match_theme(text: str) -> ThemeMatch | None:
     """
     best: ThemeMatch | None = None
     for rule in THEMES:
-        hits = tuple(t for t in rule.trigger_terms if t in text)
+        hits = tuple(t for t in rule.trigger_terms if _occurs(text, t))
         if not hits:
             continue
         score = len(hits)

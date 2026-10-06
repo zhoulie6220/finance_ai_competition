@@ -110,8 +110,19 @@ def main() -> int:
             themes = "、".join(f"{k} {v}" for k, v in summary.by_theme.items())
             print(f"  {label}（{pid}）  扫描 {row[0]} 段")
             print(f"    新入库 {summary.claims_inserted} 条，已存在 {summary.claims_skipped_existing} 条")
+            if summary.pruned:
+                print(f"    清掉过期 {summary.pruned} 条（这一轮不再抽到的）")
             print(f"    主题分布：{themes or '—'}")
             print(f"    不可验证 {summary.unverifiable} 条（标 background_only，不进指数分母）")
+            if summary.out_of_scope:
+                print(f"      其中全行业口径 {summary.out_of_scope} 条（不是公司的数，不核）")
+            # ⚠ **warning 必须打出来。** 里面装的是「想删但没删」那一类——
+            #   句子的主题判定已经被修掉了，但它身上挂着会计的人工确认，
+            #   删了会**级联删掉**那行复核记录。不打印的话，这条保险丝
+            #   是**静默**生效的：库里留着一条判定已经不作数的主张，
+            #   而没有任何地方说得出它为什么还在。
+            for w in summary.warnings:
+                print(f"    ⚠ {w}")
             print()
 
         after = con.execute("SELECT COUNT(*) FROM claim").fetchone()[0]

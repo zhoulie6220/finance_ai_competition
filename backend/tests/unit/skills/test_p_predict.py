@@ -191,9 +191,12 @@ def db(tmp_path):
         CREATE TABLE claim (
           claim_id TEXT PRIMARY KEY, project_id TEXT, claim_text TEXT,
           source_page INTEGER, verifiable INTEGER, claim_type TEXT,
-          -- claim_scope 按它过滤来源。**候选来源必须与导出、判定、指数同源**，
-          -- 各写各的 WHERE 会让预判覆盖到一批不进指数的句子。
-          extractor TEXT
+          -- claim_scope 按它过滤来源与背景。**候选来源必须与导出、判定、
+          -- 指数同源**，各写各的 WHERE 会让预判覆盖到一批不进指数的句子。
+          -- ⚠ 这份手写的表结构必须跟着 `claim_scope.scope_sql` 用到的列走，
+          -- 少一列不会「过滤失效」，是直接 `no such column` 报错——
+          -- 那是好事，比静默少过滤强。
+          extractor TEXT, background_only INTEGER NOT NULL DEFAULT 0
         );
         CREATE TABLE p_prediction (
           id TEXT PRIMARY KEY, claim_id TEXT, is_substantive INTEGER,
@@ -202,11 +205,11 @@ def db(tmp_path):
           llm_call_id TEXT, created_at TEXT, UNIQUE (claim_id)
         );
         INSERT INTO claim VALUES
-          ('cl-1','p-x','公司销量增长 5%。',10,1,'demand','rule:claim_v1');
+          ('cl-1','p-x','公司销量增长 5%。',10,1,'demand','rule:claim_v1',0);
         INSERT INTO claim VALUES
-          ('cl-2','p-x','行业形势复杂严峻。',11,1,'macro','rule:claim_v1');
+          ('cl-2','p-x','行业形势复杂严峻。',11,1,'macro','rule:claim_v1',0);
         INSERT INTO claim VALUES
-          ('cl-llm','p-x','模型法抽的句子。',12,1,'cost','llm:x@y');
+          ('cl-llm','p-x','模型法抽的句子。',12,1,'cost','llm:x@y',0);
         """
     )
     yield con
@@ -274,6 +277,37 @@ def test_rerun_skips_existing_predictions(db) -> None:
     assert summary.claims_considered == 0
     assert summary.claims_skipped_existing == 2
     assert again.calls == 0, "已有预判却又调了一次——白花钱"
+
+
+def test_background_claims_are_not_predicted(db) -> None:
+    """★ 标成背景的主张**不进 P 候选**——这是 v1.1 的硬约束。
+
+    「不可验证的主张必须标 background_only，**不得进入评分**」。
+    预判是给 P 表做候选的，P 的分子只数 `p_penalty`，所以背景主张
+    进了预判就等于**间接进了评分**。
+
+    实测这条约束原来只写在 `match_and_store` 里，判定表守了、指数没守，
+    宝钢有 33 条 `background_only=1` **却带着期间**的主张照样在算 H/C。
+    """
+    db.execute(
+        "INSERT INTO claim VALUES"
+        " ('cl-bg','p-x','一句背景表述。',13,1,'demand','rule:claim_v1',1)"
+    )
+    db.commit()
+
+    client = _FakeClient(
+        [{"claim_id": "cl-1", "is_substantive": True,
+          "missing_elements": [], "reason": "r"},
+         {"claim_id": "cl-2", "is_substantive": True,
+          "missing_elements": [], "reason": "r"}],
+        LlmSettings(model="m", api_key="sk-test"),
+    )
+    summary = p_predict.predict_for_project(db, "p-x", now="t", client=client)
+
+    assert summary.claims_considered == 2, "背景主张混进了 P 候选"
+    assert db.execute(
+        "SELECT COUNT(*) FROM p_prediction WHERE claim_id = 'cl-bg'"
+    ).fetchone()[0] == 0
 
 
 def test_fake_transport_is_not_used_here() -> None:
