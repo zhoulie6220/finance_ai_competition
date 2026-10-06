@@ -1483,3 +1483,19 @@ dl.kv { margin: 0; }
   line-height: var(--lh);
   color: var(--ink-2);
 }
+
+/* 出分时的「必读附带说明」。目前只有一条：H 的观测太少、稳健性低。
+   **用琥珀色左边线而不是红色**——它不是错误，是「这个数该怎么读」，
+   而红色会让看的人以为分数有问题。会计口径明确要求「不能只报分数」：
+   H 权重 20 分，一条观测判什么分数就往哪边倒 20 分，
+   而那个分数和另一个同分项目在页面上长得一模一样。 */
+.caveat-list {
+  margin: 8px 0;
+  padding: 6px 10px 6px 12px;
+  list-style: none;
+  font-size: var(--fs-xs);
+  line-height: 1.5;
+  background: #fffbe6;
+  border-left: 3px solid var(--warn);
+}
+.caveat-list li { margin: 0; }
