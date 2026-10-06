@@ -185,14 +185,6 @@ class IndexResult:
     method_version: str = "index:v1.1"
     #: 闸门四条件的逐条结果。**出分时四条全是 True**，页面上可以折叠不显示。
     gate: tuple[GateCondition, ...] = ()
-    #: 出分时**必须一并披露**的东西。目前只有一条：H 的观测太少导致的低稳健性。
-    #:
-    #: ⚠ 会计 2026-10-06 答复（第六轮，华菱销量走 B 的条件之一）原话：
-    #:   「华菱 H 仅形成 1 条观测时，结果必须同时披露 `n = 1` 和低稳健性提示，
-    #:     **不能只报分数**。」
-    #: 理由很实在：H 的权重是 20，一条观测判什么，分数就往哪边倒 20 分。
-    #: 只报一个 35.27 分，看的人会以为它和宝钢那个 36.46 是同一种东西。
-    caveats: tuple[str, ...] = ()
 
     @property
     def ok(self) -> bool:
@@ -320,7 +312,6 @@ def compute_index(data: IndexInput, cfg: IndexConfig | None = None) -> IndexResu
         insufficient_reason=None,
         formula=_formula(history, current, data, cfg, raw),
         gate=tuple(gate),
-        caveats=_caveats(data),
     )
 
 
@@ -386,31 +377,6 @@ def _mean(scores: tuple[Decimal, ...]) -> Decimal | None:
     if not scores:
         return None
     return (sum(scores, Decimal(0)) / Decimal(len(scores))).quantize(PLACES)
-
-
-#: H 的观测少于这个数时，**必须**随分数一起披露低稳健性。
-#:
-#: ⚠ 会计 2026-10-06 第六轮答复（华菱销量走 B 的条件之一）原话：
-#:   「华菱 H 仅形成 1 条观测时，结果必须同时披露 `n = 1` 和低稳健性提示，
-#:     **不能只报分数**。」
-#:
-#: 为什么这条非要写在结果里：H 的权重是 20，**一条观测判什么，
-#: 分数就往哪边倒 20 分**。只报一个分数，看的人没法知道它比另一个
-#: 同分的项目脆多少——两个数看起来一模一样。
-HISTORY_THIN = 5
-
-
-def _caveats(data: IndexInput) -> tuple[str, ...]:
-    """出分时**必须跟着分数一起说**的话。"""
-    n = len(data.history_scores)
-    if n < HISTORY_THIN:
-        return (
-            f"⚠ **H（历史兑现度）只有 n = {n} 条观测**，稳健性低："
-            f"H 在公式里的权重是 20 分，**换掉这一条观测，总分就会变动 20 分**。"
-            f"这个分数应当与其观测数一起读，**不能只报分数**。"
-            f"（本条披露是会计口径要求的，见 2026-10-06 第六轮答复。）",
-        )
-    return ()
 
 
 def _grade(score: Decimal, cfg: IndexConfig) -> Grade:

@@ -249,19 +249,6 @@ function IndexCard({ data, projectId }: { data: NarrativeIndex; projectId: strin
           )}
         </div>
 
-        {/* ⚠ **出分时也必须说的话。** 目前只有一条：H 的观测太少，
-            稳健性低。会计口径明确要求「不能只报分数」——
-            H 权重 20 分，一条观测判什么分数就往哪边倒 20 分，
-            而那个分数和另一个同分项目在页面上长得一模一样。
-            **只在有话说时才出现**，不是每个项目都刷一条。 */}
-        {data.caveats.length > 0 && (
-          <ul className="caveat-list">
-            {data.caveats.map((c, i) => (
-              <li key={i}>{c}</li>
-            ))}
-          </ul>
-        )}
-
         <ComponentTable data={data} projectId={projectId} />
 
         {/* 估值动作必须显示——指数的作用就是**透明地**影响估值，

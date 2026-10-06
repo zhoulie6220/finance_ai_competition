@@ -457,14 +457,6 @@ export interface NarrativeIndex {
     }[]
   } | null
   insufficient_reason: string | null
-  /**
-   * 出分时**必须跟着分数一起说**的话。目前只有一条：H 的观测太少、
-   * 稳健性低（H 权重 20 分，换掉那一条观测总分就动 20 分）。
-   *
-   * ⚠ 会计口径明确要求「不能只报分数」——那个分数和另一个同分项目
-   * 在页面上长得一模一样，看的人分不出哪个脆。
-   */
-  caveats: string[]
   formula: string
   conclusion_boundary: string
   /** 指数 → 估值情景的传导。**没有目标价字段，也不该有。** */
