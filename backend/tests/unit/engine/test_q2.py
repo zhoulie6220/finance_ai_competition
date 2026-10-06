@@ -461,3 +461,35 @@ def test_q3_not_applicable_does_not_block_the_checklist():
     )
     assert q3.applicable is False
     assert checklist.all_verified is True
+
+
+def test_unavailable_disclosure_is_excluded_not_blocking():
+    """★ 会计 2026-10-06 答复：**年报确实没披露的年度比较，判不适用，不阻断整个 Q**。
+
+    原话：「Q2 对经核实不可得的年度比较判不适用、剔除分母并披露原因，
+    **不阻断整个 Q**。」
+
+    ⚠ 它和 `pending`（会计还没抄）**处置正好相反**：
+    前者是数据不可得、判不适用；后者是活儿没干完、**仍然阻断**。
+    两者在任何数值表示里都一样，只有 `cause` 分得开——
+    所以这里两个都断言，防止有人把它俩合并。
+    """
+    good_a = year("2023", gross="1000", over="100", revenue="365")
+    good_b = year("2024", gross="1100", over="150", revenue="365")
+    missing = AgingYear("2019", None, None, None,
+                        status="unavailable_disclosure", note="年报未披露全口径账龄")
+    pending = AgingYear("2020", None, None, None, status="pending")
+
+    # 年报没披露 → 剔除，不阻断
+    comp = to_component([judge_q2(missing, good_a), judge_q2(good_a, good_b)])
+    assert comp.verified is True, "年报未披露的年度把整个 Q 钉死了"
+    assert comp.denominator == 1, "剔除的年度还留在分母里"
+    assert "不适用" in comp.note and "不是「无风险」" in comp.note, (
+        "剔除必须写进 note —— 不吭声地少算两个年度，"
+        "页面上看起来就是「这两年本来就没问题」"
+    )
+
+    # 会计还没抄 → 仍然阻断
+    comp2 = to_component([judge_q2(pending, good_a), judge_q2(good_a, good_b)])
+    assert comp2.verified is False, "「还没人去抄」被当成了「不适用」"
+    assert "尚未录入" in comp2.note

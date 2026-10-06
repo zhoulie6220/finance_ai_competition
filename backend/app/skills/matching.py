@@ -844,17 +844,24 @@ def _load_p_confirmations(con: sqlite3.Connection, project_id: str) -> list[Any]
 
     会计口径 §4.4 要求「所有进入指数的实质经营表述必须完成逐条确认」，
     所以只要还有记录是 `pending`，P 就不完整。
+
+    ⚠ **候选集要走 `claim_scope`。** 这是「进入指数的实质经营表述」，
+    而标成背景的主张**不进指数**——它们已经不是主张了。
+    不过滤的后果实测发生过：华菱有 10 行确认记录挂在一批**已经降级为背景**
+    的主张上、状态停在 `pending`，于是 **P 永远不完整、华菱永远出不了分**，
+    而页面上只会说「10 条实质表述尚未人工确认」——听起来像「还没审到」，
+    实际是「这几句已经不是主张了」。**卡在什么东西上，从提示里看不出来。**
     """
     import json
 
     from app.engine.attestation import PConfirmation
 
     rows = con.execute(
-        "SELECT p.claim_id, p.is_substantive, p.conclusion, p.is_template,"
-        " p.missing_elements, p.reviewer"
-        " FROM p_confirmation p JOIN claim c ON c.claim_id = p.claim_id"
-        " WHERE c.project_id = ?",
-        (project_id,),
+        f"SELECT p.claim_id, p.is_substantive, p.conclusion, p.is_template,"
+        f" p.missing_elements, p.reviewer"
+        f" FROM p_confirmation p JOIN claim c ON c.claim_id = p.claim_id"
+        f" WHERE c.project_id = ?{claim_scope.scope_sql('c')[0]}",
+        (project_id, *claim_scope.scope_sql("c")[1]),
     ).fetchall()
 
     out = []

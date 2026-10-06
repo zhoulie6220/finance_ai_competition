@@ -123,6 +123,16 @@ class Q2Outcome:
     share_gap: Decimal | None = None
     reason: str = ""
     formula: str = ""
+    #: 判不了时**为什么判不了**。机器可读的那一版，和 `reason` 的散文分开。
+    #:
+    #:   "pending"                 会计还没抄 → 去催人，仍然阻断 Q
+    #:   "unavailable_disclosure"  年报确实没披露 → **判不适用**，不阻断
+    #:
+    #: ⚠ 不能靠解析 `reason` 来分这两种：那是给人读的句子，
+    #:   改一次文案就悄悄换一套行为。2026-10-06 会计对 Q2 单年缺口
+    #:   明确答复「判不适用、从分母剔除、不阻断整个 Q」——
+    #:   而这两种"判不了"的处置**正好相反**，靠文案区分迟早出事。
+    cause: str | None = None
 
     @property
     def ok(self) -> bool:
@@ -188,6 +198,7 @@ def judge_q2(
             return Q2Outcome(
                 status=UNAVAILABLE,
                 triggered=None,
+                cause="pending",
                 reason=f"{label}（{row.period}）的账龄数据**尚未录入**——"
                        f"不是年报没披露，是还没人去抄。"
                        f"**缺数据不等于未触发**。",
@@ -196,6 +207,7 @@ def judge_q2(
             return Q2Outcome(
                 status=UNAVAILABLE,
                 triggered=None,
+                cause="unavailable_disclosure",
                 reason=f"{label}（{row.period}）的年报**未披露**账龄数据。"
                        f"这是披露缺口，不是还没抄。**缺数据不等于未触发**。",
             )
@@ -297,19 +309,47 @@ def judge_q2(
 def to_component(outcomes: list[Q2Outcome]) -> RatioComponent:
     """把逐年的 Q2 判定汇总成指数公式里的 Q。
 
-    分母是**能判的年度数**，分子是其中触发的。判不了的（unavailable）
-    既不在分子也不在分母，但会让组件 `verified=False` —— 也就是
-    **Q 不完整 → 闸门不过 → 不出分**。这是会计口径 §五明确要求的：
-    「Q状态 incomplete，不假设未触发」。
+    分母是**能判的年度数**，分子是其中触发的。
+
+    ## 两种「判不了」的处置**正好相反**（会计 2026-10-06 答复）
+
+    | 为什么判不了 | `cause` | 处置 |
+    |---|---|---|
+    | 会计还没抄 | `pending` | **仍然阻断**——去催人，不是数据不可得 |
+    | 年报确实没披露 | `unavailable_disclosure` | **判不适用**，从分母剔除，不阻断整个 Q |
+
+    答复原话（针对华菱 2019 账龄那个结构性缺口）：
+
+    > Q2 对经核实不可得的年度比较判不适用、剔除分母并披露原因，
+    > **不阻断整个 Q**。
+
+    适用条件她也写明了：已查年报正文、附注和相邻年度比较栏仍拿不到；
+    **必须保留缺失原因与页码**；**不得把缺失解释为「无风险」**；
+    输出要同时披露有效比较数、剔除年度和原因。所以这里把剔除的年度
+    写进 `note` 并一路带下去——**不吭声地少算两个年度，
+    页面上看起来就是「这两年本来就没问题」**。
+
+    ⚠ 另一种判不了（`needs_review` / `proxy_net` / 字段缺）**仍然阻断**：
+    那不是「数据不可得」，是「口径或证据有冲突」或「还没录全」，
+    该做的事完全不同。
     """
     judged = [o for o in outcomes if o.ok]
-    blocked = [o for o in outcomes if not o.ok]
+    # 年报确实没披露 → 不适用，不进分子分母、也不阻断
+    excluded = [o for o in outcomes if not o.ok and o.cause == "unavailable_disclosure"]
+    blocked = [o for o in outcomes if not o.ok and o.cause != "unavailable_disclosure"]
     triggered = [o for o in judged if o.status == TRIGGERED]
 
-    note = ""
+    parts: list[str] = []
     if blocked:
         reasons = [f"{o.reason.split('。')[0]}" for o in blocked][:3]
-        note = f"{len(blocked)} 个年度无法判定：{'；'.join(reasons)}"
+        parts.append(f"{len(blocked)} 个年度无法判定：{'；'.join(reasons)}")
+    if excluded:
+        periods = [o.reason.split("）")[0].lstrip("上本期（") for o in excluded]
+        parts.append(
+            f"{len(excluded)} 个年度比较按口径判**不适用**（年报未披露，"
+            f"已从 Q 的分母剔除）：{'、'.join(p for p in periods if p)}"
+            f" —— ⚠ 这是「查不了」，**不是「无风险」**"
+        )
 
     return RatioComponent(
         name="quality_conflict",
@@ -317,5 +357,5 @@ def to_component(outcomes: list[Q2Outcome]) -> RatioComponent:
         numerator=len(triggered),
         denominator=len(judged),
         verified=not blocked and bool(judged),
-        note=note,
+        note="；".join(parts),
     )
