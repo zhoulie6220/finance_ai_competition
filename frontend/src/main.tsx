@@ -57,11 +57,7 @@ function IndexRedirect() {
   if (!first) {
     return (
       <div className="async-state async-empty">
-        <div className="async-detail">
-          还没有任何项目。先跑
-          <code>python scripts/parse_reports.py --source var/samples</code>
-          导入年报。
-        </div>
+<div className="async-detail">还没有可分析的项目。</div>
       </div>
     )
   }

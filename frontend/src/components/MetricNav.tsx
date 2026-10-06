@@ -11,7 +11,7 @@ import { statementLabel } from '../format'
  * 展开之后两行，**顺序是总表在前、指标在后**：
  *
  *     财务事实                    ▾
- *         总表（全部 91 个指标）
+ *         总表
  *         选择指标看走势           ⌄
  *
  * 两行**同一套样式**——都是普通的侧栏行，没有白底、没有边框、只占一行。
@@ -94,7 +94,7 @@ export default function MetricNav({ projectId }: { projectId: string }) {
               isActive ? 'side-link sub active' : 'side-link sub'
             }
           >
-            总表（全部 91 个指标）
+            总表
           </NavLink>
 
           {/* 指标在后。风格与上一行完全一致：普通侧栏行，点开才出现菜单。 */}

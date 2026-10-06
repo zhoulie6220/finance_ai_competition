@@ -10,6 +10,28 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 
 const BASE = '/api'
 
+/**
+ * 离线快照。
+ *
+ * 会计同学不装 Python、不跑服务，所以发给他的包是**一个双击就能打开的 HTML**：
+ * 数据在打包时就冻进页面里（`window.__SNAPSHOT__`），取数不走网络。
+ * 生成方式见 `backend/scripts/build_offline_page.py`。
+ *
+ * ⚠ **没命中的那一条必须抛错，不能返回空。** 返回空的话页面上那一块是空白的，
+ * 而「空白」和「本来就没有数据」看起来一模一样——前者是打包漏了接口，
+ * 后者是数据现状，两者该做的事完全不同。所以宁可让它显式报出来。
+ */
+declare global {
+  interface Window {
+    __SNAPSHOT__?: Record<string, unknown>
+  }
+}
+
+/** 当前是不是在离线快照模式（页面上要据此挂横幅）。 */
+export function isSnapshotMode(): boolean {
+  return typeof window !== 'undefined' && !!window.__SNAPSHOT__
+}
+
 export class ApiError extends Error {
   readonly status: number
   readonly detail: string
@@ -39,7 +61,24 @@ export async function apiGet<T>(
   params?: Record<string, unknown>,
   signal?: AbortSignal,
 ): Promise<T> {
-  const res = await fetch(BASE + withQuery(path, params), {
+  const url = withQuery(path, params)
+
+  const snapshot = typeof window !== 'undefined' ? window.__SNAPSHOT__ : undefined
+  if (snapshot) {
+    if (Object.prototype.hasOwnProperty.call(snapshot, url)) {
+      // 深拷一份再给出去。快照是**共享的**：直接返回原对象的话，
+      // 任何一处不小心改了它，另一处也会跟着变——而两处都「有数据」，
+      // 看不出是谁改的。
+      return structuredClone(snapshot[url]) as T
+    }
+    throw new ApiError(
+      404,
+      `离线快照里没有这一条：${url}。**这一块显示不出来是打包漏了**，` +
+        `不是「这家公司没数据」。请把这一条发给计算机同学。`,
+    )
+  }
+
+  const res = await fetch(BASE + url, {
     headers: { Accept: 'application/json' },
     signal,
   })

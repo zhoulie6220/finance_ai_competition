@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 
-import { useApi } from './api/client'
+import { isSnapshotMode, useApi } from './api/client'
 import type { Health, Project } from './api/types'
 import MetricNav from './components/MetricNav'
 import OfflineBadge from './components/OfflineBadge'
@@ -41,6 +41,22 @@ export default function App() {
       {/* 离线横幅横跨整个宽度、压在最上面。docs/00 把「回放时装作实时」
           列为诚信问题，所以它不许被折叠进侧栏或藏起来。 */}
       <OfflineBadge health={health.data} />
+
+      {/* 离线快照横幅。**这是诚信要求，不是装饰**：docs/00 把
+          「回放时装作实时」列为诚信问题，而快照页比离线回放更"死"——
+          数据是打包那天冻住的，页面上的每一个数字都不会再变。
+          不标出来的话，看的人会以为这是实时算的。
+          与 OfflineBadge 的区别：那个说的是「LLM 走预录磁带」，
+          这个说的是「整页数据都是一份快照」。两者可能同时出现。 */}
+      {isSnapshotMode() && (
+        <div className="snapshot-banner" role="status">
+          <strong>离线快照</strong>
+          <span>
+            这一页的数据是打包时冻结的，<b>不是实时计算</b>。
+            页面上每个数字都能点回它的来源，但不会随库变化而更新。
+          </span>
+        </div>
+      )}
 
       {health.data && !health.data.db_ok && (
         <div className="db-warning" role="alert">
@@ -197,7 +213,7 @@ function CompanyPicker({
             )
           })}
           <li className="menu-note">
-            选中即切换。演示与出分只用主公司，另两家是估值可比公司。
+            选中即切换。三家是三个独立的数据集，一次只看一家。
           </li>
         </ul>
       )}
@@ -212,8 +228,8 @@ function SideHint() {
       <dl>
         <dt>财务事实</dt>
         <dd>
-          91 个指标 × 10 个年度。选一个指标看它这些年的走势，
-          点任意一格回到年报原文。柱子是<b>比上年</b>，红增绿减。
+          每个年度的三张主表连同附注抽成一张指标网格。选一个指标看它这些年的
+          走势，点任意一格回到年报原文。柱子是<b>比上年</b>，红增绿减。
         </dd>
         <dt>叙事一致性</dt>
         <dd>

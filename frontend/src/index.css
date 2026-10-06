@@ -888,6 +888,126 @@ table.match-table td.msg { max-width: 340px; }
 .reason-list { margin: 6px 0; padding-left: 18px; font-size: var(--fs-xs); }
 .reason-list li { margin-bottom: 3px; }
 
+/* Q2 逐对比较的进度。「8/9 组比较已完成，1 组待核查」——
+   这一块**只作展示**，不参与闸门判定：会计口径明确「不能剔除分母后
+   作为正式 Q 值」，所以它不改变「不出分」这个结论，只是把
+   「做到哪一步了」摆出来。summary 那一行加粗，是为了在
+   一长串失败原因里能被一眼看到。 */
+.q2-progress { margin: 6px 0; font-size: var(--fs-xs); }
+.q2-progress summary { cursor: pointer; font-weight: 600; color: var(--ink); }
+.q2-progress ul { margin: 4px 0 0; padding-left: 0; list-style: none; }
+.q2-progress li { display: flex; gap: 6px; align-items: baseline; margin-bottom: 2px; }
+.q2-progress .mark { width: 12px; flex: none; }
+.q2-progress li.ok .mark { color: var(--ok); }
+.q2-progress li.no .mark { color: var(--bad); }
+.q2-progress .who { flex: none; color: var(--ink-2); }
+.q2-progress .why { color: var(--ink-3); }
+
+/* ---- 分项下钻：点 H/C/R/P/Q 任意一行展开它的构成明细 ----
+   这一块是给答辩用的：评委问「C = −0.3239 是哪 71 条构成的」，
+   这里逐条给出来，每条带期间、指标、出处页码、算式与代入的数。
+   **没有它，指数卡上就只有一个孤零零的数字。** */
+
+.component-table tbody tr { cursor: pointer; }
+.component-table tbody tr:hover { background: var(--bg-hover); }
+.component-table tbody tr.row-open { background: var(--bg-hover); }
+.component-table .caret {
+  display: inline-block;
+  width: 15px;
+  color: var(--ink-3);
+}
+
+.drilldown { margin-top: 0; }
+.drilldown-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.drilldown-head h3 { margin: 0; }
+.drilldown-head .subtitle { color: var(--ink-3); font-size: var(--fs-2xs); }
+.drilldown-head .link-btn {
+  margin-left: auto;
+  border: none;
+  background: none;
+  color: var(--link);
+  cursor: pointer;
+  font-size: var(--fs-xs);
+  padding: 0;
+}
+.drilldown-note {
+  margin: 4px 0 8px;
+  font-size: var(--fs-xs);
+  color: var(--ink-3);
+  line-height: var(--lh);
+}
+
+.drilldown-list { list-style: none; margin: 0; padding: 0; }
+.drilldown-list li {
+  border-top: 1px solid var(--line);
+  padding: 6px 0;
+}
+.drilldown-list .row-head {
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+}
+/* 贡献那一格是等宽的，**好让一整列对齐**——读数的人是在扫这一列，
+   参差不齐的话扫不动。 */
+.drilldown-list .contrib {
+  flex: none;
+  min-width: 26px;
+  text-align: center;
+  /* ⚠ 变量名是 `--mono` 不是 `--font-mono`。写错**不会报错**——
+     `var()` 取不到就退回继承值，看起来只是「字体没生效」。 */
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--fs-2xs);
+  border-radius: 2px;
+  padding: 0 3px;
+  background: var(--bg-soft);
+  color: var(--ink-2);
+}
+.drilldown-list .row-formula,
+.drilldown-list .row-inputs { font-family: var(--mono); }
+/* 只用三档：正、零、负。**不引入新颜色**——这里是语义不是涨跌，
+   与判定表的支持/无明显变化/相悖同一套色。 */
+.drilldown-list .c-1 { background: #f6ffed; color: var(--ok); }
+.drilldown-list .c--1 { background: #fff1f0; color: var(--bad); }
+.drilldown-list .c-0 { background: var(--bg-soft); color: var(--ink-3); }
+
+.drilldown-list .row-label { font-size: var(--fs-xs); line-height: var(--lh); }
+.drilldown-list .row-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 2px 0 0 32px;
+  font-size: var(--fs-2xs);
+  color: var(--ink-3);
+}
+.drilldown-list .row-detail {
+  margin: 2px 0 0 32px;
+  font-size: var(--fs-2xs);
+  color: var(--ink-2);
+  line-height: var(--lh);
+}
+.drilldown-list .row-formula,
+.drilldown-list .row-inputs {
+  margin: 2px 0 0 32px;
+  font-size: var(--fs-2xs);
+  color: var(--ink-3);
+}
+.drilldown-list .row-source {
+  margin: 4px 0 0 32px;
+  padding: 4px 8px;
+  border-left: 2px solid var(--line-strong);
+  font-size: var(--fs-2xs);
+  color: var(--ink-2);
+  line-height: var(--lh);
+  max-height: 96px;
+  overflow: auto;
+}
+
 .index-counts { display: flex; gap: 6px; flex-wrap: wrap; margin: 12px 0; }
 
 .count { min-width: 84px; padding: 4px 9px; border: 1px solid var(--line); }
@@ -1236,4 +1356,122 @@ dl.kv { margin: 0; }
   max-height: 60vh;
   overflow-y: auto;
   z-index: 14;
+}
+
+/* ---- 离线快照横幅 ----
+   横跨整个宽度、压在最上面，**不许折叠进侧栏或藏起来**：
+   这一页的数据是打包那天冻住的，不标出来会让人以为是实时算的。
+   与 `.offline-banner`（LLM 走预录磁带）是两回事，两者可能同时出现。 */
+.snapshot-banner {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  padding: 6px 14px;
+  background: #fffbe6;
+  border-bottom: 1px solid #ffe58f;
+  color: #874d00;
+  font-size: var(--fs-xs);
+}
+.snapshot-banner strong { flex: none; }
+
+/* 空状态说明。**不是装饰**：一块区域静默消失的话，看的人分不出
+   「还没做」和「本来就没内容」——而这两件事该说的话完全不同。
+   见 `Narrative.tsx::ExtractorComparison` 上方那段说明。 */
+.empty-note {
+  margin: 6px 0;
+  padding: 8px 10px;
+  border-left: 2px solid var(--line-strong);
+  background: var(--bg-soft);
+  color: var(--ink-2);
+  font-size: var(--fs-xs);
+  line-height: var(--lh);
+}
+.empty-note b { color: var(--ink); }
+.empty-note code {
+  display: inline-block;
+  margin: 0 3px;
+  padding: 1px 5px;
+  background: #fff;
+  border: 1px solid var(--line-strong);
+  border-radius: 3px;
+  font-family: var(--mono);
+  font-size: var(--fs-meta);
+}
+
+/* ---- 派生格与派生面板 ----
+   派生值**不是年报原文**，出处是另外几行。网格上必须一眼看得出来，
+   否则看的人会以为「毛利率 5.45%」也能点回某一页年报——而那一页不存在。
+   用的手段很轻：左上角一个小三角。加底色或换字重都会让本来就很密的
+   91×10 网格更花。 */
+.cell-derived .cell-button::before,
+.cell-derived-empty .cell-button::before {
+  content: '▸';
+  font-size: 8px;
+  vertical-align: super;
+  color: var(--link);
+  margin-right: 2px;
+}
+.cell-derived-empty .cell-button { color: var(--ink-4); }
+
+.derived-modal { max-width: 720px; }
+.derived-modal .modal-head { display: flex; align-items: baseline; gap: 10px; }
+.derived-modal .modal-head .link-btn { margin-left: auto; }
+
+.derived-note {
+  margin: 0 0 10px;
+  padding: 7px 10px;
+  background: var(--bg-soft);
+  border-left: 2px solid var(--link);
+  font-size: var(--fs-xs);
+  line-height: var(--lh);
+  color: var(--ink-2);
+}
+.derived-note b { color: var(--ink); }
+
+.derived-block { margin-bottom: 12px; }
+.derived-block h4 {
+  margin: 0 0 4px;
+  font-size: var(--fs-xs);
+  color: var(--ink-3);
+  font-weight: 600;
+}
+.derived-formula {
+  margin: 0;
+  padding: 6px 9px;
+  background: var(--bg-soft);
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  font-family: var(--mono);
+  font-size: var(--fs-xs);
+  line-height: var(--lh);
+}
+.derived-inputs th {
+  text-align: left;
+  font-weight: 400;
+  color: var(--ink-2);
+  padding: 3px 10px 3px 0;
+  font-size: var(--fs-xs);
+}
+.derived-inputs td { padding: 3px 0; font-size: var(--fs-xs); }
+
+.derived-sources { list-style: none; margin: 0; padding: 0; }
+.derived-sources li {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 5px 0;
+  border-bottom: 1px solid var(--line);
+  font-size: var(--fs-xs);
+}
+.derived-sources .src-page { color: var(--ink-3); font-size: var(--fs-meta); margin-left: auto; }
+
+/* 拒绝时的理由**摆在显眼处**：它是这一格的全部信息，不是脚注 */
+.derived-refused p {
+  margin: 0;
+  padding: 7px 10px;
+  background: #fff7e6;
+  border-left: 2px solid var(--warn);
+  font-size: var(--fs-xs);
+  line-height: var(--lh);
+  color: var(--ink-2);
 }

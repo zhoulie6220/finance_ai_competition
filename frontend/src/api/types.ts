@@ -111,6 +111,29 @@ export interface FactCell {
   change_refused: string | null
   change_formula: string | null
   change_inputs: Record<string, string>
+
+  // ---- 派生格专用 ----
+  // ⚠ **派生值不是年报原文**，它的 fact_id / source_page 都是 null，
+  //   出处是 derived_sources 里那几行。前端据此把这类格子画得和
+  //   「从年报抄来的」明显不同——不区分的话，看的人会以为
+  //   「毛利率 5.45%」也是从年报某一页抄下来的。
+  derived: boolean
+  derived_formula: string | null
+  derived_inputs: Record<string, string>
+  derived_sources: DerivedSource[]
+  /** 算不出来的原因。有 derived=true 但值为空时，这里必有理由 */
+  derived_refused: string | null
+}
+
+/** 派生值的一个输入行。点开派生格时逐行显示，每行还能再点回它自己的年报页。 */
+export interface DerivedSource {
+  metric_key: string
+  label_cn: string
+  period: string
+  /** 点回原文靠它。为空说明这一行自己也定位不到出处 */
+  fact_id: string | null
+  value: string | null
+  source_page: number | null
 }
 
 export interface FactGridRow {
@@ -343,6 +366,42 @@ export interface IndexComponents {
   quality: string | null
 }
 
+/** `GET /narrative/index/components/{key}` 的一条构成记录。
+ *  形状统一——主张 / 风险项 / 模板判定 / 质量检查都走这一套。 */
+export interface ComponentEvidenceRow {
+  kind: 'claim' | 'risk' | 'template' | 'quality'
+  /** 记录本身：主张原文（截断到 160 字）、风险项名、检查项名 */
+  label: string
+  detail: string
+  /** 对分项的贡献：H/C 是 s（+1/0/-1），R/P/Q 是结论或触发态 */
+  contribution: string
+  period: string | null
+  report_period: string | null
+  /** 主判据的中文名 */
+  metric_label: string | null
+  source_page: number | null
+  /** 人工录入的项指向会计抄录的原文片段 */
+  source_text: string | null
+  reviewer: string | null
+  claim_id: string | null
+  fact_id: string | null
+  formula: string | null
+  /** 代入公式的数。**后端原样给，前端不重算** */
+  inputs: string[]
+  verdict: string | null
+}
+
+export interface ComponentDetail {
+  project_id: string
+  key: string
+  label_cn: string
+  rows: ComponentEvidenceRow[]
+  total: number
+  /** 截断了要显式说——不说的话页面像「一共就这么多条」，而分母是全量 */
+  truncated: boolean
+  note: string | null
+}
+
 export interface NarrativeIndex {
   project_id: string
   status: 'scored' | 'insufficient_evidence'
@@ -375,6 +434,28 @@ export interface NarrativeIndex {
     /** 后端给的实测值，如「49/67 = 0.731343」 */
     detail: string
   }[]
+  /**
+   * Q2 逐对比较的进度，如「8/9 组比较已完成，1 组待核查」。
+   *
+   * ⚠ **只作展示，不参与闸门判定。** 会计 2026-10-06 答复原话：
+   * 「页面可以另外展示『8/9组比较已完成，1组因原始披露缺失待核查』，
+   * 但不能直接剔除分母后作为正式 Q 值」。
+   * 所以这里显示进度，闸门那边 Q 仍然是不完整、指数照样不出分——
+   * 一个是「做到哪一步了」，一个是「能不能出正式分数」。
+   */
+  q2_progress: {
+    done: number
+    total: number
+    /** 后端拼好的一句话，前端不重算 */
+    line: string
+    pairs: {
+      prior: string
+      current: string
+      status: string
+      done: boolean
+      reason: string | null
+    }[]
+  } | null
   insufficient_reason: string | null
   formula: string
   conclusion_boundary: string

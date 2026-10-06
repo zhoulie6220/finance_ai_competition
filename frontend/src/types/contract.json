@@ -5677,6 +5677,66 @@
       "title": "项目卡片",
       "type": "object"
     },
+    "DerivedSourceView": {
+      "description": "派生值的一个输入行。\n\n**派生格的出处是几行，不是某一句原文。** 「毛利率 5.45%」在年报里找不到\n出处——它的出处是「营业收入」和「营业成本」那两行。所以这里给的是\n每一行的**字段、期间、页码与那一行自己的原文片段**，界面上点开\n逐行显示，每一行都能再点回它自己的年报页。\n\n少了 `fact_id` 或 `source_page`，这一行就点不回去了——而「点不回去」\n和「这一行本来就没有出处」在界面上长得一样。",
+      "properties": {
+        "metric_key": {
+          "title": "Metric Key",
+          "type": "string"
+        },
+        "label_cn": {
+          "title": "Label Cn",
+          "type": "string"
+        },
+        "period": {
+          "title": "Period",
+          "type": "string"
+        },
+        "fact_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Fact Id"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Value"
+        },
+        "source_page": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Page"
+        }
+      },
+      "required": [
+        "metric_key",
+        "label_cn",
+        "period"
+      ],
+      "title": "派生输入行",
+      "type": "object"
+    },
     "FactCellView": {
       "description": "财务事实网格里的一格。\n\n**没有数据也有一格**，此时 `status='not_found'` 且 `fact_id` 为空——\n缺失用「格子是空的」表达，而不是「这一行不存在」。后者在页面上与\n「这家公司没披露这一项」长得一模一样，但成因完全不同。\n\n`change` 是**后端算好的**同比增长率（相对上一列）。前端拿它画一根\n红涨绿跌的柱子，**不自己算**——浏览器里算的东西没法审计，而\n「计算可复算」是这个项目的硬要求。算不出时 `change` 为 null，\n原因写在 `change_refused` 里（缺上期 / 不可比 / 基期为负 …）。",
       "properties": {
@@ -5842,6 +5902,54 @@
           },
           "title": "Change Inputs",
           "type": "object"
+        },
+        "derived": {
+          "default": false,
+          "description": "True = 这一格是引擎算出来的，不是年报上的数",
+          "title": "Derived",
+          "type": "boolean"
+        },
+        "derived_formula": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "算式原文，如「毛利率 = 毛利 ÷ 营业收入 × 100」",
+          "title": "Derived Formula"
+        },
+        "derived_inputs": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "代入公式的数（中文键名）",
+          "title": "Derived Inputs",
+          "type": "object"
+        },
+        "derived_sources": {
+          "description": "参与计算的每一行。**派生值的出处是这几行，不是一页原文**",
+          "items": {
+            "$ref": "#/$defs/DerivedSourceView"
+          },
+          "title": "Derived Sources",
+          "type": "array"
+        },
+        "derived_refused": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "算不出来的原因（缺哪个字段 / 口径未定）。**有理由和没理由是两回事**：缺一个字段和这个指标压根不适用，该做的事完全不同。有 `derived=true` 但值为空时，这里必有理由",
+          "title": "Derived Refused"
         }
       },
       "required": [
@@ -5879,7 +5987,7 @@
         },
         "filled": {
           "default": 0,
-          "description": "有值的年度数。**后端数出来的**，前端不重算。91 个指标里有近一半整列是空的（还没采集），不标出来的话点进走势图是一张空图，看起来像系统坏了",
+          "description": "有值的年度数。**后端数出来的**，前端不重算。部分指标整列为空（尚未纳入采集范围），不标出来的话点进走势图是一张空图，看起来像系统坏了",
           "title": "Filled",
           "type": "integer"
         }
@@ -6192,7 +6300,7 @@
       "type": "object"
     },
     "PageDetailView": {
-      "description": "年报的一页正文（`GET /api/pages/{id}`、`GET /api/facts/{id}/page`）。\n\n返回的是**已抽取的正文**而不是 PDF 切片：样例 PDF 有几十 MB，被 .gitignore\n挡在仓库外，评委 clone 下来根本没有那些文件。正文在库里、能全文检索、\n能高亮，比 PDF 更好用。\n\n`prev_page_id` / `next_page_id` 由**后端**给出。前端不自己拼 id——\n那种隐式约定一旦和后端的 id 生成规则分叉，表现为「翻页点了没反应」，\n而且不报错。",
+      "description": "年报的一页正文（`GET /api/pages/{id}`、`GET /api/facts/{id}/page`）。\n\n返回的是**已抽取的正文**而不是 PDF 切片：年报 PDF 有几十 MB，\n不随资料包分发。正文在库里、能全文检索、能高亮，比 PDF 更好用。\n\n`prev_page_id` / `next_page_id` 由**后端**给出。前端不自己拼 id——\n那种隐式约定一旦和后端的 id 生成规则分叉，表现为「翻页点了没反应」，\n而且不报错。",
       "properties": {
         "page_id": {
           "title": "Page Id",
@@ -7238,6 +7346,81 @@
       "title": "闸门条件",
       "type": "object"
     },
+    "Q2PairView": {
+      "description": "Q2 的一对比较年度。\n\nQ2 的判据要逐对比（2015,2016）…（2023,2024），所以「Q 不可算」这句话\n背后可能是「9 对里 1 对判不了」，也可能是「一对都没有数据」——\n**两者的含义完全不同**，页面必须分得开。",
+      "properties": {
+        "prior": {
+          "title": "Prior",
+          "type": "string"
+        },
+        "current": {
+          "title": "Current",
+          "type": "string"
+        },
+        "status": {
+          "description": "triggered / not_triggered / unavailable / needs_review",
+          "title": "Status",
+          "type": "string"
+        },
+        "done": {
+          "description": "拿到了 triggered / not_triggered 才算判得了",
+          "title": "Done",
+          "type": "boolean"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reason"
+        }
+      },
+      "required": [
+        "prior",
+        "current",
+        "status",
+        "done"
+      ],
+      "title": "Q2 比较年度",
+      "type": "object"
+    },
+    "Q2ProgressView": {
+      "description": "Q2 的比较进度。\n\n**2026-10-06 会计答复明确要求页面展示这个**（原话：\n「页面可以另外展示『8/9组比较已完成，1组因原始披露缺失待核查』，\n但不能直接剔除分母后作为正式 Q 值」）。\n\n所以这个视图是**展示用**的，**不参与闸门判定**——\n闸门那边 Q 仍然是「不完整」，指数照样不出分。两者不矛盾：\n一个是「我们做到哪一步了」，一个是「能不能出正式分数」。",
+      "properties": {
+        "done": {
+          "title": "Done",
+          "type": "integer"
+        },
+        "total": {
+          "title": "Total",
+          "type": "integer"
+        },
+        "line": {
+          "description": "一句话，如「8/9 组比较已完成，1 组待核查」",
+          "title": "Line",
+          "type": "string"
+        },
+        "pairs": {
+          "items": {
+            "$ref": "#/$defs/Q2PairView"
+          },
+          "title": "Pairs",
+          "type": "array"
+        }
+      },
+      "required": [
+        "done",
+        "total",
+        "line"
+      ],
+      "title": "Q2 比较进度",
+      "type": "object"
+    },
     "NarrativeIndexView": {
       "description": "`GET /api/projects/{id}/narrative/index` 的响应。\n\n闸门不过时 `score` 是 **null**，并附逐条的未满足条件。页面据此显示\n「证据不足，不出分」——**绝不用 0 分或 50 分代替**：分母没变、权重照乘，\n那个分数看起来和完整版一模一样，而它缺了整整 30 分权重的构成项。",
       "properties": {
@@ -7292,6 +7475,18 @@
           },
           "title": "Gate",
           "type": "array"
+        },
+        "q2_progress": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Q2ProgressView"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Q2 逐对比较的进度。**只作展示，不参与闸门**"
         },
         "insufficient_reason": {
           "anyOf": [

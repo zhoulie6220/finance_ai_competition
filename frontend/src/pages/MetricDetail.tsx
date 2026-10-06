@@ -5,6 +5,7 @@ import { useApi } from '../api/client'
 import type { FactCell, FactGrid, FactGridRow } from '../api/types'
 import AsyncBoundary from '../components/AsyncBoundary'
 import { EChart } from '../components/EChart'
+import DerivedModal from '../components/DerivedModal'
 import EvidenceModal from '../components/EvidenceModal'
 import { formatRatio, groupDigits } from '../format'
 import { PRICE } from '../theme/colors'
@@ -34,6 +35,11 @@ export default function MetricDetail() {
     metricKey: string
   }>()
   const [factId, setFactId] = useState<string | null>(null)
+  const [derived, setDerived] = useState<{
+    label: string
+    period: string
+    cell: FactCell
+  } | null>(null)
 
   const grid = useApi<FactGrid>(
     projectId ? `/projects/${projectId}/fact-grid` : null,
@@ -76,9 +82,9 @@ export default function MetricDetail() {
             {row.filled === 0 && (
               <div className="async-state async-empty">
                 <div className="async-detail">
-                  <b>这一项还没采集。</b>
-                  91 个指标里有近一半是空的——不是这家公司没披露，
-                  是解析阶段还没覆盖到它。左边下拉里标着「未采集」的都是这一类。
+                  <b>该指标当前没有数据。</b>
+                  这表示它<b>尚未纳入采集范围</b>，
+                  <b>不代表公司没有披露这一项</b>。左边下拉里标「未采集」的都是这一类。
                 </div>
               </div>
             )}
@@ -124,7 +130,9 @@ export default function MetricDetail() {
                           period={p}
                           cell={row.cells[p]}
                           percent={row.unit_kind === 'percent'}
+                          metricLabel={row.label_cn}
                           onOpen={setFactId}
+                          onOpenDerived={setDerived}
                         />
                       ))}
                     </tbody>
@@ -137,24 +145,73 @@ export default function MetricDetail() {
       </AsyncBoundary>
 
       <EvidenceModal factId={factId} onClose={() => setFactId(null)} />
+      {derived && (
+        <DerivedModal
+          metricLabel={derived.label}
+          period={derived.period}
+          cell={derived.cell}
+          onClose={() => setDerived(null)}
+          onOpenFact={(id) => {
+            setDerived(null)
+            setFactId(id)
+          }}
+        />
+      )}
     </div>
   )
 }
 
 // ---------------------------------------------------------------- 明细行
 
+const dirOf = (c: FactCell) => c.change_dir
+const colorOf = (c: FactCell) =>
+  c.change_dir === 'up' ? PRICE.up : c.change_dir === 'down' ? PRICE.down : PRICE.flat
+const wordOf = (c: FactCell) =>
+  c.change_dir === 'up' ? '增加' : c.change_dir === 'down' ? '减少' : '基本持平'
+
 function Row({
   period,
   cell,
   percent,
+  metricLabel,
   onOpen,
+  onOpenDerived,
 }: {
   period: string
   cell: FactCell | undefined
   percent: boolean
+  metricLabel: string
   onOpen: (id: string) => void
+  onOpenDerived: (d: { label: string; period: string; cell: FactCell }) => void
 }) {
   const show = (v: string) => (percent ? formatRatio(v) : groupDigits(v))
+
+  // ⚠ **派生格走另一条路。** 它没有年报出处，写成「未在年报中定位到」
+  //   是**说错了**——那一格不是找不到，是我们算的。
+  if (cell?.derived) {
+    return (
+      <tr>
+        <td className="mono">{period}</td>
+        <td className="num cell-derived">
+          <button
+            type="button"
+            className="cell-button"
+            onClick={() => onOpenDerived({ label: metricLabel, period, cell })}
+            title="派生值，非年报原文。点开看算式与参与计算的记录"
+          >
+            {cell.value === null ? '—' : show(cell.value)}
+          </button>
+        </td>
+        <td className="num mono" style={dirOf(cell) ? { color: colorOf(cell) } : undefined}>
+          {cell.change ? `${wordOf(cell)} ${formatRatio(cell.change)}` : '—'}
+        </td>
+        <td className="msg">{cell.derived_refused ?? cell.derived_formula ?? ''}</td>
+        <td className="msg">
+          <b>派生值</b>，出处是参与计算的那几行
+        </td>
+      </tr>
+    )
+  }
 
   if (!cell || cell.status === 'not_found' || cell.value === null) {
     return (
