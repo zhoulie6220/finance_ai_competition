@@ -48,6 +48,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import re
 import sqlite3
 import sys
 from pathlib import Path
@@ -646,6 +647,46 @@ def _write_preserving(path: Path, fieldnames: list[str], rows: list[dict]) -> No
             w.writerow([r.get(c, "") for c in fieldnames])
 
 
+#: 页码：单个页 `113`、跨页 `113-114`（全角连字符也收），
+#: 后面可以再跟一句括注，如 `130（宝钢2016年报）`。
+#:
+#: ⚠ 两种尾巴都是**真实填过的**，而且都带信息：
+#:
+#:   · 跨页（`113-114`）——宝钢 2015/2016/2018/2022、华菱 2022 的账龄表都跨两页。
+#:     这曾经是一个「校验放过、导入崩溃」的缺口：`_check_q2` 压根没看
+#:     `source_page`，而 `_import` 里是裸的 `int(...)`，于是 5 行 `113-114`
+#:     一路通过校验、最后抛 `ValueError`——会计看到的是「校验通过」
+#:     紧跟一堆报错，而错误信息里没有一个字说得出是哪一列。
+#:   · 括注（`130（宝钢2016年报）`）——**这一页在另一份年报里**。
+#:     宝钢 2015 的全口径账龄是印在 2016 年报的「年初余额」列里的，
+#:     不把这个说明留住，复核的人拿 2015 年报翻到 130 页会什么都找不到。
+_PAGE_RE = re.compile(r"^\d{1,4}(\s*[-–—]\s*\d{1,4})?(\s*[（(].*[）)])?$")
+
+
+def _page_value(raw: str) -> tuple[int | None, str | None]:
+    """页码 → `(入库的整数页, 要补进 note 的说明)`。
+
+    跨页时入库的是**起始页**（证据链点过去落在账龄表的第一页），
+    而「这张表还印到了哪一页」写进 note——**不能只留起始页就完事**：
+    复核的人按起始页翻过去，会发现「1 年以上」那几行其实在下一页。
+    括注同理：它说的是「这一页在哪份年报里」，丢了就找不到原件。
+    """
+    v = (raw or "").strip()
+    if not v:
+        return None, None
+    m = re.match(r"^(\d{1,4})\s*[-–—]\s*(\d{1,4})\s*(.*)$", v)
+    if m:
+        note = f"该表跨页：{m.group(1)}–{m.group(2)}"
+        if m.group(3).strip():
+            note += f"；{m.group(3).strip()}"
+        return int(m.group(1)), note
+    m = re.match(r"^(\d{1,4})\s*(.*)$", v)
+    if m:
+        tail = m.group(2).strip()
+        return int(m.group(1)), (f"来源说明：{tail}" if tail else None)
+    return None, None
+
+
 def _check_q2(row: dict) -> list[str]:
     out: list[str] = []
     status = (row.get("status") or "").strip()
@@ -661,6 +702,14 @@ def _check_q2(row: dict) -> list[str]:
                 out.append(str(e))
     if status in ("unavailable_disclosure", "needs_review") and not (row.get("note") or "").strip():
         out.append(f"status={status} 必须填 note 说明原因")
+    # 页码格式。**这一条的来历**：会计填了 5 行跨页（`113-114`），
+    # 校验一声不响地放过去，直到写库才崩在 `int('113-114')` 上。
+    page = (row.get("source_page") or "").strip()
+    if page and not _PAGE_RE.match(page):
+        out.append(
+            f"source_page 取值 {page!r} 认不出来，只能填单个页码（`113`）"
+            f"或跨页区间（`113-114`）"
+        )
     return out
 
 
@@ -676,6 +725,14 @@ def _check_r(row: dict) -> list[str]:
                 out.append(f"判为 sufficient 但 {col} 是空的（三项要素缺一不可）")
     if conclusion == "not_applicable" and not (row.get("evidence") or "").strip():
         out.append("判为 not_applicable 必须在 evidence 里写业务范围证据")
+    # 页码格式同 Q2：`int()` 崩在写库那一步、校验却放过去，
+    # 会计看到的是「校验通过」紧跟着一个 traceback。见 `_PAGE_RE` 的说明。
+    page = (row.get("source_page") or "").strip()
+    if page and not _PAGE_RE.match(page):
+        out.append(
+            f"source_page 取值 {page!r} 认不出来，只能填单个页码（`113`）"
+            f"或跨页区间（`113-114`）"
+        )
     return out
 
 
@@ -703,6 +760,11 @@ def _import(con: sqlite3.Connection, parsed: dict[str, list[dict]]) -> tuple[int
     p_dropped = 0
     with con:
         for row in parsed.get("Q2_账龄.csv", []):
+            page, page_note = _page_value(row.get("source_page", ""))
+            note = row.get("note") or None
+            if page_note:
+                # 跨页说明**追加**而不是覆盖：会计自己写的 note 不能丢。
+                note = f"{note}；{page_note}" if note else page_note
             con.execute(
                 "INSERT INTO q2_aging (id, project_id, period, scope,"
                 " receivable_gross, over_one_year, revenue, source_page,"
@@ -720,10 +782,10 @@ def _import(con: sqlite3.Connection, parsed: dict[str, list[dict]]) -> tuple[int
                     _num(row.get("receivable_gross", ""), "receivable_gross"),
                     _num(row.get("over_one_year", ""), "over_one_year"),
                     _num(row.get("revenue", ""), "revenue"),
-                    int(row["source_page"]) if (row.get("source_page") or "").strip() else None,
+                    page,
                     row.get("source_text") or None,
                     (row.get("status") or "pending").strip(),
-                    row.get("note") or None,
+                    note,
                     row.get("reviewer") or None,
                     now,
                 ),
@@ -749,7 +811,7 @@ def _import(con: sqlite3.Connection, parsed: dict[str, list[dict]]) -> tuple[int
                     row.get("evidence") or None,
                     row.get("mitigation") or None,
                     (row.get("conclusion") or "pending").strip(),
-                    int(row["source_page"]) if (row.get("source_page") or "").strip() else None,
+                    _page_value(row.get("source_page", ""))[0],
                     row.get("reviewer") or None,
                     now,
                 ),
