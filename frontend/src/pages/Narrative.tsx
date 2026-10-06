@@ -13,7 +13,7 @@ import type {
 } from '../api/types'
 import AsyncBoundary from '../components/AsyncBoundary'
 import ErrorBoundary from '../components/ErrorBoundary'
-import EvidenceDrawer from '../components/EvidenceDrawer'
+import EvidenceModal from '../components/EvidenceModal'
 import { CHECK, SEVERITY, VERDICT } from '../theme/colors'
 import { groupDigits } from '../format'
 
@@ -73,6 +73,8 @@ export default function Narrative() {
         {index.data && <IndexCard data={index.data} />}
       </AsyncBoundary>
 
+      <VerdictBars counts={matches.data?.counts ?? null} />
+
       <section className="panel">
         <h3>
           主张—事实对照表
@@ -102,6 +104,8 @@ export default function Narrative() {
           )}
         </AsyncBoundary>
       </section>
+
+      <ThemeBars stats={claims.data?.stats ?? null} />
 
       <section className="panel">
         <h3>
@@ -149,7 +153,7 @@ export default function Narrative() {
         </AsyncBoundary>
       </section>
 
-      <EvidenceDrawer factId={factId} onClose={() => setFactId(null)} />
+      <EvidenceModal factId={factId} onClose={() => setFactId(null)} />
     </div>
     </ErrorBoundary>
   )
@@ -329,6 +333,138 @@ function ComponentTable({ data }: { data: NarrativeIndex }) {
 }
 
 // ---------------------------------------------------------------- 对照表
+
+/**
+ * 横向柱状图：一行一个类目，条长按**后端给的计数**换算。
+ *
+ * ⚠ **条长是「呈现」不是「计算」。** 条右端标的数字是后端原样给的绝对条数，
+ * 没有任何财务数字在浏览器里被算出来。这是仓库里已有的判据：
+ * `format.ts` 允许把 0.0742 显示成 7.42%，理由是「只是把同一张脸换成另一种
+ * 写法，不产生新信息」。
+ *
+ * ⚠ 红线：**不许把比例打成文字**。写成「相悖 27.9%」的那一刻，它就成了
+ * 一个前端算出来、还会被评审引用进材料里的新数字——性质立刻变了。
+ */
+function Bars({
+  rows,
+}: {
+  rows: { label: string; n: number; color: string }[]
+}) {
+  const max = Math.max(1, ...rows.map((r) => r.n))
+  return (
+    <div className="bars">
+      {rows.map((r) => (
+        <div className="bar-row" key={r.label}>
+          <span className="bar-label">{r.label}</span>
+          <span className="bar-track">
+            <i style={{ width: `${(r.n / max) * 100}%`, background: r.color }} />
+          </span>
+          <span className="bar-n">{r.n}</span>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+/** 判定分布。与下面那张表是同一批数据：柱状看绝对量，表看逐条。 */
+function VerdictBars({ counts }: { counts: Record<string, number> | null }) {
+  if (!counts) return null
+
+  const order: Verdict[] = [
+    'unverifiable', 'contradicted', 'supported', 'needs_review', 'neutral',
+    'incomparable',
+  ]
+  // ⚠ `counts` 里**不含取值为 0 的 verdict**（后端是 GROUP BY 出来的），
+  // 所以一律 `?? 0`。少了兜底的话，某种判定整行消失，而页面上看起来
+  // 「就是这几种」——一个不报错的错。
+  const rows = order
+    .filter((v) => (counts[v] ?? 0) > 0)
+    .map((v) => ({
+      label: VERDICT[v].label,
+      n: counts[v] ?? 0,
+      color: VERDICT[v].color,
+    }))
+
+  const total = rows.reduce((sum, r) => sum + r.n, 0)
+  if (!rows.length) return null
+
+  return (
+    <section className="panel">
+      <h3>
+        判定分布
+        <span className="subtitle">
+          共 {total} 条 · 条长按条数，颜色与下方判定表一致
+        </span>
+      </h3>
+      <Bars rows={rows} />
+      <div style={{ marginTop: 12 }}>
+        <div className="dist-bar">
+          {order
+            .filter((v) => (counts[v] ?? 0) > 0)
+            .map((v) => (
+              // 段宽由 flex-grow 按原始条数分配——前端一行算术都没写
+              <i
+                key={v}
+                style={
+                  {
+                    ['--n' as string]: counts[v] ?? 0,
+                    ['--c' as string]: VERDICT[v].color,
+                  } as React.CSSProperties
+                }
+                title={`${VERDICT[v].label} ${counts[v] ?? 0}`}
+              />
+            ))}
+        </div>
+        <p className="hint" style={{ marginTop: 6 }}>
+          上面是逐类目的绝对条数，这一条是同一批数据的堆叠视图（看占比）。
+          点下方判定表的图例可以筛选。
+        </p>
+      </div>
+    </section>
+  )
+}
+
+/** 主张主题分布。数据是后端 `GROUP BY claim_type` 算好的计数。 */
+function ThemeBars({ stats }: { stats: ClaimsResponse['stats'] | null }) {
+  if (!stats) return null
+
+  const rows = Object.entries(stats.by_type ?? {})
+    .sort((a, b) => b[1] - a[1])
+    // 主题没有语义色——它们不是判定结果，用同一族中性蓝即可。
+    // ⚠ 别给主题配红绿：那会和判定的语义色撞成第三个体系。
+    .map(([type, n]) => ({
+      label: CLAIM_TYPE_LABELS[type] ?? type,
+      n,
+      color: '#4a7fd4',
+    }))
+
+  if (!rows.length) return null
+
+  return (
+    <section className="panel">
+      <h3>
+        主张主题分布
+        <span className="subtitle">
+          共 {stats.total} 条主张 · 主题取自字段字典的判据表
+        </span>
+      </h3>
+      <Bars rows={rows} />
+    </section>
+  )
+}
+
+/** 主题的中文名。后端给的是键，页面要给人看。 */
+const CLAIM_TYPE_LABELS: Record<string, string> = {
+  demand: '需求与产销',
+  order: '订单',
+  capacity: '产能与项目',
+  collection: '回款与应收',
+  product_mix: '产品结构',
+  cost: '降本增效',
+  risk: '风险与环保',
+  macro: '宏观与行业',
+  other: '其他',
+}
 
 function VerdictFilter({
   counts,

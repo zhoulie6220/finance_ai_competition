@@ -123,6 +123,11 @@ class FactCellView(BaseModel):
     **没有数据也有一格**，此时 `status='not_found'` 且 `fact_id` 为空——
     缺失用「格子是空的」表达，而不是「这一行不存在」。后者在页面上与
     「这家公司没披露这一项」长得一模一样，但成因完全不同。
+
+    `change` 是**后端算好的**同比增长率（相对上一列）。前端拿它画一根
+    红涨绿跌的柱子，**不自己算**——浏览器里算的东西没法审计，而
+    「计算可复算」是这个项目的硬要求。算不出时 `change` 为 null，
+    原因写在 `change_refused` 里（缺上期 / 不可比 / 基期为负 …）。
     """
 
     model_config = ConfigDict(title="事实格")
@@ -137,6 +142,20 @@ class FactCellView(BaseModel):
     source_file: str | None = None
     source_page: int | None = None
     confidence: float | None = None
+    change: str | None = Field(
+        default=None,
+        description="同比增长率（相对上一列，后端算好）。算不出时为 null",
+    )
+    change_dir: str | None = Field(
+        default=None,
+        description="`up` 比上年增加 / `down` 减少 / `flat` 基本持平。"
+                    "**前端按它上色：红增绿减（A 股惯例）**",
+    )
+    change_refused: str | None = Field(
+        default=None, description="算不出同比的原因。能算时为 null",
+    )
+    change_formula: str | None = None
+    change_inputs: dict[str, str] = Field(default_factory=dict)
 
 
 class FactGridRowView(BaseModel):

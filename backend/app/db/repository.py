@@ -18,7 +18,10 @@
 from __future__ import annotations
 
 import sqlite3
+from decimal import Decimal, InvalidOperation
 from typing import Any
+
+from app.engine.ratios import yoy_growth
 
 # ---------------------------------------------------------------- 项目
 
@@ -155,6 +158,8 @@ def fact_grid(
         params,
     ).fetchall()
 
+    periods: list[str] = project["fiscal_years"]
+
     metrics: dict[str, dict[str, Any]] = {}
     for r in rows:
         entry = metrics.get(r["metric_key"])
@@ -181,13 +186,100 @@ def fact_grid(
             "confidence": r["confidence"],
         }
 
+    # ---- 逐格补「比上年」的同比 ------------------------------------------
+    #
+    # ⚠ **同比必须在后端算，前端只渲染。** 这是项目铁律里最硬的一条：
+    # 浏览器里算的东西没法审计，而「计算可复算、过程可追溯」是比赛的硬要求。
+    # 页面上那根红绿柱子的长度，就是这一层算出来的 `change`。
+    #
+    # 用现成的 `engine.ratios.yoy_growth`，不另写一套：它已经处理了四种拒绝
+    # 情形（缺值 / 口径不一致 / 期间不连续 / 基期 ≤ 0），而且每种都带
+    # `formula` 与 `inputs`——那是「点结论回到计算过程」的唯一路径。
+    for entry in metrics.values():
+        cells = entry["cells"]
+        for i, period in enumerate(periods):
+            cell = cells.get(period)
+            if cell is None:
+                continue
+            # 上期取**网格里紧邻的前一个年度**，不是「年份减一」——
+            # 华菱/首钢只有 2022–2024，2022 没有上期，直接不出同比。
+            prev = periods[i - 1] if i > 0 else None
+            prev_cell = cells.get(prev) if prev else None
+            change, direction, refused, formula, inputs = _cell_yoy(
+                prev_cell, cell, prev, period
+            )
+            cell["change"] = change
+            cell["change_dir"] = direction
+            cell["change_refused"] = refused
+            cell["change_formula"] = formula
+            cell["change_inputs"] = inputs
+
     return {
         "project_id": project_id,
         "company_name": project["company_name"],
         "scope": scope,
-        "periods": project["fiscal_years"],
+        "periods": periods,
         "metrics": list(metrics.values()),
     }
+
+
+def _cell_yoy(
+    prev_cell: dict[str, Any] | None,
+    cell: dict[str, Any],
+    prev_period: str | None,
+    period: str,
+) -> tuple[str | None, str | None, str | None, str | None, dict[str, str]]:
+    """一格的同比。返回 (增长率, 方向, 拒绝原因, 算式, 代入的数)。
+
+    `direction` 是给前端上色用的（**红增绿减**，A 股惯例），取值
+    `up` / `down` / `flat`；拒绝时是 None，前端就不画柱子。
+
+    ⚠ **不可比的格子不出同比。** 口径不一致时算出来的增长率看起来很真，
+    而它正是本项目反复要挡的东西。
+    """
+    if prev_period is None:
+        # 网格的第一个年度没有上期。**这不是「拒绝」，是「没有可比的上期」**，
+        # 所以不给 refused 文案——写成「缺值」会让人以为数据有问题。
+        return None, None, None, None, {}
+
+    if prev_cell is None:
+        return (
+            None, None,
+            f"{prev_period} 不在本网格内，无上期可比",
+            None, {},
+        )
+
+    if not cell.get("comparable") or not prev_cell.get("comparable"):
+        return (
+            None, None,
+            "本期或上期标记为不可比，按规则不出增长率",
+            None, {},
+        )
+
+    def dec(raw: Any) -> Decimal | None:
+        if raw is None:
+            return None
+        try:
+            return Decimal(str(raw))
+        except InvalidOperation:
+            return None
+
+    result = yoy_growth(
+        dec(prev_cell.get("value")),
+        dec(cell.get("value")),
+        prev_period=prev_period,
+        curr_period=period,
+    )
+    if not result.ok or result.value is None:
+        return None, None, result.refused, result.formula, dict(result.inputs)
+
+    value = result.value
+    # 噪声区间：相对变化 ≤ 1% 判「基本持平」。
+    # ⚠ 阈值与 `rule_config.narrative.min_rel_change` 是同一个数，
+    # 但这里**故意写死**而不是去读配置：那个参数管的是主张判定的噪声带，
+    # 管的是「这句话算不算说了变化」；这里是**画柱子**，两件事不该互相牵动。
+    direction = "flat" if abs(value) <= Decimal("0.01") else ("up" if value > 0 else "down")
+    return str(value), direction, None, result.formula, dict(result.inputs)
 
 
 # ---------------------------------------------------------------- 单笔事实与原文

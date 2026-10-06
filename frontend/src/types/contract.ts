@@ -501,6 +501,11 @@ export interface ExtractorSummaryView {
  * **没有数据也有一格**，此时 `status='not_found'` 且 `fact_id` 为空——
  * 缺失用「格子是空的」表达，而不是「这一行不存在」。后者在页面上与
  * 「这家公司没披露这一项」长得一模一样，但成因完全不同。
+ * 
+ * `change` 是**后端算好的**同比增长率（相对上一列）。前端拿它画一根
+ * 红涨绿跌的柱子，**不自己算**——浏览器里算的东西没法审计，而
+ * 「计算可复算」是这个项目的硬要求。算不出时 `change` 为 null，
+ * 原因写在 `change_refused` 里（缺上期 / 不可比 / 基期为负 …）。
  */
 export interface FactCellView {
   fact_id?: string | null;
@@ -514,6 +519,14 @@ export interface FactCellView {
   source_file?: string | null;
   source_page?: number | null;
   confidence?: number | null;
+  /** 同比增长率（相对上一列，后端算好）。算不出时为 null */
+  change?: string | null;
+  /** `up` 比上年增加 / `down` 减少 / `flat` 基本持平。**前端按它上色：红增绿减（A 股惯例）** */
+  change_dir?: string | null;
+  /** 算不出同比的原因。能算时为 null */
+  change_refused?: string | null;
+  change_formula?: string | null;
+  change_inputs?: Record<string, string>;
 }
 
 /** 人工修正。只追加增量，旧行保留，绝不原地覆盖。 */

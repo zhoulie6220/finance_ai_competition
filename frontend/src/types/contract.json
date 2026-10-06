@@ -5678,7 +5678,7 @@
       "type": "object"
     },
     "FactCellView": {
-      "description": "财务事实网格里的一格。\n\n**没有数据也有一格**，此时 `status='not_found'` 且 `fact_id` 为空——\n缺失用「格子是空的」表达，而不是「这一行不存在」。后者在页面上与\n「这家公司没披露这一项」长得一模一样，但成因完全不同。",
+      "description": "财务事实网格里的一格。\n\n**没有数据也有一格**，此时 `status='not_found'` 且 `fact_id` 为空——\n缺失用「格子是空的」表达，而不是「这一行不存在」。后者在页面上与\n「这家公司没披露这一项」长得一模一样，但成因完全不同。\n\n`change` 是**后端算好的**同比增长率（相对上一列）。前端拿它画一根\n红涨绿跌的柱子，**不自己算**——浏览器里算的东西没法审计，而\n「计算可复算」是这个项目的硬要求。算不出时 `change` 为 null，\n原因写在 `change_refused` 里（缺上期 / 不可比 / 基期为负 …）。",
       "properties": {
         "fact_id": {
           "anyOf": [
@@ -5784,6 +5784,64 @@
           ],
           "default": null,
           "title": "Confidence"
+        },
+        "change": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "同比增长率（相对上一列，后端算好）。算不出时为 null",
+          "title": "Change"
+        },
+        "change_dir": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "`up` 比上年增加 / `down` 减少 / `flat` 基本持平。**前端按它上色：红增绿减（A 股惯例）**",
+          "title": "Change Dir"
+        },
+        "change_refused": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "算不出同比的原因。能算时为 null",
+          "title": "Change Refused"
+        },
+        "change_formula": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Change Formula"
+        },
+        "change_inputs": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Change Inputs",
+          "type": "object"
         }
       },
       "required": [

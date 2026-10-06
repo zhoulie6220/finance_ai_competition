@@ -93,6 +93,24 @@ export interface FactCell {
   source_file: string | null
   source_page: number | null
   confidence: number | null
+  /**
+   * **后端算好的**同比增长率（相对上一列）。
+   *
+   * ⚠ 前端只拿它画柱子，**不自己算**。项目铁律：同比、比率、估值一律由
+   * `backend/app/engine/` 算好返回——浏览器里算的东西没法审计，
+   * 而「计算可复算、过程可追溯」是比赛的硬要求。
+   */
+  change: string | null
+  /**
+   * `up` 比上年增加（红）/ `down` 减少（绿）/ `flat` 基本持平。
+   *
+   * ⚠ 这是**涨跌色**，与判定用的语义色是两套体系，见 `theme/colors.ts`。
+   */
+  change_dir: 'up' | 'down' | 'flat' | null
+  /** 算不出同比的原因。**第一个年度没有上期，这里也是 null**——那不是拒绝。 */
+  change_refused: string | null
+  change_formula: string | null
+  change_inputs: Record<string, string>
 }
 
 export interface FactGridRow {

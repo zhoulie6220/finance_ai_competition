@@ -11,10 +11,22 @@ import {
 import AsyncBoundary from './AsyncBoundary'
 
 /**
- * 证据抽屉：把一笔事实变成「文件 → 页码 → 原文」。
+ * 证据弹层：把一笔事实变成「文件 → 页码 → 原文」。
  *
  * 这是整个项目最重要的一块 UI，因为赛事要求的「过程可追溯」最终就落在它身上——
  * 任何结论都要能点回原文。docs/03 把这条写成了「证据链与任务时间线绝不砍」。
+ *
+ * ## 为什么是居中的弹层，不是右侧抽屉
+ *
+ * 点哪一格，界面就**从那一格向中间放大**出来。位置关系是看得见的：
+ * 「我点的是这里，弹出来的是这里的东西」。右侧滑出把这条线索切断了——
+ * 抽屉永远从右边来，和点的地方没关系。
+ *
+ * 实现只要一个 `transform-origin`（设到点击元素中心相对弹层的坐标）+ 一段
+ * 缩放开场，不需要 FLIP：这里只有缩放没有位移。
+ *
+ * ⚠ **关闭不做动画**，直接消失。这是明确要求的——关的时候人已经知道
+ * 自己在关什么了，再等 240ms 只是慢。
  *
  * 三条设计约束：
  *   1. **原文用抽取出来的正文，不用 PDF 切片。** 样例 PDF 有 94MB 且被
@@ -26,11 +38,14 @@ import AsyncBoundary from './AsyncBoundary'
  */
 
 interface Props {
+  /** 要显示的证据。null = 关着。 */
   factId: string | null
+  /** 触发它的那个元素。弹层从它的位置长出来；给 null 就从正中长出来。 */
+  anchor?: HTMLElement | null
   onClose: () => void
 }
 
-export default function EvidenceDrawer({ factId, onClose }: Props) {
+export default function EvidenceModal({ factId, anchor, onClose }: Props) {
   const fact = useApi<FactDetail>(factId ? `/facts/${factId}` : null)
   const [page, setPage] = useState<PageDetail | null>(null)
   const [pageError, setPageError] = useState<string | null>(null)
@@ -64,21 +79,59 @@ export default function EvidenceDrawer({ factId, onClose }: Props) {
     }
   }, [factId])
 
+  // ---- 开场的缩放动画 ----------------------------------------------------
+  //
+  // ⚠ 关闭**不要动画**（明确要求）。所以这里只处理开场：每次 factId 变化时
+  // 把弹层缩到最小、把 transform-origin 设到锚点，再摘掉 `growing` 让它长开。
+  //
+  // `transform-origin` 要的是**相对弹层自己**的坐标，不是视口坐标——
+  // 所以先量出弹层的 rect 再减。不这么算的话，弹层会从屏幕左上角某个
+  // 和点击处无关的地方长出来。
+  const box = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!factId) return
+    const el = box.current
+    if (!el) return
+    el.classList.add('growing')
+    const b = el.getBoundingClientRect()
+    const r = anchor?.getBoundingClientRect()
+    el.style.transformOrigin = r
+      ? `${r.left + r.width / 2 - b.left}px ${r.top + r.height / 2 - b.top}px`
+      : 'center center'
+    void el.offsetWidth      // 强制重排：让 growing 先生效，否则摘掉时没有过渡起点
+    el.classList.remove('growing')
+  }, [factId, anchor])
+
+  // Esc 关闭。弹层是全屏遮罩，不给键盘出口的话只能拿鼠标点。
+  useEffect(() => {
+    if (!factId) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose()
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [factId, onClose])
+
   if (!factId) return null
 
   return (
-    <div className="drawer-backdrop" onClick={onClose}>
-      <aside
-        className="drawer"
+    <div className="modal-backdrop" onClick={onClose}>
+      <div
+        ref={box}
+        className="modal growing"
         onClick={(e) => e.stopPropagation()}
+        role="dialog"
         aria-label="证据"
       >
-        <header className="drawer-head">
+        <header className="modal-head">
           <h3>证据链</h3>
           <button type="button" onClick={onClose} aria-label="关闭">
             ×
           </button>
         </header>
+
+        <div className="modal-body">
 
         <AsyncBoundary
           loading={fact.loading}
@@ -114,7 +167,8 @@ export default function EvidenceDrawer({ factId, onClose }: Props) {
             </>
           )}
         </AsyncBoundary>
-      </aside>
+        </div>
+      </div>
     </div>
   )
 }
@@ -123,7 +177,7 @@ export default function EvidenceDrawer({ factId, onClose }: Props) {
 
 function FactFields({ fact }: { fact: FactDetail }) {
   return (
-    <section className="drawer-section">
+    <section className="section">
       <div className="fact-headline">
         <span className="fact-label">{fact.metric}</span>
         <span className="fact-value">
@@ -221,7 +275,7 @@ function PageView({
   }, [page.page_id, parts.matched])
 
   return (
-    <section className="drawer-section">
+    <section className="section">
       <h4>年报原文</h4>
       <div className="page-meta">
         <span title={page.file_name}>{basename(page.file_name)}</span>

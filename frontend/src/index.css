@@ -1,883 +1,1045 @@
-* {
-  box-sizing: border-box;
+/* ============================================================================
+   全站样式。**唯一的样式入口**（main.tsx 里 import 本文件）。
+
+   两套视觉语言分层，这是刻意的，不是拼凑：
+
+     外壳（侧栏 / 顶栏 / 页面头 / 卡片）  → 宽松、圆角、浅灰、大留白
+     数据（网格 / 柱状图 / 判定表 / 指数） → 12px、等宽数字、零圆角、极细边框
+
+   分层有个硬约束撑着：数据区跟着外壳一起放宽，91 指标 × 10 年度的网格会
+   立刻撑爆 1400px，而录演示视频要求 100% 缩放、不横向滚动。
+   实测网格里最长的数字是 10 字符，12px 等宽下 10 列约 890px + 首列 226px。
+
+   ⚠ 颜色只有两处真源，别再加第三处：
+     · 表现令牌（字号 / 灰阶 / 线面）—— 本文件的 :root
+     · 语义色（判定 / 校验 / 严重度）—— theme/colors.ts
+       本文件里的 --ok / --bad / --warn / --mute / --info 是它的**镜像**，
+       改一边必须改另一边。
+   ========================================================================== */
+
+:root {
+  /* ---- 外壳 ---- */
+  --shell-bg:     #f9f9f9;
+  --shell-hover:  rgba(0, 0, 0, 0.04);
+  --shell-select: rgba(0, 0, 0, 0.07);
+  --shell-line:   #ececec;
+  --fs-shell: 14px;   /* 侧栏与顶栏 */
+  --fs-h1:    22px;   /* 页面主标题 */
+  --fs-h2:    16px;   /* 卡片标题 */
+  --r-sm: 6px;
+  --r-md: 8px;
+  --r-lg: 12px;
+
+  /* ---- 数据区 ---- */
+  --fs-meta: 11px;
+  --fs-xs:   12px;
+  --fs-sm:   13px;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Microsoft YaHei', monospace;
+
+  /* ---- 文字四级，**按对比度定的**（白底实测，正文门槛 4.5:1）----
+     ⚠ 11px 的元信息只能用 --ink-2。#8c8c8c 白底只有 3.36:1，
+     投屏录视频时会发虚——这是实测出来的，不是审美偏好。 */
+  --ink:   #0d0d0d;  /* 18.9:1  主标题、主数字 */
+  --ink-2: #595959;  /*  7.0:1  正文、11px 的元信息 */
+  --ink-3: #767676;  /*  4.6:1  次要信息 */
+  --ink-4: #b0b0b0;  /*  2.2:1  **仅作符号**（网格里那个「—」），不承载文字 */
+
+  /* ---- 线面 ---- */
+  --line:        #f0f0f0;
+  --line-strong: #e0e0e0;
+  --bg-soft:     #fafafa;
+  --bg-hover:    #f5f7fa;
+  --bg-active:   #ececec;
+  --link:  #0958d9;
+  --brand: #1677ff;
+
+  /* ---- 涨跌色：**红涨绿跌**，A 股惯例，与欧美相反 ----
+     ⚠ **只用于「数值比上年」这一个含义**，见 theme/colors.ts 的说明。
+     判定结果不许用这一套——那边的红是「主张与事实相悖」，不是「下跌」。 */
+  --up:   #cf1322;
+  --down: #389e0d;
+
+  /* ---- 语义色（判定用）。**不许改成涨跌色** ----
+     演示旁白要讲：「这里用的是语义色，不是涨跌色——红色表示主张和事实
+     不一致，不表示股票下跌。」改了这套色，那句旁白就变成错的了。 */
+  --ok:   #389e0d;  /* 3.46:1  偏浅 */
+  --bad:  #cf1322;  /* 5.57:1  六色里唯一够深 */
+  --warn: #d46b08;  /* 3.56:1  偏浅 */
+  --mute: #767676;  /* 4.6:1 */
+  --info: #597ef7;  /* 3.94:1  偏浅 */
 }
+
+* { box-sizing: border-box; }
 
 body {
   margin: 0;
   background: #fff;
-  color: #1f1f1f;
+  color: var(--ink);
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC',
     'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
-  font-size: 14px;
+  font-size: var(--fs-shell);
+  line-height: 1.5;
+}
+
+a { color: var(--link); }
+
+/* 数字一律等宽满宽。**这是终端观感的一半**——比例字体的数字宽度不等，
+   十列年度摆在一起就对不齐，越密越难看。 */
+.num, .mono, .score-value, .tile-value, .count-value, .stat-value, .bar-n {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ============================================================ 外壳 */
+
+.shell { display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+.app { display: flex; flex: 1; min-height: 0; }
+
+/* ---- 侧栏 ---- */
+
+.side {
+  flex: none;
+  width: 250px;
+  display: flex;
+  flex-direction: column;
+  background: var(--shell-bg);
+  border-right: 1px solid var(--shell-line);
+  padding: 10px 8px;
+  overflow-y: auto;
+}
+
+/* 产品名。**别缩字号去凑一行**——13px 是录视频时侧栏的下限。 */
+.side-brand {
+  padding: 6px 8px 4px;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.side-label {
+  padding: 12px 8px 4px;
+  color: var(--ink-3);
+  font-size: var(--fs-meta);
+  font-weight: 600;
+  letter-spacing: 0.4px;
+}
+
+/* ---- 公司下拉（里面的复选框）---- */
+
+.company { position: relative; }
+
+.company-select {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 8px;
+  border: 0;
+  border-radius: var(--r-md);
+  background: none;
+  font: inherit;
+  color: var(--ink);
+  cursor: pointer;
+  text-align: left;
+}
+
+.company-select:hover { background: var(--shell-hover); }
+.company-select .name { font-weight: 500; }
+.company-select .span { margin-left: auto; color: var(--ink-3); font-size: var(--fs-meta); }
+.company-select .caret { flex: none; color: var(--ink-3); font-size: 11px; }
+
+.company-menu {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(100% + 3px);
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  background: #fff;
+  border: 1px solid var(--shell-line);
+  border-radius: var(--r-md);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.1);
+  z-index: 10;
+}
+
+.company-menu label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 8px;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  font-size: var(--fs-shell);
+}
+
+.company-menu label:hover { background: var(--shell-hover); }
+.company-menu label.on { background: var(--shell-select); }
+
+/* 复选框跟外壳一个色系，不要浏览器默认的蓝框 */
+.company-menu input[type='checkbox'] {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  flex: none;
+  accent-color: var(--ink);
+  cursor: pointer;
+}
+
+.company-menu .nm { flex: 1; }
+.company-menu .span { color: var(--ink-3); font-size: var(--fs-meta); }
+
+.company-menu .menu-note {
+  padding: 7px 8px 4px;
+  margin-top: 2px;
+  border-top: 1px solid var(--shell-line);
+  color: var(--ink-3);
+  font-size: var(--fs-meta);
   line-height: 1.6;
 }
 
-/* ---------------------------------------------------------------- 外壳 */
+/* ---- 侧栏的「能看什么」说明 ---- */
 
-.app-head {
+.side-hint { padding: 0 8px; }
+.side-hint dl { margin: 0; }
+
+.side-hint dt {
+  margin-top: 8px;
+  color: var(--ink-2);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+}
+
+.side-hint dd {
+  margin: 2px 0 0;
+  color: var(--ink-3);
+  font-size: var(--fs-meta);
+  line-height: 1.65;
+}
+
+.side-hint b { color: var(--ink-2); font-weight: 600; }
+
+.side-foot {
   display: flex;
   align-items: center;
-  gap: 24px;
-  padding: 12px 24px;
-  border-bottom: 1px solid #f0f0f0;
-  background: #fafafa;
+  gap: 8px;
+  padding: 8px;
+  margin-top: auto;
+  border-top: 1px solid var(--shell-line);
+  color: var(--ink-3);
+  font-size: var(--fs-meta);
 }
 
-.brand {
-  font-weight: 600;
-  color: #1f1f1f;
-  text-decoration: none;
-}
+.side-foot .mono { margin-left: auto; }
 
-.app-nav {
+/* ---- 主区 ---- */
+
+.main { flex: 1; min-width: 0; display: flex; flex-direction: column; overflow: hidden; }
+
+/* 顶栏放功能。侧栏只放说明——「左侧放说明，功能在顶栏」。 */
+.topbar {
+  flex: none;
   display: flex;
-  gap: 16px;
+  align-items: center;
+  gap: 4px;
+  height: 48px;
+  padding: 0 14px;
+  border-bottom: 1px solid var(--shell-line);
 }
 
-.app-nav a {
-  color: #595959;
+.tab {
+  padding: 8px 12px;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  color: var(--ink-3);
   text-decoration: none;
 }
 
-.app-nav a.active {
-  color: #1677ff;
-  font-weight: 500;
-}
+.tab:hover { color: var(--ink); }
+.tab.active { color: var(--ink); font-weight: 600; border-bottom-color: var(--ink); }
 
-.app-status {
-  margin-left: auto;
-  color: #8c8c8c;
-  font-size: 12px;
-}
+.content { flex: 1; overflow-y: auto; padding: 18px 22px 44px; }
 
-.app-main {
-  padding: 24px;
-}
+/* ⚠ `.page` 在三个页面里都用了，但原来的 index.css **没有定义**——
+   一直靠内边距兜着，所以没人发现。这里补上。
+   只给 min-width: 0，**不要给 max-width**：给了会立刻把网格挤爆。 */
+.page { min-width: 0; }
 
-.page-head {
-  margin-bottom: 16px;
-}
+/* ---- 页面头 ---- */
+
+.page-head { margin-bottom: 12px; }
 
 .page-head h2 {
-  margin: 0;
-  font-size: 20px;
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin: 0 0 3px;
+  font-size: var(--fs-h1);
+  font-weight: 600;
+  letter-spacing: -0.2px;
 }
 
-.page-head .subtitle,
-.panel h3 .subtitle {
-  margin-left: 12px;
+.page-head h2 .subtitle {
+  color: var(--ink-2);
   font-size: 13px;
   font-weight: 400;
-  color: #8c8c8c;
 }
 
-.page-note {
-  margin: 6px 0 0;
-  color: #595959;
-  max-width: 76ch;
+.page-note { margin: 0; color: var(--ink-2); font-size: 13px; }
+.page-note strong { color: var(--warn); }
+
+/* ---- 卡片 ---- */
+
+.card {
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: #fff;
+  overflow: hidden;
+  margin-bottom: 14px;
 }
 
+.card > h3 {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin: 0;
+  padding: 11px 14px;
+  border-bottom: 1px solid var(--line);
+  font-size: var(--fs-h2);
+  font-weight: 600;
+}
+
+.card > h3 .subtitle { color: var(--ink-3); font-size: var(--fs-xs); font-weight: 400; }
+.card-body { padding: 14px; }
+
+/* 面板：比 .card 简单——正文不另包一层，靠面板自己的 padding，
+   标题用负外边距顶到边缘。这样老页面里 `section.panel > h3 + 任意内容`
+   的结构不用改一个字。 */
 .panel {
-  border: 1px solid #f0f0f0;
-  border-radius: 6px;
-  padding: 16px;
-  margin-bottom: 20px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: #fff;
+  overflow: hidden;
+  margin-bottom: 14px;
 }
 
-.panel h3 {
-  margin: 0 0 12px;
-  font-size: 16px;
+.panel > h3 {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin: -14px -14px 12px;
+  padding: 11px 14px;
+  border-bottom: 1px solid var(--line);
+  background: var(--bg-soft);
+  font-size: var(--fs-h2);
+  font-weight: 600;
 }
 
-.panel h4 {
-  margin: 18px 0 8px;
-  font-size: 14px;
-  color: #434343;
-}
+.panel > h3 .subtitle { color: var(--ink-3); font-size: var(--fs-xs); font-weight: 400; }
+.panel > h4 { margin: 12px 0 6px; font-size: var(--fs-xs); color: var(--ink-2); }
 
-/* ---------------------------------------------------------------- 提示条 */
+/* 指数卡是横排的两栏，自己管内边距 */
+.panel.index-card { padding: 0; }
+
+/* ============================================================ 提示条 */
 
 /* 离线回放横幅常驻、醒目。docs/00 把「回放时装作实时」列为诚信问题，
-   所以这条不能折叠、不能隐藏、不能只放进控制台。 */
+   所以它不许被折叠或藏进侧栏。 */
 .offline-banner {
   display: flex;
-  gap: 12px;
+  gap: 10px;
   align-items: baseline;
-  padding: 8px 24px;
+  padding: 7px 20px;
   background: #fff7e6;
   border-bottom: 1px solid #ffd591;
   color: #874d00;
+  font-size: 13px;
 }
 
-.offline-banner strong {
-  flex: none;
-}
+.offline-banner strong { white-space: nowrap; }
 
 .offline-banner-warn {
-  background: #f5f5f5;
-  border-bottom-color: #d9d9d9;
-  color: #595959;
+  background: var(--bg-active);
+  border-bottom-color: var(--line-strong);
+  color: var(--ink-2);
 }
 
 .db-warning {
   display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: 12px 24px;
+  gap: 10px;
+  align-items: baseline;
+  padding: 7px 20px;
   background: #fff1f0;
   border-bottom: 1px solid #ffa39e;
   color: #a8071a;
+  font-size: 13px;
 }
 
-/* ---------------------------------------------------------------- 四态 */
+/* ============================================================ 四态 */
 
 .async-state {
-  padding: 32px;
+  padding: 26px;
   text-align: center;
-  color: #8c8c8c;
+  color: var(--ink-3);
+  font-size: 13px;
 }
 
-.async-title {
-  font-weight: 600;
-  color: #cf1322;
-  margin-bottom: 4px;
-}
-
-.async-detail {
-  max-width: 70ch;
-  margin: 0 auto;
+.async-title { font-weight: 600; color: var(--bad); margin-bottom: 4px; }
+.async-detail { max-width: 72ch; margin: 0 auto; line-height: 1.7; }
+.async-detail code {
+  display: block;
+  margin: 6px 0;
+  padding: 6px 9px;
+  background: var(--bg-soft);
+  border-left: 3px solid var(--line-strong);
+  font-family: var(--mono);
+  font-size: var(--fs-xs);
+  color: var(--ink-2);
+  text-align: left;
+  word-break: break-all;
 }
 
 .async-error button {
-  margin-top: 12px;
+  margin-top: 10px;
+  padding: 4px 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  background: #fff;
+  font: inherit;
+  cursor: pointer;
 }
 
 .spinner {
   display: inline-block;
-  width: 12px;
-  height: 12px;
-  margin-right: 8px;
-  border: 2px solid #d9d9d9;
-  border-top-color: #1677ff;
-  border-radius: 50%;
+  width: 11px;
+  height: 11px;
+  margin-right: 6px;
+  border: 2px solid var(--line-strong);
+  border-top-color: var(--brand);
+  border-radius: 50%;   /* 这是个圆，不是卡片——圆角清零的例外之一 */
   animation: spin 0.8s linear infinite;
   vertical-align: -1px;
 }
 
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ============================================================ 数据区
+   以下全部是密集终端那套：12px、等宽数字、零圆角、极细边框。
+   ⚠ 零圆角是刻意的——外壳圆、数据方，一眼能分出「这是界面」和「这是数据」。 */
+
+.stat-strip {
+  display: flex;
+  flex-wrap: wrap;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  margin-bottom: 12px;
+  overflow: hidden;
 }
 
-/* ---------------------------------------------------------------- 项目卡片 */
+.stat { padding: 5px 16px 5px 11px; border-right: 1px solid var(--line); min-width: 88px; }
+.stat:last-child { border-right: 0; }
+.stat-label { display: block; color: var(--ink-2); font-size: var(--fs-meta); }
+.stat-value { display: block; font-size: 13px; font-weight: 600; }
+.stat-value.muted { color: var(--ink-3); font-weight: 400; }
 
-.project-list {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-  gap: 16px;
+.pill-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-wrap: wrap;
+  padding: 7px 11px;
+  border-bottom: 1px solid var(--line);
 }
 
-.project-card {
+.pill-row > .pill-label { color: var(--ink-2); font-size: var(--fs-meta); margin-right: 6px; }
+
+.pill {
+  padding: 3px 9px;
+  border: 0;
+  border-radius: 3px;
+  background: none;
+  color: var(--ink-2);
+  font: inherit;
+  font-size: var(--fs-xs);
+  cursor: pointer;
+}
+
+.pill:hover { background: var(--bg-soft); }
+.pill.active { background: var(--bg-active); color: var(--ink); font-weight: 600; }
+
+/* ---- 横向柱状图（同花顺「筹码分布」那个样子）----
+   条长按**后端给的计数**换算。⚠ 条长是**呈现**不是**计算**：
+   条右端标的数字是后端原样给的绝对条数，没有任何财务数字被算出来。
+   红线是**不许把比例打成文字**（写「相悖 27.9%」就成了前端算出来的新数字）。
+   这条判据仓库里已有：format.ts 允许 ×100 显示百分比，理由是
+   「只是把同一张脸换成另一种写法，不产生新信息」。 */
+
+.bars { display: flex; flex-direction: column; gap: 7px; }
+
+.bar-row { display: flex; align-items: center; gap: 9px; font-size: var(--fs-xs); }
+
+.bar-label { width: 88px; flex: none; color: var(--ink-2); }
+
+.bar-track {
+  flex: 1;
+  height: 13px;
+  background: var(--bg-soft);
+  border: 1px solid var(--line);
+}
+
+.bar-track > i {
   display: block;
-  padding: 16px;
-  border: 1px solid #f0f0f0;
-  border-radius: 6px;
-  text-decoration: none;
-  color: inherit;
+  height: 100%;
+  width: calc(var(--p) * 1%);
+  min-width: 2px;
+  background: var(--c);
 }
 
-.project-card:hover {
-  border-color: #91caff;
+.bar-n { width: 44px; flex: none; text-align: right; color: var(--ink); }
+
+/* 堆叠分布条：段宽由 flex-grow 按**原始条数**分配，前端一行算术都没写 */
+.dist-bar { display: flex; gap: 1px; height: 8px; background: var(--line-strong); overflow: hidden; }
+
+.dist-bar > i {
+  display: block;
+  flex-basis: 0;
+  flex-grow: var(--n);
+  min-width: 2px;
+  background: var(--c);
 }
 
-.project-name {
-  font-size: 16px;
-  font-weight: 600;
+.legend { display: flex; flex-wrap: wrap; gap: 2px 6px; padding: 4px 0 8px; }
+
+.legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 8px;
+  border: 0;
+  border-radius: 3px;
+  background: none;
+  color: var(--ink-2);
+  font: inherit;
+  font-size: var(--fs-xs);
+  cursor: pointer;
 }
 
-.project-code,
-.project-meta {
-  color: #8c8c8c;
-  font-size: 13px;
-}
+.legend-item:hover { background: var(--bg-soft); }
+.legend-item.active { background: var(--bg-active); color: var(--ink); font-weight: 600; }
+.legend-item .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--c); flex: none; }
+.legend-item .n { font-family: var(--mono); font-variant-numeric: tabular-nums; }
 
-/* ---------------------------------------------------------------- 事实网格 */
+/* ---- 事实网格 ---- */
 
-.grid-wrap {
-  overflow: auto;
-  max-height: calc(100vh - 260px);
-  border: 1px solid #f0f0f0;
-  border-radius: 6px;
-}
+.grid-wrap { overflow: auto; max-height: calc(100vh - 300px); }
 
 table.fact-grid {
   border-collapse: separate;
   border-spacing: 0;
   width: max-content;
   min-width: 100%;
+  font-size: var(--fs-xs);
 }
 
 table.fact-grid th,
 table.fact-grid td {
-  padding: 2px 8px;
-  border-bottom: 1px solid #f5f5f5;
+  padding: 2px 7px;
+  border-bottom: 1px solid var(--line);
   white-space: nowrap;
   font-weight: 400;
+  vertical-align: middle;
 }
 
 table.fact-grid thead th {
   position: sticky;
   top: 0;
   z-index: 2;
-  background: #fafafa;
+  background: var(--bg-soft);
   font-weight: 600;
-  border-bottom: 1px solid #e8e8e8;
+  font-size: var(--fs-meta);
+  color: var(--ink-2);
+  border-bottom: 1px solid var(--line-strong);
 }
 
-/* 首列冻结：指标名要一直看得见，否则横向滚动后不知道看的是哪一行 */
+/* 首列冻结：指标名要一直看得见，否则横向滚动后不知道看的是哪一行。
+   ⚠ 这条必须排在 `.group-row th` **前面**：两者特异度相同，靠源码顺序决胜，
+   分组行的冻结列底色要能被后面的规则盖成浅灰。
+   调换顺序的后果是分组行底色静默变白，看起来像整行没背景。 */
 table.fact-grid .sticky-col {
   position: sticky;
   left: 0;
   z-index: 1;
   background: #fff;
   text-align: left;
-  max-width: 240px;
+  max-width: 226px;
   overflow: hidden;
   text-overflow: ellipsis;
+  /* 冻结列与数字区之间的分界线。没有它，首列和第一列数字会连成一片。 */
+  border-right: 1px solid var(--line-strong);
 }
 
-table.fact-grid .sticky-head {
-  z-index: 3;
-}
+table.fact-grid .sticky-head { z-index: 3; }
 
 table.fact-grid .group-row th {
-  background: #f5f5f5;
-  color: #595959;
+  background: var(--bg-soft);
+  color: var(--ink-2);
   font-weight: 600;
-  padding: 4px 8px;
+  font-size: var(--fs-meta);
+  padding: 3px 7px;
+  letter-spacing: 0.4px;
 }
 
-table.fact-grid td.num {
-  text-align: right;
-  font-variant-numeric: tabular-nums;
-}
+/* ⚠ 必须写成 th.num, td.num。原来只写了 td.num，而年份表头是
+   <th class="num">——落到浏览器默认的居中，于是**表头居中、数字右对齐**，
+   列本来就是错开的。这是真实存在的 bug，不是这次改出来的。 */
+table.fact-grid th.num,
+table.fact-grid td.num { text-align: right; }
+
+table.fact-grid tbody tr:hover td { background: var(--bg-hover); }
+table.fact-grid tbody tr:hover .sticky-col { background: var(--bg-hover); }
+
+/* 年度 pill 点下去高亮整列。91 行 × 10 列的表，说「看这一列」时手上得跟得上。 */
+table.fact-grid td.col-on,
+table.fact-grid th.col-on { background: #eef4ff; }
+table.fact-grid tbody tr:hover td.col-on { background: #e3edff; }
+
+/* 一格的内容：数字 + 下面那根比上年柱子 */
+.cell-stack { display: inline-flex; flex-direction: column; align-items: flex-end; gap: 1px; }
 
 .cell-button {
   border: 0;
   background: none;
   padding: 0;
   font: inherit;
+  font-family: var(--mono);
   font-variant-numeric: tabular-nums;
-  color: #0958d9;
+  color: var(--link);
   cursor: pointer;
   text-decoration: underline dotted;
 }
 
-.cell-button:hover {
-  background: #e6f4ff;
+.cell-button:hover { background: #e6f4ff; }
+
+/* ── 同比柱：**红涨绿跌**（A 股惯例，与欧美相反）──
+   ⚠ 这是**涨跌色**，和判定用的语义色是两套体系，别混：
+   这里的红是「数值比上年涨了」，判定表里的红是「主张与事实相悖」。
+
+   条长在 **±50% 处封顶**（见 FactTable 的注释）——净利润同比动辄 ±300%，
+   不封顶的话其余所有柱子都挤成看不见的一条。**具体数字在悬停提示里**。
+   颜色表达方向，长度表达幅度，两者都只用后端给的 `change_dir` / `change`。 */
+.yoy {
+  display: block;
+  width: 100%;
+  min-width: 34px;
+  height: 3px;
+  background: var(--bg-soft);
 }
 
-/* 四种格子状态视觉可分。**绝不与「0」混淆**——灰色的「—」旁边有 tooltip
-   明说「未在年报中定位到，不是 0」。 */
-.cell-notfound {
-  color: #bfbfbf;
-  cursor: help;
-}
+.yoy > i { display: block; height: 100%; min-width: 2px; }
+.yoy > i.up { background: var(--up); }
+.yoy > i.down { background: var(--down); }
+.yoy > i.flat { background: var(--ink-4); }
 
-.cell-review {
-  color: #d46b08;
-  cursor: help;
-}
+/* 四种格子状态视觉可分，**绝不与「0」混淆** */
+.cell-notfound { color: var(--ink-4); cursor: help; }
+.cell-review { color: var(--warn); cursor: help; }
 
 .cell-incomparable {
-  color: #8c8c8c;
+  color: var(--ink-3);
   background: repeating-linear-gradient(
-    45deg,
-    #fafafa,
-    #fafafa 4px,
-    #f0f0f0 4px,
-    #f0f0f0 8px
+    45deg, var(--bg-soft), var(--bg-soft) 4px, var(--line) 4px, var(--line) 8px
   );
   cursor: help;
 }
 
-.cell-missing {
-  color: #cf1322;
-}
+.cell-missing { color: var(--bad); cursor: help; }
 
-/* ---------------------------------------------------------------- 抽屉 */
+/* ---- 密集表格 ---- */
 
-.drawer-backdrop {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.35);
-  display: flex;
-  justify-content: flex-end;
-  z-index: 100;
-}
-
-.drawer {
-  width: min(720px, 92vw);
-  height: 100%;
-  overflow-y: auto;
-  background: #fff;
-  padding: 16px 20px 40px;
-}
-
-.drawer-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  border-bottom: 1px solid #f0f0f0;
-  padding-bottom: 8px;
-  margin-bottom: 12px;
-}
-
-.drawer-head h3 {
-  margin: 0;
-  font-size: 16px;
-}
-
-.drawer-head button {
-  border: 0;
-  background: none;
-  font-size: 22px;
-  line-height: 1;
-  cursor: pointer;
-  color: #8c8c8c;
-}
-
-.fact-headline {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  padding: 8px 0 12px;
-  border-bottom: 1px solid #f5f5f5;
-}
-
-.fact-label {
-  font-weight: 600;
-}
-
-.fact-value {
-  font-size: 18px;
-  font-variant-numeric: tabular-nums;
-}
-
-dl.kv {
-  margin: 8px 0;
-}
-
-.kv-row {
-  display: flex;
-  gap: 12px;
-  padding: 2px 0;
-}
-
-.kv-row dt {
-  flex: none;
-  width: 96px;
-  color: #8c8c8c;
-}
-
-.kv-row dd {
-  margin: 0;
-  word-break: break-all;
-}
-
-.kv-warn dd {
-  color: #d46b08;
-}
-
-.page-meta {
-  display: flex;
-  gap: 12px;
-  align-items: center;
-  color: #595959;
-  font-size: 13px;
-  margin-bottom: 8px;
-}
-
-.page-nav {
-  display: flex;
-  gap: 8px;
-  margin-bottom: 8px;
-}
-
-.page-hint {
-  color: #d46b08;
-  font-size: 13px;
-}
-
-.page-text {
-  margin: 0;
-  padding: 12px;
-  background: #fafafa;
-  border: 1px solid #f0f0f0;
-  border-radius: 4px;
-  white-space: pre-wrap;
-  word-break: break-word;
-  font-family: inherit;
-  font-size: 13px;
-  max-height: 46vh;
-  overflow-y: auto;
-}
-
-.page-text mark {
-  background: #ffe58f;
-  padding: 0 1px;
-}
-
-.tag {
-  padding: 0 6px;
-  border: 1px solid #d9d9d9;
-  border-radius: 3px;
-  font-size: 12px;
-}
-
-/* ---------------------------------------------------------------- 指数卡片 */
-
-.index-card {
-  display: flex;
-  gap: 24px;
-  align-items: flex-start;
-}
-
-.index-score {
-  flex: none;
-  width: 150px;
-  padding: 16px;
-  border-radius: 6px;
-  text-align: center;
-}
-
-/* 证据不足时**绝不显示 0 或 50 分**——页面上出现一个大号数字，
-   人工复核的入口就没人看了。 */
-.index-insufficient {
-  background: #f5f5f5;
-  border: 1px dashed #d9d9d9;
-}
-
-.score-value {
-  font-size: 22px;
-  font-weight: 600;
-  color: #595959;
-}
-
-.score-grade {
-  color: #8c8c8c;
-}
-
-.index-reason ul {
-  margin: 8px 0;
-  padding-left: 20px;
-}
-
-.hint {
-  color: #8c8c8c;
-  font-size: 13px;
-}
-
-/* ---------------------------------------------------------------- 校验 */
-
-.check-summary {
-  margin-bottom: 16px;
-}
-
-.summary-line {
-  font-weight: 500;
-  margin-bottom: 8px;
-}
-
-.summary-tiles {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.tile {
-  min-width: 84px;
-  padding: 8px 12px;
-  border: 1px solid #f0f0f0;
-  border-radius: 4px;
-  text-align: center;
-}
-
-.tile-value {
-  font-size: 18px;
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-}
-
-.tile-label {
-  color: #8c8c8c;
-  font-size: 12px;
-}
-
-.tile-ok .tile-value {
-  color: #389e0d;
-}
-
-.tile-warn .tile-value {
-  color: #d46b08;
-}
-
-.tile-bad .tile-value {
-  color: #cf1322;
-}
-
-.sheet-verdict {
-  margin-top: 8px;
-}
-
-.warn-box {
-  padding: 10px 12px;
-  background: #fff7e6;
-  border: 1px solid #ffd591;
-  border-radius: 4px;
-  margin-bottom: 12px;
-}
-
-.warn-box ul {
-  margin: 6px 0 0;
-  padding-left: 20px;
-}
-
-.check-failures {
-  display: grid;
-  gap: 12px;
-  margin-bottom: 16px;
-}
-
-.failure-card {
-  padding: 12px;
-  border: 1px solid #ffccc7;
-  background: #fff2f0;
-  border-radius: 4px;
-}
-
-.failure-head {
-  display: flex;
-  justify-content: space-between;
-  margin-bottom: 6px;
-}
-
-.failure-body {
-  margin-bottom: 8px;
-}
-
-.failure-suggestion {
-  color: #595959;
-  font-size: 13px;
-  border-top: 1px dashed #ffccc7;
-  padding-top: 6px;
-}
-
-table.plain-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 13px;
-}
+table.plain-table { width: 100%; border-collapse: collapse; font-size: var(--fs-xs); }
 
 table.plain-table th,
 table.plain-table td {
-  border-bottom: 1px solid #f0f0f0;
+  border-bottom: 1px solid var(--line);
   padding: 4px 8px;
   text-align: left;
   vertical-align: top;
 }
 
-table.plain-table th {
-  background: #fafafa;
-}
-
-table.plain-table td.num {
-  text-align: right;
-  font-variant-numeric: tabular-nums;
-}
-
-table.plain-table td.msg {
-  color: #595959;
-}
-
-.chip {
-  font-weight: 500;
-  white-space: nowrap;
-}
-
-/* ---------------------------------------------------------------- 指数明细 */
-
-.index-scored {
-  background: #f6ffed;
-  border: 1px solid #b7eb8f;
-}
-
-.score-coverage {
-  margin-top: 4px;
-  font-size: 12px;
-  color: #8c8c8c;
-}
-
-.index-formula {
-  margin: 0 0 12px;
-  padding: 8px 10px;
-  background: #fafafa;
-  border-radius: 4px;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 12px;
-  word-break: break-all;
-}
-
-.reason-list {
-  margin: 8px 0;
-  padding-left: 20px;
-}
-
-.reason-list li {
-  margin-bottom: 4px;
-}
-
-.index-counts {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-  margin: 12px 0;
-}
-
-.count {
-  min-width: 96px;
-  padding: 6px 10px;
-  border: 1px solid #f0f0f0;
-  border-radius: 4px;
-}
-
-.count-value {
-  display: block;
-  font-size: 16px;
+table.plain-table thead th {
+  background: var(--bg-soft);
+  font-size: var(--fs-meta);
   font-weight: 600;
-  font-variant-numeric: tabular-nums;
-}
-
-.count-label {
-  font-size: 12px;
-  color: #8c8c8c;
-}
-
-.count-muted .count-value {
-  color: #bfbfbf;
-}
-
-.component-table {
-  margin: 12px 0;
-}
-
-.component-table td.range {
-  color: #8c8c8c;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 12px;
-}
-
-.muted {
-  color: #bfbfbf;
-}
-
-.index-action {
-  margin: 12px 0;
-  padding: 10px 12px;
-  background: #fafafa;
-  border-radius: 4px;
-  font-size: 13px;
-}
-
-.index-action > div {
-  margin-bottom: 4px;
-}
-
-.index-action .label {
-  display: inline-block;
-  width: 76px;
-  color: #8c8c8c;
-}
-
-.conclusion-boundary {
-  margin: 12px 0 0;
-  padding-top: 10px;
-  border-top: 1px dashed #f0f0f0;
-  color: #8c8c8c;
-  font-size: 12px;
-}
-
-/* ---------------------------------------------------------------- 对照表 */
-
-.verdict-filter {
-  display: flex;
-  gap: 6px;
-  flex-wrap: wrap;
-  margin-bottom: 12px;
-}
-
-.verdict-filter button {
-  padding: 3px 10px;
-  border: 1px solid #d9d9d9;
-  border-radius: 14px;
-  background: #fff;
-  cursor: pointer;
-  font-size: 13px;
-}
-
-.verdict-filter button.active {
-  border-color: #1677ff;
-  background: #f0f7ff;
-}
-
-table.match-table td.claim-text {
-  max-width: 380px;
-}
-
-table.match-table td.nowrap {
+  color: var(--ink-2);
   white-space: nowrap;
+  padding: 5px 8px;
 }
 
-table.match-table td.msg {
-  max-width: 320px;
-}
+table.plain-table th.num,
+table.plain-table td.num { text-align: right; }
 
-/* 绝对量目标的换算留痕与「原始计划偏差」。
-   浅底 + 左边线，和上面那句 reason 分开——它是**同一行的另一件事**：
-   reason 说为什么不判，这一块给出唯一该给人看的那个数。 */
+table.plain-table td.msg { color: var(--ink-2); }
+table.plain-table tbody tr:hover { background: var(--bg-hover); }
+
+table.match-table td.claim-text { max-width: 380px; }
+table.match-table td.nowrap { white-space: nowrap; }
+table.match-table td.msg { max-width: 340px; }
+
+.chip { font-weight: 500; white-space: nowrap; }
+.muted { color: var(--ink-4); }
+.hint { color: var(--ink-2); font-size: var(--fs-meta); }
+.tight { color: var(--ink-2); font-size: var(--fs-xs); }
+
+/* 绝对量目标的换算留痕与「原始计划偏差」。浅底 + 左边线，和上面那句
+   reason 分开——它是**同一行的另一件事**：reason 说为什么不判，
+   这一块给出唯一该给人看的那个数。 */
 .plan-variance {
-  margin-top: 6px;
-  padding: 6px 8px;
-  background: #fafafa;
-  border-left: 3px solid #d9d9d9;
-  border-radius: 2px;
-  font-size: 12px;
-  line-height: 1.6;
-  color: #595959;
+  margin-top: 5px;
+  padding: 5px 8px;
+  background: var(--bg-soft);
+  border-left: 3px solid var(--line-strong);
+  font-size: var(--fs-meta);
+  line-height: 1.7;
+  color: var(--ink-2);
 }
 
-.plan-variance .pv-step {
-  font-variant-numeric: tabular-nums;
-}
-
+.plan-variance .pv-step { font-family: var(--mono); font-variant-numeric: tabular-nums; }
 .plan-variance .pv-gap {
   display: block;
+  font-family: var(--mono);
   font-variant-numeric: tabular-nums;
-  color: #d46b08;
+  color: var(--warn);
 }
+.plan-variance .pv-muted { color: var(--ink-4); margin-left: 4px; }
+.plan-variance .pv-ref { color: var(--ink-3); }
 
-.plan-variance .pv-muted {
-  color: #8c8c8c;
-  margin-left: 4px;
-}
-
-.plan-variance .pv-ref {
-  color: #8c8c8c;
-}
-
-.fact-links {
-  display: flex;
-  gap: 6px;
-  white-space: nowrap;
-}
+.fact-links { display: flex; gap: 4px; white-space: nowrap; }
 
 .link-button {
   border: 0;
   background: none;
   padding: 0;
-  color: #0958d9;
+  color: var(--link);
   cursor: pointer;
   text-decoration: underline dotted;
   font: inherit;
-  font-size: 13px;
+  font-size: var(--fs-xs);
 }
 
-.link-button:disabled {
-  color: #bfbfbf;
-  cursor: default;
-  text-decoration: none;
-}
+.link-button:disabled { color: var(--ink-4); cursor: default; text-decoration: none; }
 
-.background-list {
-  margin: 8px 0;
-  padding-left: 18px;
-}
-
-.background-list li {
-  margin-bottom: 6px;
-}
-
-.background-list .claim-text {
-  margin: 0 8px;
-}
+.background-list { margin: 6px 0; padding-left: 16px; font-size: var(--fs-xs); }
+.background-list li { margin-bottom: 5px; }
+.background-list .claim-text { margin: 0 6px; }
 
 .forbidden-box {
-  margin-top: 12px;
-  padding: 10px 12px;
+  margin-top: 10px;
+  padding: 8px 10px;
   background: #fff7e6;
   border: 1px solid #ffd591;
-  border-radius: 4px;
-  font-size: 13px;
+  border-radius: var(--r-sm);
+  font-size: var(--fs-xs);
 }
 
-.forbidden-box summary {
-  cursor: pointer;
-  color: #874d00;
+.forbidden-box summary { cursor: pointer; color: #874d00; }
+.forbidden-box ul { margin: 6px 0 0; padding-left: 18px; }
+
+.tag {
+  padding: 1px 5px;
+  border: 1px solid var(--line-strong);
+  border-radius: 3px;
+  font-family: var(--mono);
+  font-size: var(--fs-meta);
 }
 
-.forbidden-box ul {
-  margin: 8px 0 0;
-  padding-left: 20px;
+/* ---- 指数卡 ---- */
+
+.index-card { display: flex; align-items: stretch; padding: 0; }
+
+/* 证据不足时**绝不显示 0 或 50 分**。虚线边框是刻意的：
+   它要看起来像「一个还没填的格子」，不像「一个算出来的分数」。 */
+.index-score {
+  flex: none;
+  width: 168px;
+  padding: 16px 12px;
+  text-align: center;
+  background: var(--bg-soft);
 }
 
-/* ---------------------------------------------------------------- 传导边界 */
+.index-insufficient { border-right: 1px dashed var(--line-strong); }
+.index-scored { border-right: 1px solid #b7eb8f; background: #f6ffed; }
+
+.score-value { font-size: 30px; font-weight: 600; line-height: 1.2; color: var(--ink-2); }
+.score-value.insufficient { font-size: 17px; color: var(--ink-3); }
+.score-grade { color: var(--ink-2); font-size: var(--fs-xs); }
+.score-coverage { margin-top: 2px; font-size: var(--fs-meta); color: var(--ink-2); }
+
+.index-reason { flex: 1; min-width: 0; padding: 14px 16px; }
+.index-reason ul { margin: 6px 0; padding-left: 18px; }
+
+.index-formula {
+  margin: 0 0 10px;
+  padding: 6px 9px;
+  background: var(--bg-soft);
+  border-left: 3px solid var(--line-strong);
+  font-family: var(--mono);
+  font-size: var(--fs-meta);
+  color: var(--ink-2);
+  word-break: break-all;
+}
+
+.reason-list { margin: 6px 0; padding-left: 18px; font-size: var(--fs-xs); }
+.reason-list li { margin-bottom: 3px; }
+
+.index-counts { display: flex; gap: 6px; flex-wrap: wrap; margin: 12px 0; }
+
+.count { min-width: 84px; padding: 4px 9px; border: 1px solid var(--line); }
+.count-value { display: block; font-size: 14px; font-weight: 600; }
+.count-label { display: block; font-size: var(--fs-meta); color: var(--ink-2); }
+.count-muted .count-value { color: var(--ink-4); }
+
+.component-table { margin: 12px 0; }
+.component-table td.range { color: var(--ink-2); font-family: var(--mono); font-size: var(--fs-meta); }
+
+/* ---- 分项条：**两把尺** ----
+   H、C 是 [−1, 1]，R、P、Q 是 [0, 1]。同一把尺的话 H = −0.19 会画成一条
+   几乎看不见的短条，看的人会以为「接近 0 = 中性」——而它实际是「被事实
+   否掉的比支持的多」，是个明确的信号。 */
+.cbar {
+  position: relative;
+  display: inline-block;
+  vertical-align: middle;
+  width: 96px;
+  height: 9px;
+  background: var(--bg-soft);
+  border: 1px solid var(--line);
+}
+
+.cbar > i { position: absolute; top: 0; bottom: 0; background: var(--c); }
+
+.cbar.zero::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: -1px;
+  bottom: -1px;
+  width: 1px;
+  background: var(--line-strong);
+}
+
+.cbar.zero > i.pos { left: 50%; width: calc(var(--w) * 0.5%); }
+.cbar.zero > i.neg { right: 50%; width: calc(var(--w) * 0.5%); }
+.cbar.left > i { left: 0; width: calc(var(--w) * 1%); }
+.cbar-key { display: inline-block; margin-left: 6px; color: var(--ink-2); font-size: var(--fs-meta); }
+
+.index-action {
+  margin: 10px 0;
+  padding: 8px 10px;
+  background: var(--bg-soft);
+  border-left: 3px solid var(--line-strong);
+  font-size: var(--fs-xs);
+}
+
+.index-action > div { margin-bottom: 3px; }
+.index-action .label { display: inline-block; width: 72px; color: var(--ink-2); }
+
+.conclusion-boundary {
+  margin: 10px 0 0;
+  padding-top: 8px;
+  border-top: 1px dashed var(--line);
+  color: var(--ink-2);
+  font-size: var(--fs-meta);
+}
 
 .requires-confirm {
-  margin-top: 6px;
-  padding: 4px 8px;
+  margin-top: 5px;
+  padding: 3px 6px;
   background: #fff7e6;
   border-left: 3px solid #ffd591;
   color: #874d00;
-  font-size: 13px;
+  font-size: var(--fs-meta);
 }
 
 .scenario-notes {
-  margin: 12px 0 0;
-  padding: 10px 12px;
-  background: #fafafa;
-  border-radius: 4px;
-  font-size: 13px;
+  margin: 10px 0 0;
+  padding: 8px 10px;
+  background: var(--bg-soft);
+  border-radius: var(--r-sm);
+  font-size: var(--fs-xs);
 }
 
-.scenario-notes summary {
+.scenario-notes summary { cursor: pointer; color: var(--ink-2); }
+.scenario-notes ul { margin: 6px 0 0; padding-left: 18px; color: var(--ink-2); }
+
+.page-hint-ok { color: var(--ok); }
+
+/* ---- 校验 ---- */
+
+.check-summary { margin-bottom: 12px; }
+.summary-line { font-weight: 500; margin-bottom: 8px; font-size: var(--fs-xs); }
+.summary-tiles { display: flex; gap: 6px; flex-wrap: wrap; }
+
+.tile { min-width: 76px; padding: 5px 10px; border: 1px solid var(--line); }
+.tile-value { display: block; font-size: 16px; font-weight: 600; line-height: 1.3; }
+.tile-label { display: block; color: var(--ink-2); font-size: var(--fs-meta); }
+.tile-ok .tile-value { color: var(--ok); }
+.tile-warn .tile-value { color: var(--warn); }
+.tile-bad .tile-value { color: var(--bad); }
+
+.sheet-verdict { margin-top: 8px; }
+
+.warn-box {
+  padding: 8px 10px;
+  background: #fff7e6;
+  border: 1px solid #ffd591;
+  border-radius: var(--r-sm);
+  margin-bottom: 10px;
+  font-size: var(--fs-xs);
+}
+
+.warn-box ul { margin: 4px 0 0; padding-left: 18px; }
+
+.check-failures { display: grid; gap: 8px; margin-bottom: 12px; }
+
+.failure-card {
+  padding: 10px;
+  border: 1px solid #ffccc7;
+  background: #fff2f0;
+  border-radius: var(--r-sm);
+  font-size: var(--fs-xs);
+}
+
+.failure-head { display: flex; justify-content: space-between; gap: 10px; margin-bottom: 4px; }
+.failure-body { margin-bottom: 6px; }
+
+.failure-suggestion {
+  color: var(--ink-2);
+  border-top: 1px dashed #ffccc7;
+  padding-top: 5px;
+}
+
+.warn-box { padding-left: 10px; padding-right: 10px; }
+
+/* ---- 抽取法对照 ---- */
+
+.extractor-compare { margin: 0; }
+.extractor-compare summary { cursor: pointer; font-weight: 500; margin-bottom: 6px; font-size: var(--fs-xs); }
+.extractor-compare td.extractor-name { font-family: var(--mono); font-size: var(--fs-meta); }
+
+/* ============================================================ 居中放大弹层
+   点网格里的数字、点判定表的「证据」，**不再从右侧滑出抽屉**，
+   而是从**点击处向中间放大**出一个居中的界面。
+
+   做法：把 transform-origin 设到点击元素中心相对弹层的坐标，弹层从
+   scale(.06) 长到 scale(1)。只要缩放不要位移，所以一个 origin 就够了。
+
+   ⚠ **关闭不做动画**（用户明确要求）——直接消失。所以这里只给 .modal
+   开场的 transition，关闭时不加反向过渡，直接把整个 backdrop 卸掉。 */
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgba(0, 0, 0, 0.3);
+  z-index: 30;
+}
+
+.modal {
+  width: 660px;
+  max-width: 90vw;
+  max-height: 84vh;
+  overflow: auto;
+  background: #fff;
+  border-radius: 14px;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.24);
+  font-size: var(--fs-xs);
+  transform-origin: center center;   /* 由 JS 覆盖成点击点 */
+  transition: transform 0.24s cubic-bezier(0.2, 0.9, 0.28, 1.04), opacity 0.16s ease;
+}
+
+/* 开场的起点：缩到最小、透明。JS 加上它、强制重排、再摘掉，就长出动画。 */
+.modal.growing { transform: scale(0.06); opacity: 0; }
+
+.modal-head {
+  position: sticky;
+  top: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 13px 18px;
+  border-bottom: 1px solid var(--line);
+  background: var(--bg-soft);
+  border-radius: 14px 14px 0 0;
+}
+
+.modal-head h3 { margin: 0; font-size: var(--fs-sm); }
+
+.modal-head button {
+  margin-left: auto;
+  border: 0;
+  background: none;
+  font-size: 18px;
+  line-height: 1;
+  color: var(--ink-3);
   cursor: pointer;
-  color: #595959;
 }
 
-.scenario-notes ul {
-  margin: 8px 0 0;
-  padding-left: 20px;
-  color: #595959;
+.modal-body { padding: 16px 18px 20px; }
+
+/* ⚠ `.drawer-section` 在原 index.css 里**没有定义**，于是抽屉里的分节
+   一直没有样式。这里补上（弹层里的分节叫 .section）。 */
+.section { padding: 0 0 14px; margin-bottom: 14px; border-bottom: 1px solid var(--line); }
+.section:last-child { padding-bottom: 0; margin-bottom: 0; border-bottom: 0; }
+.section h4 { margin: 0 0 8px; font-size: var(--fs-xs); font-weight: 600; color: var(--ink-2); }
+
+.fact-headline { display: flex; align-items: baseline; gap: 10px; margin-bottom: 10px; }
+.fact-label { color: var(--ink-2); font-size: var(--fs-xs); }
+.fact-value { font-family: var(--mono); font-size: 22px; font-weight: 600; }
+
+dl.kv { margin: 0; }
+
+.kv-row {
+  display: grid;
+  grid-template-columns: 104px 1fr;
+  gap: 3px 10px;
+  padding: 2px 0;
+  border-bottom: 1px solid var(--line);
 }
 
-.page-hint-ok {
-  color: #389e0d;
+.kv-row:last-child { border-bottom: 0; }
+.kv-row dt { color: var(--ink-2); font-size: var(--fs-meta); }
+.kv-row dd { margin: 0; word-break: break-all; }
+.kv-warn dd { color: var(--warn); }
+
+.page-meta {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  margin-bottom: 6px;
+  font-size: var(--fs-meta);
+  color: var(--ink-2);
 }
 
-/* ---------------------------------------------------------------- 抽取法对照 */
+.page-nav { display: flex; gap: 6px; margin: 8px 0 6px; }
+.page-nav button { font-size: var(--fs-xs); }
 
-.extractor-compare {
+.page-hint { margin: 0 0 8px; color: var(--warn); font-size: var(--fs-meta); }
+
+/* 年报原文里命中的那一句：底色要够，录视频时观众要看得见高亮在哪 */
+.page-text {
   margin: 0;
+  padding: 10px 12px;
+  background: var(--bg-soft);
+  border-left: 3px solid var(--line-strong);
+  font-family: inherit;
+  font-size: var(--fs-sm);
+  line-height: 1.8;
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 46vh;
+  overflow-y: auto;
 }
 
-.extractor-compare summary {
-  cursor: pointer;
-  font-weight: 500;
-  margin-bottom: 8px;
-}
-
-.extractor-compare td.extractor-name {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 12px;
-}
+.page-text mark { background: #ffe58f; padding: 0 1px; }
