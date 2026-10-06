@@ -1150,3 +1150,80 @@ dl.kv { margin: 0; }
 
 .metric-menu button.empty { color: var(--ink-4); }
 .metric-menu button.empty .fill { color: var(--warn); }
+
+/* ---- 侧栏的「财务事实」组：可展开，里面是指标下拉 + 总表 ---- */
+
+.side-group { display: flex; flex-direction: column; }
+
+.side-link.expand {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: var(--fs-shell);
+  text-align: left;
+  cursor: pointer;
+  width: 100%;
+}
+
+.side-link.expand .caret {
+  color: var(--ink-3);
+  font-size: 10px;
+  width: 10px;
+  flex: none;
+}
+
+.side-sub {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  /* 缩进一格，让层级看得出来 */
+  padding-left: 14px;
+}
+
+.side-link.sub { font-size: var(--fs-xs); color: var(--ink-3); }
+
+/* 侧栏里的指标下拉。**菜单要比侧栏宽**——指标名最长 20 个字，
+   挤在 250px 里会折行或者被截断，看的人认不出是哪一个。 */
+.metric-select.side {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  min-width: 0;
+  padding: 6px 8px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  background: #fff;
+  font: inherit;
+  font-size: var(--fs-xs);
+  color: var(--ink);
+  cursor: pointer;
+  text-align: left;
+}
+
+.metric-select.side:hover { border-color: var(--ink-4); }
+.metric-select.side .nm {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.metric-select.side .caret { flex: none; color: var(--ink-3); font-size: 10px; }
+
+.metric-wrap { position: relative; }
+
+.metric-menu.side {
+  position: absolute;
+  left: 0;
+  top: calc(100% + 3px);
+  /* 溢出到内容区上——侧栏只有 250px，装不下指标名 */
+  width: 380px;
+  max-width: calc(100vw - 280px);
+  max-height: 60vh;
+  overflow-y: auto;
+  z-index: 14;
+}

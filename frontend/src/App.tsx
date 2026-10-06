@@ -3,6 +3,7 @@ import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 
 import { useApi } from './api/client'
 import type { Health, Project } from './api/types'
+import MetricNav from './components/MetricNav'
 import OfflineBadge from './components/OfflineBadge'
 
 /**
@@ -66,7 +67,10 @@ export default function App() {
           <nav className="side-nav">
             {projectId && (
               <>
-                <SideLink to={`/projects/${projectId}/facts`}>财务事实</SideLink>
+                {/* 财务事实是个可展开的组：里面既有指标下拉、又有总表。
+                    「各个细节以及总表都先点左边」——选择在左边完成，
+                    中间只负责显示。 */}
+                <MetricNav projectId={projectId} />
                 <SideLink to={`/projects/${projectId}/narrative`}>
                   叙事一致性
                 </SideLink>
@@ -147,7 +151,10 @@ function CompanyPicker({
   // 换公司时**保留当前页**（财务事实 / 叙事一致性），只换项目——
   // 否则从叙事页点一下公司就掉回财务页，演示时很突兀。
   const go = (p: Project) => {
-    const tail = /\/(facts|narrative)\/?$/.exec(pathname)?.[1] ?? 'facts'
+    // ⚠ 连 **指标键** 一起带过去：从「营业总收入」的详情页换公司，
+    // 应当还停在新公司的营业总收入上，而不是掉回总表。
+    // 只保留最后一段路径的话，看单指标时一点公司就掉回总表，很突兀。
+    const tail = /\/(facts(?:\/[\w-]+)?|narrative)\/?$/.exec(pathname)?.[1] ?? 'facts'
     setOpen(false)
     navigate(`/projects/${p.project_id}/${tail}`)
   }

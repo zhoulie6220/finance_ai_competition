@@ -11,6 +11,7 @@ import App from './App.tsx'
 import { useApi } from './api/client.ts'
 import type { Project } from './api/types.ts'
 import FactTable from './pages/FactTable.tsx'
+import MetricDetail from './pages/MetricDetail.tsx'
 import Narrative from './pages/Narrative.tsx'
 
 /**
@@ -30,6 +31,8 @@ const router = createHashRouter([
     children: [
       { index: true, element: <IndexRedirect /> },
       { path: 'projects/:projectId/facts', element: <FactTable /> },
+      // 单个指标的细节。**指标是在左边选的**，见 components/MetricNav.tsx
+      { path: 'projects/:projectId/facts/:metricKey', element: <MetricDetail /> },
       { path: 'projects/:projectId/narrative', element: <Narrative /> },
       { path: '*', element: <IndexRedirect /> },
     ],
