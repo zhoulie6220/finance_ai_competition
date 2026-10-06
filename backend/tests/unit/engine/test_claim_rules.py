@@ -690,3 +690,32 @@ def test_the_alias_must_be_in_the_same_clause() -> None:
     m = extract_magnitude(text, ("营业成本",))
     assert m is not None
     assert m.metric_aligned is False
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        # 形态七：机构调研记录表。这一张表一条都不用抽，而它每行都带裸 URL。
+        "2017年07月12日  实地调研  机构  http://irm.cninfo.com.cn/...《…投资者关系活动记录表》",
+        "2020年01410会实地  新股发行计划、分红计划、资本开支计划、http://static.cninfo.com.cn/finalpa机构  中信建投月17日",
+    ],
+)
+def test_investor_relations_table_rows_are_dropped(line: str) -> None:
+    """★ 机构调研记录表：全语料 133 行，逐行看过全是这张表。
+
+    判据是**裸 URL**——年报正文里要引用公告时写的是「详见公司于巨潮资讯网
+    披露的公告」，不会出现 `http://`。
+    """
+    assert looks_like_table_row(line) is True
+
+
+def test_a_prose_sentence_may_legally_contain_a_url() -> None:
+    """★ 反面：正文里确实有一类句子带 URL，**不许误杀**。
+
+        「详见公司于巨潮资讯网（http://…）披露的《…公告》。」
+
+    分开它们的是**句号**：正文句子以句末标点收尾，表格行不会。
+    """
+    assert looks_like_table_row(
+        "详见公司于巨潮资讯网（http://www.cninfo.com.cn）披露的《关于收购股权的公告》。"
+    ) is False

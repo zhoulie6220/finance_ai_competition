@@ -161,7 +161,9 @@ def prior_period(period: str) -> str | None:
 # ---------------------------------------------------------------- 匹配
 
 
-def _claim_input(r: sqlite3.Row) -> ClaimInput:
+def _claim_input(
+    r: sqlite3.Row, *, metric: str | None = None, substituted: bool = False
+) -> ClaimInput:
     """把一行查询结果装配成判定输入。
 
     **两个查询（落库 / 装配指数）共用它。** 各写一套的后果不是报错：
@@ -185,7 +187,10 @@ def _claim_input(r: sqlite3.Row) -> ClaimInput:
         magnitude_unit=r["magnitude_unit"],
         magnitude_raw=r["magnitude_text"],
         bound=r["magnitude_bound"] or "exact",
-        primary_metric=r["primary_metric"],
+        # `metric` 传了就用它——那是 `effective_metric` 算出来的**实际判据**，
+        # 可能与 `claim_indicator` 里存的原判据不同（会计授权的回退）。
+        primary_metric=r["primary_metric"] if metric is None else metric,
+        metric_substituted=substituted,
         is_plan=bool(r["is_plan_target"]),
         # 量纲与 sign_convention 来自字段字典（会计口径 §A-1 / §二）。
         # 绝对量目标要靠它们判「能不能比」和「往哪个方向算达成」——
@@ -194,6 +199,47 @@ def _claim_input(r: sqlite3.Row) -> ClaimInput:
         metric_sign=r["sign_convention"],
         target_metric_aligned=bool(r["magnitude_metric_aligned"]),
     )
+
+
+#: 会计授权的**判据回退**：主判据在这个期间没有数据时，允许改用哪个指标。
+#:
+#: ⚠ **这不是「缺数据就换个指标硬判」**——那正是 v1.1 点名禁止的
+#: （「主判据未披露时必须标记不可验证，不能降级用代理指标直接作出
+#: 冲突结论」）。这里是**会计逐条授权**的一个例外，有案可查：
+#: 2026-10-06 第六轮答复「改走 B，但加严格限制」——华菱「钢铁行业」、
+#: 首钢「冶金」两个聚合行的销量，年报没说明是钢材还是粗钢，
+#: 允许**只用于「需求与产销」的方向判断与 Q3**，前提是保留年报原样
+#: 行名/单位/出处、只比较相邻年度同一行名同一单位同一披露范围的数据。
+#:
+#: 所以这张表**只有一项**，别的新增都要会计先点头。
+#: 别的主题、别的指标都没有这个口子。
+_FALLBACK_METRIC: dict[str, str] = {
+    "steel_sales_volume": "industry_sales_volume",
+}
+
+
+def effective_metric(
+    metric: str | None,
+    period: str | None,
+    facts: dict[tuple[str, str], ActualValue],
+) -> tuple[str | None, bool]:
+    """返回 (实际用来判定的指标, 是否发生了回退)。
+
+    ⚠ 只在**主判据这个期间确实没数据、而回退指标有**时才换。
+    两者都缺时保持原样——那样判定会如实地说「未披露 steel_sales_volume」，
+    而不是悄悄拿另一个指标顶上。
+
+    ⚠ 回退指标与原判据的**量纲必须一致**（这里两个都是吨、
+    都是 positive_is_good）。不一致的话 `_claim_input` 带下去的
+    `metric_unit_kind` 会是原判据的，绝对量目标那道量纲闸门就判错了。
+    加新回退项时**先看这一步**。
+    """
+    if not metric or not period or (metric, period) in facts:
+        return metric, False
+    alt = _FALLBACK_METRIC.get(metric)
+    if alt and (alt, period) in facts:
+        return alt, True
+    return metric, False
 
 
 #: 判定要用到的 claim 列。两个查询共用，避免一处加了字段另一处没加。
@@ -262,11 +308,19 @@ def match_and_store(
             summary.background += 1
             continue
 
+        # 会计授权的判据回退（只有华菱/首钢的行业聚合销量一处，见
+        # `effective_metric` 的 docstring）。回退过的话**必须传下去**——
+        # 判定理由里要写明「本条不是用钢材销量判的」，否则两种理由长得一样。
+        metric, substituted = effective_metric(metric, period, facts)
+
         current = facts.get((metric, period)) if (metric and period) else None
         prior = prior_period(period) if period else None
         base = facts.get((metric, prior)) if (metric and prior) else None
 
-        outcome = judge(_claim_input(r), current=current, base=base, cfg=cfg)
+        outcome = judge(
+            _claim_input(r, metric=metric, substituted=substituted),
+            current=current, base=base, cfg=cfg,
+        )
         summary.matched += 1
         summary.counts[outcome.verdict] = summary.counts.get(outcome.verdict, 0) + 1
 
@@ -477,11 +531,19 @@ def _scored_claims(
             no_period += 1
             continue
 
+        # 与 `match_and_store` **同一处回退**。两处不一致的话，
+        # 判定表用的是行业聚合销量、指数用的是钢材销量——
+        # 而两边都算得出数，看不出它们不是一套。
+        metric, substituted = effective_metric(metric, period, facts)
+
         cur = facts.get((metric, period))
         prior = prior_period(period)
         base = facts.get((metric, prior)) if prior else None
 
-        outcome = judge(_claim_input(r), current=cur, base=base, cfg=cfg)
+        outcome = judge(
+            _claim_input(r, metric=metric, substituted=substituted),
+            current=cur, base=base, cfg=cfg,
+        )
         if cur is None:
             no_fact += 1
 

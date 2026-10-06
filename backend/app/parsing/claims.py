@@ -250,6 +250,22 @@ def looks_like_table_row(line: str) -> bool:
         if digits / len(stripped) > 0.18:
             return True
 
+    # ---- 形态七：机构调研记录表 ------------------------------------------
+    #
+    #    2017年07月12日  实地调研  机构  http://irm.cninfo.com.cn/...《…投资者关系活动记录表》
+    #    2020年01410会实地  新股发行计划、分红计划…；未提供资料  ge/2020-01-21
+    #
+    # 这一张表**一条都不用抽**，而它恰好每一行都带一个原始 URL——
+    # 年报正文里不会出现裸 URL（要引用公告时写的是「详见公司于巨潮资讯网
+    # 披露的公告」）。实测全语料 133 行命中，逐行看过全是这张表。
+    #
+    # ⚠ 判据里那个「没有句号」是**必须的**：正文里确实有一类句子带 URL——
+    #   「详见公司于巨潮资讯网（http://…）披露的《…公告》。」那是正经句子，
+    #   而它**以句号收尾**。表格行不会。
+    if len(cells) >= 3 and not any(c in stripped for c in "。！？"):
+        if "http" in stripped or "投资者关系活动记录表" in stripped:
+            return True
+
     # 退路：列对齐在提取时丢失、整行几乎全是数字字符的情况
     if len(stripped) >= 8:
         digits = sum(ch.isdigit() for ch in stripped)

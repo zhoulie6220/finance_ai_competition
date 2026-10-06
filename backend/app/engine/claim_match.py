@@ -177,6 +177,14 @@ class ClaimInput:
     #: 那种情况下目标与事实不是同一件事，**不能比**（会计口径 8-3 第 1 条
     #: 要求的「先核对业务范围和期间」正是这一步）。
     target_metric_aligned: bool = True
+    #: 这一条的判据**不是**主题原本的主判据，而是会计授权的回退指标。
+    #:
+    #: 目前只有一处：华菱 / 首钢年报的行业聚合销量（`industry_sales_volume`）。
+    #: 会计 2026-10-06 答复「改走 B，但加严格限制」——允许用它做
+    #: 「需求与产销」的方向判断与 Q3，**前提是保留出处并标明口径存疑**。
+    #: 所以这一位不只是个布尔：它决定判定理由里必须多出一段披露，
+    #: **没有那段披露，这条判定看上去和用钢材销量判出来的一模一样。**
+    metric_substituted: bool = False
 
 
 @dataclass(frozen=True)
@@ -776,7 +784,7 @@ def _out(
         claim_period=claim.period_norm or "",
         fact_period=fact_period or claim.period_norm or "",
         verdict=verdict,
-        reason=reason,
+        reason=_with_substitution_note(claim, reason),
         confidence=confidence,
         direction_claim=claim.direction,
         direction_actual=direction_actual,
@@ -792,6 +800,21 @@ def _out(
         plan_variance=plan_variance,
         plan_reference=plan_reference,
     )
+
+
+#: 回退判据的披露语。**写在唯一出口上**，所以每一条判定理由都会带上它——
+#: 逐个 reason 字符串去补的话，漏掉一处就是一个「看起来用的是钢材销量」
+#: 的假象，而两种理由长得完全一样。
+_SUBSTITUTION_NOTE = (
+    " ⚠ 本条的判据**不是**钢材销量：该公司年报只披露了行业聚合口径的销量"
+    "（未说明是钢材还是粗钢），这里按会计 2026-10-06 的授权改用"
+    " `industry_sales_volume`，**仅用于同口径方向判断**，"
+    "不映射为通用钢材销量、不参与其他数量计算。"
+)
+
+
+def _with_substitution_note(claim: ClaimInput, reason: str) -> str:
+    return reason + _SUBSTITUTION_NOTE if claim.metric_substituted else reason
 
 
 # ---------------------------------------------------------------- 覆盖统计
