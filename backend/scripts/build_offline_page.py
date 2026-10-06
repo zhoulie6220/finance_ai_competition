@@ -117,7 +117,15 @@ def build(out_dir: Path, *, banner: bool = True) -> int:
     html = html[: m_js.start()] + html[m_js.end():]
 
     # 数据放最前面，主脚本一执行就会去读 window.__SNAPSHOT__
-    data_tag = "<script>window.__SNAPSHOT__=" + _safe(snapshot) + ";</script>\n"
+    #
+    # ⚠ `banner=False` 是给**录视频用**的那一份：录制下来的视频本来就不是
+    #   实时演示，「离线快照」那条横幅在那种场景里是多余的（而且会入镜）。
+    #   **默认仍然是开**：给会计同学浏览的那一份必须带着它——
+    #   他会以为页面上是「现在的库」。**别把默认值改掉。**
+    data_tag = "<script>window.__SNAPSHOT__=" + _safe(snapshot) + ";"
+    if not banner:
+        data_tag += "window.__SNAPSHOT_HIDE_BANNER__=true;"
+    data_tag += "</script>\n"
     html = html.replace("<head>", "<head>\n" + data_tag, 1)
 
     # 兜底自检。**这一条是给「万一」用的**：内联模块脚本在 `file://` 下
