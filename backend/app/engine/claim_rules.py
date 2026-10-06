@@ -250,6 +250,21 @@ class Magnitude:
     #: 两者的区别**只在有没有计划模态词**，所以必须在抽取时记下来——
     #: 判定那一步手上只有这一行数据，回头去原文找「计划」二字是找不到的。
     is_plan: bool = False
+    #: 这个数是不是**从主判据别名旁边**取来的。
+    #:
+    #: ⚠ 这一位是「能不能拿它和主判据比」的前提，不是装饰。
+    #: `_pick_by_metric` 找不到别名时会**退回取第一个带单位的数**——
+    #: 那意味着这句话里的数字与主判据没有文字上的关联。真实撞到过：
+    #:
+    #:     2024年，公司预算安排固定资产投资资金239.2亿元，主要用于……
+    #:
+    #: 主张的主题被映射成 `operating_cost`，句子里的 239.2 亿元其实是**资本开支**。
+    #: 拿它和营业成本（2,809 亿元）比，偏差 +280,626 百万元，按 8-2 的成本方向
+    #: 算出来是「未达成」——**有数字、有理由、有公式，和真结论长得一模一样**。
+    #:
+    #: 所以只有 `True` 才允许把目标与主判据比。这正好对上会计口径 8-3 第 1 条
+    #: 要求的「先核对业务范围和期间」——别名取到的数，业务范围才是有据的。
+    metric_aligned: bool = True
 
     @property
     def is_ratio(self) -> bool:
@@ -336,7 +351,7 @@ def _crosses_clause(text: str, start: int, end: int) -> bool:
 
 def _pick_by_metric(
     matches: list[re.Match[str]], text: str, metric_aliases: Sequence[str]
-) -> re.Match[str]:
+) -> tuple[re.Match[str], bool]:
     """一句话里有多个数字时，挑出**与主判据指标对应的**那一个。
 
     ⚠ 宝钢每年的「年度经营计划」一句话里塞五六个目标：
@@ -351,6 +366,14 @@ def _pick_by_metric(
     做法：找到主判据别名（「营业成本」）的位置，取它**同一分句内**的下一个
     带单位数字。别名的来源是 `metric_definition.aliases`——那份字典是
     「PDF 行名 → 字段键」映射的唯一依据，这里复用它，不另造一份词表。
+
+    返回 `(数字, 是不是靠别名取到的)`。
+
+    ⚠ **第二个值必须往上传，不能在这里丢掉**（和 `bound` 当年一样）。
+    退回取第一个带单位数字时，这句话的数**与主判据没有文字上的关联**——
+    真实撞到过「预算安排固定资产投资资金239.2亿元」被当成营业成本目标。
+    丢了这一位，判定层就分不出「有据的对应」和「碰巧挨着的一个数」，
+    只能照判，而判出来的东西有数字有理由、看着像真的。
     """
     for alias in metric_aliases:
         if not alias:
@@ -367,8 +390,14 @@ def _pick_by_metric(
                 and m.start() >= after
                 and not _crosses_clause(text, after, m.start())
             ):
-                return m
-    return next((m for m in matches if m.group("unit")), matches[0])
+                return m, True
+    fallback = next((m for m in matches if m.group("unit")), matches[0])
+    # ⚠ **「没查」不等于「对不上」。** 一个别名都没传（没给字典数据，
+    # 或者这个指标在字典里就没写别名）时，我们没有依据说它错位——
+    # 报 False 会让一整类主张被静默降级成待核查。
+    if not any(metric_aliases):
+        return fallback, True
+    return fallback, False
 
 
 def extract_magnitude(
@@ -389,7 +418,7 @@ def extract_magnitude(
     if not matches:
         return None
 
-    chosen = _pick_by_metric(matches, text, metric_aliases)
+    chosen, aligned = _pick_by_metric(matches, text, metric_aliases)
     unit = chosen.group("unit") or ""
     try:
         # ⚠ **必须去掉千位分隔符**：Decimal("4,976.3") 会抛 InvalidOperation，
@@ -414,7 +443,8 @@ def extract_magnitude(
     is_plan = any(t in _plan_clause(text, chosen.start() + 1) for t in _PLAN_TERMS)
 
     return Magnitude(
-        raw=chosen.group(0), value=value, unit=unit, bound=bound, is_plan=is_plan
+        raw=chosen.group(0), value=value, unit=unit, bound=bound, is_plan=is_plan,
+        metric_aligned=aligned,
     )
 
 

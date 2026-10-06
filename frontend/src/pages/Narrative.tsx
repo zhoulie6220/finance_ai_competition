@@ -405,7 +405,10 @@ function MatchTable({
               {r.claim_text}
             </td>
             <td className="nowrap">{r.metric_key || '—'}</td>
-            <td className="msg">{r.reason}</td>
+            <td className="msg">
+              {r.reason}
+              <PlanVariance row={r} />
+            </td>
             <td>
               {r.inputs && <FactLinks inputs={r.inputs} onOpen={onOpenFact} />}
               {!r.inputs && (
@@ -424,6 +427,40 @@ function MatchTable({
         ))}
       </tbody>
     </table>
+  )
+}
+
+/**
+ * 绝对量目标的**单位换算留痕**与「原始计划偏差」。
+ *
+ * 目标原样写着「亿元」而事实库存的是「百万元」，这一步换算必须摆出来：
+ * 只给一个换算过的数，用户没法核对，而「计算可复算」正是本系统的卖点。
+ * 后端同时返回原始单位、换算因子与标准化数值（会计口径 8-1 点名要留的四样）。
+ *
+ * ⚠ **这里只排版，不做任何计算。** 三个数都是后端给的：
+ * 目标 × 因子 = 标准化值，以及偏差。前端算出来的数没法审计。
+ * ⚠ 偏差**不计分**（8-3 第 4 条）——所以旁边那句「不计分」不是装饰，
+ * 少了它，用户会以为这一行在为指数贡献分数。
+ */
+function PlanVariance({ row }: { row: ClaimMatch }) {
+  if (!row.target_millions || !row.unit_factor) return null
+  const target = row.magnitude_target ?? ''
+  const variance = row.plan_variance
+  const sign = variance && !variance.startsWith('-') ? '+' : ''
+  return (
+    <div className="plan-variance">
+      <span className="pv-step">
+        {target} × {row.unit_factor} = {groupDigits(row.target_millions)} 百万元
+      </span>
+      {variance && (
+        <span className="pv-gap">
+          原始计划偏差 {sign}
+          {groupDigits(variance)} 百万元
+          <span className="pv-muted">（不计分）</span>
+        </span>
+      )}
+      {row.plan_reference && <div className="pv-ref">{row.plan_reference}</div>}
+    </div>
   )
 }
 

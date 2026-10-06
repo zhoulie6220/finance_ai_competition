@@ -294,11 +294,11 @@ def extract_claims_llm(
                 "INSERT OR IGNORE INTO claim (claim_id, project_id, section_id,"
                 " claim_text, subject, action, object, period_expr, period_norm,"
                 " direction, magnitude_text, magnitude_value, magnitude_unit,"
-                " magnitude_bound, is_plan_target,"
+                " magnitude_bound, is_plan_target, magnitude_metric_aligned,"
                 " claim_type, verifiable, background_only, confidence,"
                 " source_file_id, source_page, source_text, extractor,"
                 " prompt_version, status, created_at)"
-                " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 rows,
             )
             after = con.execute(
@@ -549,6 +549,9 @@ def _build_row(
     magnitude_unit = probing.unit if probing and probing.unit else None
     magnitude_bound = probing.bound if probing else None
     is_plan_target = 1 if (probing and probing.is_plan) else 0
+    # 同 bound / is_plan：**两种抽取法必须给出同一个值**，
+    # 否则并排对照时两边的判定不同，看不出是口径不同还是真的不同。
+    metric_aligned = 0 if (probing and not probing.metric_aligned) else 1
 
     return (
         claim_id,
@@ -566,6 +569,7 @@ def _build_row(
         magnitude_unit,
         magnitude_bound,
         is_plan_target,
+        metric_aligned,
         claim_type,
         1 if verifiable else 0,
         # v1.1 与 docs/01 的硬约束：不可验证的主张必须标 background_only

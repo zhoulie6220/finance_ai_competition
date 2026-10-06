@@ -165,13 +165,29 @@ def judge_q2(
     cfg = cfg or Q2Config()
 
     # ---- 能不能判：先过状态与完整性两道闸 --------------------------------
+    #
+    # ⚠ `pending` 与 `unavailable_disclosure` **必须分开说**。
+    #
+    # 两者原先共用一句「未录入或年报未披露」，于是页面上分不出
+    # 「会计还没抄」和「年报里根本没有这一项」——而这是**两件要不同的人
+    # 去做不同的事**的情况：前者催会计，后者是披露缺口、要换口径或放弃。
+    # 合成一句话的后果不是报错，是**催错了人**，或者更糟：
+    # 明明只是没人去抄，被读成「这家公司没披露」——一个数据结论。
     for label, row in (("上期", prior), ("本期", current)):
-        if row.status in ("pending", "unavailable_disclosure"):
+        if row.status == "pending":
             return Q2Outcome(
                 status=UNAVAILABLE,
                 triggered=None,
-                reason=f"{label}（{row.period}）的账龄数据未录入或年报未披露。"
+                reason=f"{label}（{row.period}）的账龄数据**尚未录入**——"
+                       f"不是年报没披露，是还没人去抄。"
                        f"**缺数据不等于未触发**。",
+            )
+        if row.status == "unavailable_disclosure":
+            return Q2Outcome(
+                status=UNAVAILABLE,
+                triggered=None,
+                reason=f"{label}（{row.period}）的年报**未披露**账龄数据。"
+                       f"这是披露缺口，不是还没抄。**缺数据不等于未触发**。",
             )
         if row.status == "proxy_net":
             return Q2Outcome(

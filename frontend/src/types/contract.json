@@ -6725,7 +6725,7 @@
       "type": "object"
     },
     "ClaimMatchView": {
-      "description": "一条「主张 → 事实」的判定。\n\n`formula` 与 `inputs` 允许为空：不可比的主张没有算式可给，\n给一个空算式比编一个更有用。",
+      "description": "一条「主张 → 事实」的判定。\n\n`formula` 与 `inputs` 允许为空：不可比的主张没有算式可给，\n给一个空算式比编一个更有用。\n\n`target_unit` / `target_millions` / `unit_factor` 只在**绝对量目标**上非空：\n目标写「亿元」而事实库存「百万元」，页面要把这一步换算显示出来，\n否则用户只看到一个换算过的数、看不出它从哪来（会计口径 8-1）。\n`plan_variance` 是「原始计划偏差」，8-3 第 4 条允许展示、\n**但不进 H 的支持/相悖判定**——它的 verdict 一定是 needs_review。\n`plan_reference` 是按 8-2 的方向算出的参考结论，是**文字参考不是判定**。",
       "properties": {
         "match_id": {
           "title": "Match Id",
@@ -6842,6 +6842,66 @@
           ],
           "default": null,
           "title": "Inputs"
+        },
+        "target_unit": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Target Unit"
+        },
+        "target_millions": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Target Millions"
+        },
+        "unit_factor": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Unit Factor"
+        },
+        "plan_variance": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Plan Variance"
+        },
+        "plan_reference": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Plan Reference"
         },
         "claim_text": {
           "title": "Claim Text",

@@ -274,3 +274,65 @@ def test_verified_view_hides_unvalidated(con):
     insert_fact(con, fact_id="nr", period="2023", status="needs_review")
     ids = [r[0] for r in con.execute("SELECT fact_id FROM v_fact_verified")]
     assert ids == ["ok"]
+
+
+# ---------------------------------------------------------------- 计划偏差不许计分
+
+
+def _insert_match(con, *, verdict: str, plan_variance):
+    """插一条 claim_match。claim.section_id 有外键与 NOT NULL，先铺一个章节。"""
+    con.execute(
+        "INSERT INTO mdna_section (section_id, file_id, heading, kind, page_from,"
+        " page_to, text) VALUES (?,?,?,?,?,?,?)",
+        ("md-f1-0", "f1", "四、主营业务分析", "mdna", 10, 12, "正文"),
+    )
+    con.execute(
+        "INSERT INTO claim (claim_id, project_id, section_id, claim_text,"
+        " claim_type, verifiable, background_only, confidence, source_file_id,"
+        " source_page, source_text, extractor, prompt_version, status, created_at)"
+        " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        ("cl-1", "p1", "md-f1-0", "计划营业成本2420亿元", "cost", 1, 0,
+         0.7, "f1", 10, "计划营业成本2420亿元", "rule:claim_v1", "v1",
+         "validated", "2026-10-06T00:00:00"),
+    )
+    con.execute(
+        "INSERT INTO claim_match (match_id, claim_id, metric_key, claim_period,"
+        " fact_period, verdict, reason, confidence, plan_variance, created_at)"
+        " VALUES (?,?,?,?,?,?,?,?,?,?)",
+        ("m-1", "cl-1", "revenue", "2018", "2018", verdict, "理由",
+         0.0, plan_variance, "2026-10-06T00:00:00"),
+    )
+
+
+def test_plan_variance_can_be_shown_on_a_needs_review_row(con):
+    """8-3 第 4 条：未经调整的总额差异**可以展示**。"""
+    _insert_match(con, verdict="needs_review", plan_variance="17084.996015")
+    assert con.execute(
+        "SELECT plan_variance FROM claim_match WHERE match_id='m-1'"
+    ).fetchone()[0] == "17084.996015"
+
+
+@pytest.mark.parametrize("verdict", ["supported", "neutral", "contradicted"])
+def test_plan_variance_cannot_ride_along_with_a_scoring_verdict(con, verdict):
+    """★ 8-3 第 4 条的后半句：**不进 H 的支持/相悖判定。**
+
+    这一条不靠注释提醒，靠**写不进去**。原因是它极容易悄悄发生：
+    只要有人给 `_judge_absolute_target` 的某条分支换个 verdict，
+    计划偏差就会跟着进 H——而那个判定有偏差数字、有公式、有理由，
+    和真结论长得一模一样，从结果上看不出来。
+
+    实测在 8-1/8-2 定下来**之前**，这个错误已经真的发生过一次：
+    拿绝对目标去减相对变化，宝钢一次跑出 12 条假「未达成」，
+    其中 7 条进了 H。所以这条约束是补上那一次事故的。
+    """
+    with pytest.raises(sqlite3.IntegrityError):
+        _insert_match(con, verdict=verdict, plan_variance="17084.996015")
+
+
+def test_a_scoring_row_is_still_fine_without_a_plan_variance(con):
+    """反面：普通判定不带计划偏差，照常写得进去。
+
+    少了这条，把 CHECK 写成「一律拒绝」也能让上面两条通过。
+    """
+    _insert_match(con, verdict="supported", plan_variance=None)
+    assert con.execute("SELECT COUNT(*) FROM claim_match").fetchone()[0] == 1

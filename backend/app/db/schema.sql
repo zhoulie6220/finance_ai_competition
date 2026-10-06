@@ -471,6 +471,15 @@ CREATE TABLE claim (
   -- 已发生的事实不能当目标核验——那是拿事实核验事实，永远判「支持」，
   -- 而假的「支持」会把 H 和 C 一起抬上去。
   is_plan_target  INTEGER NOT NULL DEFAULT 0 CHECK (is_plan_target IN (0,1)),
+  -- 上面那个数字是不是**从主判据别名旁边**取来的（`claim_rules.Magnitude`）。
+  -- 0 表示抽取时没找到别名、退回取了「第一个带单位的数」——那句话里的数
+  -- 与该指标在文字上没有关联，**不能拿来和该指标的实际值比**。
+  -- 实测撞到过「预算安排固定资产投资资金239.2亿元」被映射成营业成本目标，
+  -- 偏差 +280,626 百万元、按成本方向还是「未达成」——有数字有理由，看着像真的。
+  -- 和 magnitude_bound 一样：**抽取时不算出来就永远补不回来**，
+  -- 判定那一步手上只有这一行，无权再去看原文找别名。
+  magnitude_metric_aligned INTEGER NOT NULL DEFAULT 1
+                  CHECK (magnitude_metric_aligned IN (0,1)),
   claim_type      TEXT NOT NULL
                   CHECK (claim_type IN ('demand','order','capacity','collection',
                                         'product_mix','cost','risk','macro','other')),
@@ -528,6 +537,21 @@ CREATE TABLE claim_match (
   magnitude_target TEXT,
   magnitude_actual TEXT,
   relative_deviation TEXT,
+  -- 绝对量目标的换算留痕。会计口径 8-1 原话要求「系统同时保留原始数值、
+  -- 原始单位、换算因子和标准化数值，避免把换算后的数值当成原始披露」。
+  -- 原始数值与原始单位在 claim 表的 magnitude_value / magnitude_unit 上，
+  -- 这里留另外两样，免得页面上只剩一个换算过的数、看不出它从哪来。
+  target_unit       TEXT,          -- 原始单位，如「亿元」；NULL = 目标不是绝对量
+  target_millions   TEXT,          -- 折算成百万元的目标值（Decimal 存字符串）
+  unit_factor       TEXT,          -- 换算因子，如「100」
+  -- 「原始计划偏差」= 实际 − 换算后的目标（百万元）。
+  -- ⚠ 会计口径 8-3 第 4 条：**只作展示，不进 H 的支持/相悖判定**。
+  -- 所以它非空时 verdict 必然是 needs_review —— 下面是刻意加的约束，
+  -- 让「有人把计划偏差接进计分」这件事在数据库层就做不出来。
+  plan_variance     TEXT,
+  -- 按 8-2 的方向算出的参考结论（「实际高于计划，属未达成」这类）。
+  -- ⚠ 它是**给人看的文字**，不是判定；判定看 verdict 那一列。
+  plan_reference    TEXT,
   -- 判定标度见会计口径 v1.1 §A.2（枚举在 app/schemas/enums.py::MatchVerdict）。
   -- 三个**计分**态，构成 H、C 的等权平均：supported=+1 / neutral=0 / contradicted=-1。
   -- 三个**不计分**态，页面单列，理由必须写进 reason：
@@ -546,7 +570,11 @@ CREATE TABLE claim_match (
   reviewed_at     TEXT,
   created_at      TEXT NOT NULL,
   -- 不可比必须写明原因（与财务事实同一原则）
-  CHECK (verdict <> 'incomparable' OR (reason IS NOT NULL AND length(trim(reason)) > 0))
+  CHECK (verdict <> 'incomparable' OR (reason IS NOT NULL AND length(trim(reason)) > 0)),
+  -- ⚠ 「原始计划偏差」只作展示，**不进 H 的支持/相悖判定**
+  -- （会计口径 8-3 第 4 条）。这条约束让「有人把它接进计分」在数据库层
+  -- 就做不出来——不靠注释提醒，靠写不进去。
+  CHECK (plan_variance IS NULL OR verdict = 'needs_review')
 );
 
 CREATE INDEX ix_match_claim ON claim_match(claim_id);

@@ -60,6 +60,42 @@ METRIC_KINDS: dict[str, MetricKind] = {
 #: 比例型的单位。只有目标是比例时，才能直接和实测的变化率相比。
 _RATIO_UNITS = ("%", "％", "个百分点")
 
+#: 目标数的单位 → 量纲。用来挡住「目标写亿元、主判据却是钢材销量（吨）」
+#: 这类比较——那两个数放在一起减，算得出偏差、写得出理由，
+#: 和真结论长得一模一样。（实测宝钢真实撞到过：一句「营业总收入较计划
+#: 减少 298.46 亿元」的主判据被映射成了钢材销量。）
+_UNIT_KIND: dict[str, str] = {
+    "元": "currency", "万元": "currency", "百万元": "currency",
+    "亿元": "currency", "万亿元": "currency",
+    "吨": "ton", "万吨": "ton", "亿吨": "ton",
+}
+_UNIT_KIND_CN: dict[str, str] = {"currency": "金额", "ton": "吨", "percent": "比例"}
+
+#: 折算成「百万元」的因子。财务事实库里金额一律存百万元。
+#:
+#: ⚠ **只有金额类有因子。** 会计口径 8-1 只授权了「1 亿元 = 100 百万元」，
+#: 吨 / 万吨 的换算法（事实库里存的是吨还是万吨）**没有定**，
+#: 所以这里不给——拿不到因子就走人工复核，**不猜一个看起来合理的数**。
+_MILLION_FACTOR: dict[str, Decimal] = {
+    "元": Decimal("0.000001"),
+    "万元": Decimal("0.01"),
+    "百万元": Decimal("1"),
+    "亿元": Decimal("100"),
+    "万亿元": Decimal("1000000"),
+}
+
+#: 目标的达成方向，取自 `metric_definition.sign_convention`（v1.1 §二）。
+#: v1.1 问答 8-2 给了它的用法：
+#:
+#:     成本类（越小越好）  实际 ≤ 计划 → 达成；实际 > 计划 → 未达成
+#:     收入类（越大越好）  实际 ≥ 计划 → 达成；实际 < 计划 → 未达成
+#:
+#: 没列进来的（`neutral`）方向不明 → 不判方向，只报偏差。
+_SIGN_TO_BETTER: dict[str, Literal["higher", "lower"]] = {
+    "positive_is_good": "higher",
+    "negative_is_good": "lower",
+}
+
 # 方向词 → 期望的变化方向。'improve'/'deteriorate' 描述的是「状态」，
 # 对不同的指标含义不同：毛利率改善是上升，成本改善是下降。
 _IMPROVING_IS_UP = ("gross_margin", "net_margin", "ebit_margin", "ebitda_margin",
@@ -113,6 +149,17 @@ class ClaimInput:
     #: 这个数字是不是**计划值**。判定要区分「承诺」和「已发生的事实」——
     #: 拿事实去核验事实永远判「支持」，而假的「支持」看不出来。
     is_plan: bool = False
+    #: 主判据的**量纲**与 **sign_convention**，来自 `metric_definition`。
+    #: 绝对量目标要和事实比，就得知道主判据是什么量纲、往哪个方向算「好」——
+    #: 这两样都是会计口径里的字段（§二 / §A-1），不在这一层另立一套。
+    metric_unit_kind: str | None = None
+    metric_sign: str | None = None
+    #: 这个目标数字是不是**从主判据别名旁边**取来的（`claim_rules.Magnitude`）。
+    #: False 表示这句话里的数与该指标在文字上没有关联——例如
+    #: 「预算安排固定资产投资资金239.2亿元」被映射成了营业成本。
+    #: 那种情况下目标与事实不是同一件事，**不能比**（会计口径 8-3 第 1 条
+    #: 要求的「先核对业务范围和期间」正是这一步）。
+    target_metric_aligned: bool = True
 
 
 @dataclass(frozen=True)
@@ -134,6 +181,19 @@ class MatchOutcome:
     relative_deviation: Decimal | None = None
     formula: str | None = None
     inputs: tuple[str, ...] = ()
+    #: —— 绝对量目标专用。会计口径 8-1 要求「原始数值、原始单位、
+    #: 换算因子、标准化数值」四样都留痕，前两样在 claim 表上
+    #: （`magnitude_value` / `magnitude_unit`），这里留后两样。
+    target_unit: str | None = None
+    target_millions: Decimal | None = None
+    unit_factor: Decimal | None = None
+    #: 「原始计划偏差」= 实际 − 换算后的目标（百万元）。
+    #: 8-3 第 4 条：**可以展示，但不进 H 的支持/相悖判定**——
+    #: 所以它旁边的 verdict 一定是 needs_review，不会是 supported/contradicted。
+    plan_variance: Decimal | None = None
+    #: 按 8-2 的方向算出来的**参考结论**（「实际高于计划，属未达成」这类）。
+    #: 只给人看，**不是判定**——它不进 H，见 `_judge_absolute_target`。
+    plan_reference: str | None = None
 
     @property
     def scores(self) -> bool:
@@ -396,8 +456,14 @@ def _judge_explicit_target(
             confidence=0.0, fact_period=current.period,
         )
 
-    # 「约 10%」「10% 左右」——没有公开容差，不擅自判完成与否
-    if claim.bound == "about":
+    # 「约 10%」「10% 左右」——没有公开容差，不擅自判完成与否。
+    #
+    # ⚠ **只对比例型目标在这里早退。** 绝对量目标即使带「约」，也还有
+    # 单位换算与「原始计划偏差」要报（8-1 要求留痕、8-3 第 4 条允许展示），
+    # 所以让它走 `_judge_absolute_target`，那里自己处理 about。
+    # 不分开的话，一句「约 2,420 亿元」会连偏差都看不见——
+    # 而偏差恰恰是这条链路唯一该给人看的东西。
+    if claim.bound == "about" and claim.magnitude_unit in _RATIO_UNITS:
         return _out(
             claim, metric, "needs_review",
             f"原文表述为「{claim.magnitude_raw}」，属约数且无公开容差，"
@@ -406,29 +472,10 @@ def _judge_explicit_target(
             fact_period=current.period,
         )
 
-    # ⚠ **绝对量目标在这一层比不了，必须挡住。**
-    #
-    # 金额类指标的 `actual_ratio` 是**相对变化** ((本期 − 基期) / 基期)，
-    # 而 `target` 是绝对金额。拿 2,420 亿元去减 0.0429，偏差必然是
-    # −2,419.96，于是**任何绝对量目标都判「未达成」——算术上就不可能达标**。
-    #
-    # 而那个「未达成」有公式、有偏差数字、有理由，看起来和真结论一模一样。
-    # 实测宝钢一次跑出 12 条，逐条都是这么来的；进 H 的 9 个观测里
-    # **有 7 个是这么来的**。这正是本模块开头警告的「假的冲突比漏报更糟」，
-    # 只不过方向反过来了：不是拿事实核验事实，是拿两个不同量纲的数相减。
-    #
-    # 要真判，得先把目标换算到与事实同一单位（亿元 → 百万元），
-    # 再定「计划营业成本」「成本环比削减 30 亿元」这类表述的达成方向——
-    # **那是会计口径**，不是这一层能拍的。所以转人工复核，不擅自判。
+    # ⚠ 绝对量目标走另一条路：**换算 + 报偏差，但不进 H / C 的支持相悖判定**。
+    # 口径见 `_judge_absolute_target`。
     if claim.magnitude_unit not in _RATIO_UNITS:
-        return _out(
-            claim, metric, "needs_review",
-            f"数值目标「{claim.magnitude_raw}」是**绝对量**，与 {metric} 的"
-            f"相对变化不同量纲。换算与达成方向的口径未定，按规则转人工复核——"
-            f"**不擅自判完成或未完成**。",
-            confidence=0.0, magnitude_target=claim.magnitude_raw,
-            fact_period=current.period,
-        )
+        return _judge_absolute_target(claim, current, metric)
 
     # 目标是比例时，把它从「百分数」换成 0–1 再与实测比
     target_ratio = target / Decimal(100) if claim.magnitude_unit in ("%", "％") else target
@@ -469,6 +516,188 @@ def _judge_explicit_target(
     )
 
 
+def _judge_absolute_target(
+    claim: ClaimInput, current: ActualValue, metric: str
+) -> MatchOutcome:
+    """绝对量目标的核验（会计口径 **8-1 / 8-2 / 8-3**，2026-10-01 答复）。
+
+    ★ **这一条永远不出 supported / contradicted。** 不是「还没做」，
+    是三问的回答合起来就定成这样：
+
+        8-1  单位可以换算，1 亿元 = 100 百万元；原始数值、原始单位、
+             换算因子、标准化数值四样都要留痕
+        8-2  方向按 sign_convention 定：成本类实际不高于计划为达成，
+             收入类实际不低于计划为达成；含「约 / 左右」的先标待核查
+        8-3  第 3 条——只有总成本、没有可靠的成本结构或产品组合信息时，
+             **不能按产量同比例缩放，也不能直接判「未达成」**，转人工复核
+             第 4 条——未经调整的总额差异可以展示为「原始计划偏差」，
+             **但不进入 H 的支持/相悖判定**
+
+    所以这一层做的是：**把偏差按正确的单位算出来、把 8-2 的方向算出来
+    给人看**，然后把 verdict 定在 needs_review。
+
+    #### 这一段有来历
+
+    在 8-1/8-2 定下来之前，这里只会说一句「口径未定」。而更早的版本
+    干脆**没挡**，于是金额类指标的实测相对变化（0.0429）被拿去减绝对目标
+    （2,420 亿元），偏差必然是 −2,419.96 —— **算术上任何绝对量目标都不可能达标**。
+    那个「未达成」有公式、有偏差数字、有理由，和真结论长得一模一样；
+    实测宝钢一次跑出 12 条，进 H 的 9 个观测里 7 个是这么来的。
+
+    #### 为什么不是「换算完就直接判」
+
+    8-3 第 3 条要的是「同口径、同范围、并按固定成本与变动成本做过产量调整」
+    之后再比。宝钢 2018 那一句的原文是：
+
+        2018年，宝钢股份计划产铁4563万吨、产钢4737万吨、销售商品坯材4568万吨、
+        营业总收入2786亿元、营业成本2420亿元。
+
+    实际成本 2,590.85 亿元高于计划 2,420 亿元，看着像未达成——但实际产量
+    若也高于计划，成本高是自然的。**库里没有成本结构和产品组合信息**，
+    做不了这个调整，所以按第 3 条标待核查。会计答复的末句原话：
+
+        「因此，2018 年营业成本目标不应仅用 2,590.85 亿元对 2,420 亿元
+          直接判定未达成；应先完成同口径、产量和成本结构复核。」
+
+    #### 已知的残留：**「削减额」和「水平值」是两种量**
+
+    年报里还有一类：
+
+        成本环比削减30亿元以上；      2021年实现成本削减11.5亿元，超额完成年度目标
+
+    那个 30 亿元是**削减额**（一个差），而财务事实库里的 `operating_cost`
+    是**水平值**（2,809 亿元）。两者相减同样没有意义。
+
+    当前数据下这一类**全部**被上面那道「数不是这个指标的」闸门挡住了
+    （实测 12 条，`magnitude_metric_aligned` 全是 0）——因为句子里没有
+    「营业成本」这个别名，抽取时走的是退回取数那条路。
+
+    ⚠ **这是巧合，不是保证。** 哪天抽取把别名匹配做得更宽
+    （比如把「成本削减」也算作营业成本的别名），这一批就会变成
+    `aligned=1`，然后拿削减额去减水平值。要修得在抽取层区分
+    「差额型」与「水平型」目标（`Magnitude` 再加一位），
+    **不是在判定层补一个阈值**——补阈值只能盖住见过的量级。
+    """
+    target = claim.magnitude_value
+    assert target is not None
+    raw = claim.magnitude_raw or str(target)
+    unit = claim.magnitude_unit or ""
+
+    # ---- 8-3 第 1 条之先：这个数是不是这个指标的数 ----------------------
+    # 抽取时若找不到主判据别名，会退回取「第一个带单位的数」。那意味着
+    # 这句话里的数字与主判据**在文字上没有关联**。真实撞到过：
+    #
+    #     2024年，公司预算安排固定资产投资资金239.2亿元，主要用于……
+    #
+    # 主题映射成了 `operating_cost`，239.2 亿元其实是资本开支。拿它和
+    # 营业成本（2,809 亿元）比，偏差 +280,626 百万元——按 8-2 的成本方向
+    # 算出来还是「未达成」，**有数字、有理由、有公式**。
+    #
+    # ⚠ 这一条挡住的是「主张与指标的对应关系」这个更上游的错误，
+    # 量纲那道闸门挡不住它（两边都是金额）。所以这一层连**偏差都不算**——
+    # 算出来就会有人看，看了就会有人当真。
+    if not claim.target_metric_aligned:
+        return _out(
+            claim, metric, "needs_review",
+            f"绝对量目标「{raw}」在原文里**没有和主判据 {metric} 的别名相邻**，"
+            f"是抽取时退回取的「第一个带单位的数」。两者很可能不是同一件事"
+            f"（实测撞到过资本开支被当成营业成本目标），"
+            f"按 8-3 第 1 条先核对业务范围与期间——**这一层连偏差都不算**。",
+            confidence=0.0, magnitude_target=raw, fact_period=current.period,
+        )
+
+    # ---- 8-1 之先：量纲对不上就不能比 ----------------------------------
+    # 「营业总收入较计划减少 298.46 亿元」这句被映射到钢材销量（吨）上过。
+    # 两个不同量纲的数相减，算得出偏差也写得出理由——所以先挡量纲。
+    # ⚠ 只在**两边都知道**、且确实不同时才挡：不知道不等于不匹配。
+    unit_kind = _UNIT_KIND.get(unit)
+    if claim.metric_unit_kind and unit_kind and unit_kind != claim.metric_unit_kind:
+        return _out(
+            claim, metric, "needs_review",
+            f"绝对量目标「{raw}」的量纲是{_UNIT_KIND_CN.get(unit_kind, unit_kind)}，"
+            f"而主判据 {metric} 是"
+            f"{_UNIT_KIND_CN.get(claim.metric_unit_kind, claim.metric_unit_kind)}——"
+            f"**两者不能相减**，偏差算得出来也没有意义。转人工复核。",
+            confidence=0.0, magnitude_target=raw, fact_period=current.period,
+        )
+
+    # ---- 8-1 单位换算 ---------------------------------------------------
+    factor = _MILLION_FACTOR.get(unit)
+    if factor is None:
+        return _out(
+            claim, metric, "needs_review",
+            f"绝对量目标「{raw}」的单位「{unit or '（无）'}」没有会计口径认可的"
+            f"换算依据（8-1 只给了金额类：1 亿元 = 100 百万元）。"
+            f"**不猜一个看起来合理的换算**，转人工复核。",
+            confidence=0.0, magnitude_target=raw, target_unit=unit or None,
+            fact_period=current.period,
+        )
+    target_millions = target * factor
+    variance = current.value - target_millions
+    variance_ratio = (
+        variance / target_millions if target_millions != 0 else None
+    )
+
+    # ---- 8-2 达成方向（只算给人看，不决定 verdict）---------------------
+    better = _SIGN_TO_BETTER.get(claim.metric_sign or "")
+    if claim.bound == "about":
+        reference = (
+            f"原文是「{raw}」，含约数且无公开容差——按 8-2 先标待核查，"
+            f"**不擅自认定完成或未完成**。"
+        )
+    elif better is None:
+        reference = (
+            f"主判据 {metric} 的 sign_convention 是"
+            f"「{claim.metric_sign or '（缺）'}」，说明不了「大」还是「小」算好，"
+            f"**方向判不了**，只报偏差。"
+        )
+    else:
+        met = variance <= 0 if better == "lower" else variance >= 0
+        who = "成本类" if better == "lower" else "收入 / 收益类"
+        want = "不高" if better == "lower" else "不低"
+        reference = (
+            f"按 8-2 的方向（{who}，实际{want}于计划即为达成）："
+            f"实际{'>' if variance > 0 else ('<' if variance < 0 else '=')}"
+            f"计划，参考结论「{'达成' if met else '未达成'}」。"
+        )
+
+    # ---- 8-3 第 3 条 + 第 4 条：转人工复核，且不进 H -------------------
+    reason = (
+        f"绝对量目标「{raw}」按 8-1 换算：{target} {unit} × {factor} = "
+        f"{target_millions} 百万元；实际 {current.value} 百万元，"
+        f"原始计划偏差 {variance:+} 百万元"
+        + (f"（{variance_ratio:+.2%}）" if variance_ratio is not None else "")
+        + f"。{reference}"
+        f"按 8-3 第 3 条，只有总成本、没有成本结构与产品组合信息时不得按产量"
+        f"同比例缩放、也不得直接判未达成；第 4 条，未经调整的总额差异"
+        f"**只作「原始计划偏差」展示，不进入 H 的支持/相悖判定**。"
+        f"因此转人工复核，完成同口径与产量复核后才可计分。"
+    )
+
+    label = {"exact": "等于", "at_least": "不低于", "at_most": "不高于",
+             "about": "约"}.get(claim.bound, claim.bound)
+    return _out(
+        claim, metric, "needs_review", reason,
+        confidence=0.0,
+        magnitude_target=raw,
+        magnitude_actual=str(current.value),
+        relative_deviation=variance_ratio.quantize(Decimal("0.000001"))
+        if variance_ratio is not None else None,
+        fact_period=current.period,
+        target_unit=unit or None,
+        target_millions=target_millions,
+        unit_factor=factor,
+        plan_variance=variance,
+        plan_reference=reference,
+        formula=(
+            f"目标 {target} {unit} × {factor} = {target_millions} 百万元"
+            f"（计划{label}此数）；实际 {current.period} = {current.value} 百万元；"
+            f"原始计划偏差 = 实际 − 目标 = {variance:+} 百万元"
+        ),
+        inputs=(current.fact_id,),
+    )
+
+
 def _expected_change(direction: str, metric: str) -> Change | Literal["unknown"]:
     """主张方向 → 期望的数值变化方向。
 
@@ -504,6 +733,11 @@ def _out(
     relative_deviation: Decimal | None = None,
     formula: str | None = None,
     inputs: tuple[str, ...] = (),
+    target_unit: str | None = None,
+    target_millions: Decimal | None = None,
+    unit_factor: Decimal | None = None,
+    plan_variance: Decimal | None = None,
+    plan_reference: str | None = None,
 ) -> MatchOutcome:
     return MatchOutcome(
         claim_id=claim.claim_id,
@@ -521,6 +755,11 @@ def _out(
         relative_deviation=relative_deviation,
         formula=formula,
         inputs=inputs,
+        target_unit=target_unit,
+        target_millions=target_millions,
+        unit_factor=unit_factor,
+        plan_variance=plan_variance,
+        plan_reference=plan_reference,
     )
 
 

@@ -53,6 +53,33 @@ def actual(metric: str, period: str, value: str, **kw) -> ActualValue:
     )
 
 
+def cost_target(**kw) -> ClaimInput:
+    """宝钢 2018 年真实那一句的判定输入。
+
+        2018年，宝钢股份计划产铁4563万吨、产钢4737万吨、销售商品坯材4568万吨、
+        营业总收入2786亿元、营业成本2420亿元。
+
+    实际营业成本 2,590.85 亿元 = 259,084.996 百万元（财务事实库的单位是百万元）。
+    """
+    base = dict(
+        claim_id="cl-plan-cost-2018",
+        claim_text="2018年，宝钢股份计划产铁4563万吨……营业成本2420亿元。",
+        claim_type="cost",
+        direction="unknown",
+        period_norm="2018",
+        magnitude_value=D("2420"),
+        magnitude_unit="亿元",
+        magnitude_raw="2420亿元",
+        bound="exact",
+        primary_metric="operating_cost",
+        is_plan=True,
+        metric_unit_kind="currency",
+        metric_sign="negative_is_good",
+    )
+    base.update(kw)
+    return ClaimInput(**base)
+
+
 # ---------------------------------------------------------------- 三个验收用例
 
 
@@ -150,27 +177,258 @@ def test_an_absolute_amount_target_is_never_silently_contradicted() -> None:
     实测宝钢一次跑出 12 条这样的「未达成」，进 H 的 9 个观测里有 7 个是这么来的。
     它们有公式、有偏差数字、有理由，和真结论长得一模一样。
 
-    要真判得先换算单位（亿元 → 百万元）、再定「计划成本」的达成方向——
-    **那是会计口径**。所以在定下来之前，一律转人工复核，不擅自判。
+    8-1/8-2/8-3（2026-10-01）定下来之后，这里换成了「换算 + 报偏差，
+    但不出计分结论」——**仍然是 needs_review，仍然不进 H**。
     """
-    c = claim(
-        direction="unknown",
-        primary_metric="operating_cost",
-        magnitude_value=D("2420"),
-        magnitude_unit="亿元",
-        bound="exact",
-        magnitude_raw="2420亿元",
-        is_plan=True,
-    )
     out = judge(
-        c,
-        current=actual("operating_cost", "2018", "2590.85"),
-        base=actual("operating_cost", "2017", "2484.25"),
+        cost_target(),
+        current=actual("operating_cost", "2018", "259084.996015"),
+        base=actual("operating_cost", "2017", "248425.102399"),
         cfg=CFG,
     )
     assert out.verdict == "needs_review", out.reason
-    assert "绝对量" in out.reason
     assert out.scores is False
+
+
+# ---------------------------------------------------------------- 8-1 单位换算
+
+
+def test_yuan_is_converted_to_millions_and_the_factor_is_kept() -> None:
+    """★ 8-1：1 亿元 = 100 百万元，而且**四样都要留痕**。
+
+    会计原话：「系统同时保留原始数值、原始单位、换算因子和标准化数值，
+    避免把换算后的数值当成原始披露」。
+
+    原始数值与原始单位在 claim 表上；这里断言换算因子与标准化值
+    确实带在返回值里——不然页面上只剩一个换算过的数，看不出它从哪来。
+    """
+    out = judge(
+        cost_target(),
+        current=actual("operating_cost", "2018", "259084.996015"),
+        base=None,
+        cfg=CFG,
+    )
+    assert out.target_unit == "亿元"
+    assert out.unit_factor == D("100")
+    assert out.target_millions == D("242000"), "2,420 亿元应是 242,000 百万元"
+    assert "242000" in out.formula and "× 100" in out.formula
+
+
+def test_the_deviation_is_the_real_baosteel_gap() -> None:
+    """偏差必须是**真数**：2,590.85 亿 − 2,420 亿 = 170.85 亿元 = 17,084.996 百万元。
+
+    这个数落在 8-3 第 4 条允许展示的「原始计划偏差」上——
+    它是这条链路唯一该被人看到的数字，所以钉死它。
+    """
+    out = judge(
+        cost_target(),
+        current=actual("operating_cost", "2018", "259084.996015"),
+        base=None,
+        cfg=CFG,
+    )
+    assert out.plan_variance == D("17084.996015")
+    assert out.relative_deviation is not None
+    # 17084.996 / 242000 = 7.06%
+    assert abs(out.relative_deviation - D("0.070599")) < D("0.000001")
+
+
+def test_a_unit_that_has_no_agreed_conversion_is_refused() -> None:
+    """★ 8-1 只授权了**金额**的换算，吨 / 万吨没给。
+
+    事实库里存的是吨还是万吨没定，所以这里**不猜一个看起来合理的因子**。
+    反例是必要的：把 `_MILLION_FACTOR` 写成「不认识的单位就按 1 算」
+    会让这条测试红，而线上表现是「万吨目标被当成百万元」——差四个数量级，
+    且不报错。
+    """
+    out = judge(
+        cost_target(magnitude_value=D("30"), magnitude_unit="万吨",
+                    magnitude_raw="30万吨", metric_unit_kind="ton",
+                    metric_sign="positive_is_good", primary_metric="steel_sales_volume"),
+        current=actual("steel_sales_volume", "2018", "300000"),
+        base=None,
+        cfg=CFG,
+    )
+    assert out.verdict == "needs_review", out.reason
+    assert out.unit_factor is None, "不认识的单位不许给换算因子"
+    assert out.plan_variance is None, "没换算就不能算偏差"
+    assert "换算依据" in out.reason
+
+
+# ---------------------------------------------------------------- 8-2 达成方向
+
+
+def test_a_cost_target_above_plan_reads_as_missed() -> None:
+    """8-2：成本类，实际**高于**计划 → 参考结论「未达成」。"""
+    out = judge(
+        cost_target(),
+        current=actual("operating_cost", "2018", "259084.996015"),
+        base=None,
+        cfg=CFG,
+    )
+    assert out.plan_reference is not None
+    assert "未达成" in out.plan_reference
+    assert "成本类" in out.plan_reference
+
+
+def test_a_cost_target_below_plan_reads_as_met() -> None:
+    """8-2 的反面。只测「高于计划 → 未达成」是不够的——
+    把方向写死成「未达成」也能通过。"""
+    out = judge(
+        cost_target(),
+        current=actual("operating_cost", "2018", "230000"),
+        base=None,
+        cfg=CFG,
+    )
+    assert "达成" in out.plan_reference
+    assert "未达成" not in out.plan_reference
+    assert out.plan_variance is not None and out.plan_variance < 0
+
+
+def test_revenue_direction_is_the_opposite_of_cost() -> None:
+    """★ 8-2 的**方向是反的**，这一点最容易写错。
+
+        成本类：实际 ≤ 计划 为达成（花得比计划少 = 好）
+        收入类：实际 ≥ 计划 为达成（挣得比计划多 = 好）
+
+    两处用同一个比较符的话，一半的参考结论会反过来，**而且不报错**。
+    """
+    # 同一句里还写着「营业总收入2786亿元」，实际 2,700 亿元 → 收入类判未达成
+    revenue = dict(
+        primary_metric="total_revenue", metric_sign="positive_is_good",
+        magnitude_value=D("2786"), magnitude_raw="2786亿元",
+    )
+    below = judge(
+        cost_target(**revenue),
+        current=actual("total_revenue", "2018", "270000"),   # 2,700 亿 < 计划 2,786 亿
+        base=None,
+        cfg=CFG,
+    )
+    assert "未达成" in below.plan_reference, below.plan_reference
+    assert "收入 / 收益类" in below.plan_reference
+
+    above = judge(
+        cost_target(**revenue),
+        current=actual("total_revenue", "2018", "290000"),
+        base=None,
+        cfg=CFG,
+    )
+    assert "未达成" not in above.plan_reference
+
+
+def test_an_unknown_sign_convention_does_not_invent_a_direction() -> None:
+    """sign_convention 是 `neutral` 时方向不明——**不判**，只报偏差。
+
+    拿「越大越好」当默认值的话，应付账款、存货这类中性科目会被
+    按一个没人认过的方向判出参考结论。
+    """
+    out = judge(
+        cost_target(metric_sign="neutral"),
+        current=actual("operating_cost", "2018", "259084.996015"),
+        base=None,
+        cfg=CFG,
+    )
+    assert out.plan_variance is not None, "偏差还是要报"
+    assert "方向判不了" in out.plan_reference
+
+
+def test_an_approximate_absolute_target_is_flagged_not_scored() -> None:
+    """8-2 末句：「约 / 左右」先标待核查，**不擅自套用固定容差**。"""
+    out = judge(
+        cost_target(bound="about", magnitude_raw="约2420亿元"),
+        current=actual("operating_cost", "2018", "259084.996015"),
+        base=None,
+        cfg=CFG,
+    )
+    assert out.verdict == "needs_review"
+    assert "待核查" in out.plan_reference
+    assert "未达成" not in out.plan_reference
+
+
+# ---------------------------------------------------------------- 8-3 产量调整
+
+
+def test_the_plan_variance_never_enters_h_or_c() -> None:
+    """★★ 8-3 第 4 条：**未经调整的总额差异不进 H 的支持/相悖判定。**
+
+    这是整条链路最要紧的一条断言。这一批主张的 verdict 永远只能是
+    needs_review，`scores` 永远 False——所以它们既不进 n，也不改 H / C。
+    会计答复的原话是「不应仅用 2,590.85 亿元对 2,420 亿元直接判定未达成；
+    应先完成同口径、产量和成本结构复核」。
+    """
+    out = judge(
+        cost_target(),
+        current=actual("operating_cost", "2018", "259084.996015"),
+        base=None,
+        cfg=CFG,
+    )
+    assert out.scores is False
+    assert out.verdict not in ("supported", "neutral", "contradicted")
+    # 8-3 第 3 条：必须说清为什么还不判，而不是含糊地「待核查」
+    assert "成本结构" in out.reason
+    assert "产量" in out.reason
+    # 留在覆盖率分母：它是「还没查完」，不是「不在范围内」
+    assert out.in_denominator is True
+
+
+def test_a_number_not_next_to_the_metric_is_refused_before_any_arithmetic() -> None:
+    """★ 这条挡的是**比量纲更上游**的错误：那个数根本不是这个指标的数。
+
+    真实撞到过 5 条：
+
+        2024年，公司预算安排固定资产投资资金239.2亿元，主要用于……
+
+    主题映射成 `operating_cost`，239.2 亿元其实是资本开支。拿它和
+    营业成本（2,809 亿元）比，偏差 +280,626 百万元——按 8-2 的成本方向
+    算出来还是「未达成」，**有数字、有理由、有公式**。
+
+    量纲那道闸门挡不住它（两边都是金额），所以这里**连偏差都不算**。
+    """
+    out = judge(
+        cost_target(target_metric_aligned=False,
+                    magnitude_value=D("239.2"), magnitude_raw="239.2亿元"),
+        current=actual("operating_cost", "2024", "280936.36"),
+        base=None,
+        cfg=CFG,
+    )
+    assert out.verdict == "needs_review"
+    assert out.plan_variance is None, "连偏差都不许算——算出来就会有人当真"
+    assert out.target_millions is None
+    assert out.plan_reference is None
+    assert "没有和主判据" in out.reason
+
+
+def test_a_unit_mismatch_is_refused() -> None:
+    """兜底：目标写「亿元」而主判据是「钢材销量（吨）」——两个数不能相减。
+
+    这是真实数据里的错配（「营业总收入较计划减少 298.46 亿元」被映射到
+    钢材销量上），金额与吨的偏差算得出来也毫无意义。
+    """
+    out = judge(
+        cost_target(primary_metric="steel_sales_volume", metric_unit_kind="ton",
+                    metric_sign="positive_is_good"),
+        current=actual("steel_sales_volume", "2015", "2000"),
+        base=None,
+        cfg=CFG,
+    )
+    assert out.verdict == "needs_review"
+    assert out.plan_variance is None
+    assert "量纲" in out.reason and "不能相减" in out.reason
+
+
+def test_an_unknown_metric_unit_kind_does_not_block() -> None:
+    """★ 反面：**「没查」不等于「对不上」。**
+
+    主判据量纲缺（字典里没这个指标、或调用方没传）时不能报错——
+    那会把一整类主张静默降级成待核查。只有两边都知道且确实不同才挡。
+    """
+    out = judge(
+        cost_target(metric_unit_kind=None),
+        current=actual("operating_cost", "2018", "259084.996015"),
+        base=None,
+        cfg=CFG,
+    )
+    assert out.target_millions == D("242000"), "量纲未知时仍应换算"
+    assert out.plan_variance is not None
 
 
 def test_a_ratio_target_is_still_judged() -> None:

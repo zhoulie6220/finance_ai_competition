@@ -154,6 +154,57 @@ def prior_period(period: str) -> str | None:
 # ---------------------------------------------------------------- 匹配
 
 
+def _claim_input(r: sqlite3.Row) -> ClaimInput:
+    """把一行查询结果装配成判定输入。
+
+    **两个查询（落库 / 装配指数）共用它。** 各写一套的后果不是报错：
+    同一批主张在判定表和指数里会用上不同的量纲或方向，
+    **而两边都算得出数**。绝对量目标这一批正好依赖这两个字段，
+    分开写就一定会分叉。
+    """
+    magnitude = None
+    if r["magnitude_value"] is not None:
+        try:
+            magnitude = Decimal(str(r["magnitude_value"]))
+        except Exception:  # noqa: BLE001
+            magnitude = None
+    return ClaimInput(
+        claim_id=r["claim_id"],
+        claim_text=r["claim_text"] if "claim_text" in r.keys() else "",
+        claim_type=r["claim_type"],
+        direction=r["direction"] or "unknown",
+        period_norm=r["period_norm"],
+        magnitude_value=magnitude,
+        magnitude_unit=r["magnitude_unit"],
+        magnitude_raw=r["magnitude_text"],
+        bound=r["magnitude_bound"] or "exact",
+        primary_metric=r["primary_metric"],
+        is_plan=bool(r["is_plan_target"]),
+        # 量纲与 sign_convention 来自字段字典（会计口径 §A-1 / §二）。
+        # 绝对量目标要靠它们判「能不能比」和「往哪个方向算达成」——
+        # 拿不到就转人工复核，不拿 S 代默认值硬判。
+        metric_unit_kind=r["unit_kind"],
+        metric_sign=r["sign_convention"],
+        target_metric_aligned=bool(r["magnitude_metric_aligned"]),
+    )
+
+
+#: 判定要用到的 claim 列。两个查询共用，避免一处加了字段另一处没加。
+_CLAIM_SELECT = """
+    SELECT c.claim_id, c.claim_text, c.claim_type, c.direction, c.period_norm,
+           c.magnitude_value, c.magnitude_unit, c.magnitude_text,
+           c.magnitude_bound, c.is_plan_target, c.magnitude_metric_aligned,
+           ci.metric_key AS primary_metric,
+           md.unit_kind, md.sign_convention,
+           f.period AS report_period
+    FROM claim c
+    JOIN file f ON f.file_id = c.source_file_id
+    LEFT JOIN claim_indicator ci
+      ON ci.claim_id = c.claim_id AND ci.role = 'primary'
+    LEFT JOIN metric_definition md ON md.metric_key = ci.metric_key
+"""
+
+
 def match_and_store(
     con: sqlite3.Connection, project_id: str, *, now: str
 ) -> MatchSummary:
@@ -167,18 +218,7 @@ def match_and_store(
 
     scope, scope_params = claim_scope.scope_sql("c")
     rows = con.execute(
-        f"""
-        SELECT c.claim_id, c.claim_text, c.claim_type, c.direction, c.period_norm,
-               c.magnitude_value, c.magnitude_unit, c.magnitude_text,
-               c.magnitude_bound, c.is_plan_target,
-               ci.metric_key AS primary_metric, f.period AS report_period
-        FROM claim c
-        JOIN file f ON f.file_id = c.source_file_id
-        LEFT JOIN claim_indicator ci
-          ON ci.claim_id = c.claim_id AND ci.role = 'primary'
-        WHERE c.project_id = ?{scope}
-        ORDER BY c.claim_id
-        """,
+        f"{_CLAIM_SELECT} WHERE c.project_id = ?{scope} ORDER BY c.claim_id",
         (project_id, *scope_params),
     ).fetchall()
 
@@ -203,32 +243,7 @@ def match_and_store(
         prior = prior_period(period) if period else None
         base = facts.get((metric, prior)) if (metric and prior) else None
 
-        magnitude = None
-        raw_magnitude = r["magnitude_value"]
-        if raw_magnitude is not None:
-            try:
-                magnitude = Decimal(str(raw_magnitude))
-            except Exception:  # noqa: BLE001
-                magnitude = None
-
-        outcome = judge(
-            ClaimInput(
-                claim_id=r["claim_id"],
-                claim_text=r["claim_text"],
-                claim_type=r["claim_type"],
-                direction=r["direction"] or "unknown",
-                period_norm=period,
-                magnitude_value=magnitude,
-                magnitude_unit=r["magnitude_unit"],
-                magnitude_raw=r["magnitude_text"],
-                bound=r["magnitude_bound"] or "exact",
-                primary_metric=metric,
-                is_plan=bool(r["is_plan_target"]),
-            ),
-            current=current,
-            base=base,
-            cfg=cfg,
-        )
+        outcome = judge(_claim_input(r), current=current, base=base, cfg=cfg)
         summary.matched += 1
         summary.counts[outcome.verdict] = summary.counts.get(outcome.verdict, 0) + 1
 
@@ -265,6 +280,13 @@ def match_and_store(
                 json.dumps({"fact_ids": list(outcome.inputs)}, ensure_ascii=False)
                 if outcome.inputs
                 else None,
+                outcome.target_unit,
+                str(outcome.target_millions)
+                if outcome.target_millions is not None
+                else None,
+                str(outcome.unit_factor) if outcome.unit_factor is not None else None,
+                str(outcome.plan_variance) if outcome.plan_variance is not None else None,
+                outcome.plan_reference,
                 now,
             )
         )
@@ -286,7 +308,9 @@ def match_and_store(
             " fact_id, claim_period, fact_period, direction_claim, direction_actual,"
             " direction_consistent, magnitude_target, magnitude_actual,"
             " relative_deviation, verdict, reason, confidence, formula, inputs,"
-            " created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            " target_unit, target_millions, unit_factor, plan_variance,"
+            " plan_reference, created_at)"
+            " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             payload,
         )
     return summary
@@ -302,6 +326,11 @@ def load_matches(
                m.confidence, m.claim_period, m.fact_period, m.direction_claim,
                m.direction_actual, m.magnitude_target, m.magnitude_actual,
                m.relative_deviation, m.formula, m.inputs,
+               -- 绝对量目标的换算留痕与「原始计划偏差」。页面要能显示
+               -- 「2,420 亿元 × 100 = 242,000 百万元」，否则用户只看到一个
+               -- 换算过的数，看不出它从哪来（会计口径 8-1 的用意就在这里）。
+               m.target_unit, m.target_millions, m.unit_factor,
+               m.plan_variance, m.plan_reference,
                c.claim_text, c.claim_type, c.source_page, c.verifiable,
                c.background_only
         FROM claim_match m
@@ -357,18 +386,7 @@ def project_index_input(
 
     scope, scope_params = claim_scope.scope_sql("c")
     rows = con.execute(
-        f"""
-        SELECT c.claim_id, c.claim_type, c.direction, c.period_norm,
-               c.magnitude_value, c.magnitude_unit, c.magnitude_text,
-               c.magnitude_bound, c.is_plan_target,
-               ci.metric_key AS primary_metric, f.period AS report_period
-        FROM claim c
-        JOIN file f ON f.file_id = c.source_file_id
-        LEFT JOIN claim_indicator ci
-          ON ci.claim_id = c.claim_id AND ci.role = 'primary'
-        WHERE c.project_id = ?{scope}
-        ORDER BY c.claim_id
-        """,
+        f"{_CLAIM_SELECT} WHERE c.project_id = ?{scope} ORDER BY c.claim_id",
         (project_id, *scope_params),
     ).fetchall()
 
@@ -394,31 +412,7 @@ def project_index_input(
         prior = prior_period(period)
         base = facts.get((metric, prior)) if prior else None
 
-        magnitude = None
-        if r["magnitude_value"] is not None:
-            try:
-                magnitude = Decimal(str(r["magnitude_value"]))
-            except Exception:  # noqa: BLE001
-                magnitude = None
-
-        outcome = judge(
-            ClaimInput(
-                claim_id=r["claim_id"],
-                claim_text="",
-                claim_type=r["claim_type"],
-                direction=r["direction"] or "unknown",
-                period_norm=period,
-                magnitude_value=magnitude,
-                magnitude_unit=r["magnitude_unit"],
-                magnitude_raw=r["magnitude_text"],
-                bound=r["magnitude_bound"] or "exact",
-                primary_metric=metric,
-                is_plan=bool(r["is_plan_target"]),
-            ),
-            current=cur,
-            base=base,
-            cfg=cfg,
-        )
+        outcome = judge(_claim_input(r), current=cur, base=base, cfg=cfg)
         if cur is None:
             no_fact += 1
 

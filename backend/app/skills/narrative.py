@@ -176,6 +176,10 @@ def extract_and_store(
                     magnitude.unit if magnitude else None,
                     magnitude.bound if magnitude else None,
                     1 if (magnitude and magnitude.is_plan) else 0,
+                    # 这个数是不是靠主判据别名取到的。**判定层拿不到原文与
+                    # 别名表**，所以只能在这里定下来（同 magnitude_bound）。
+                    # 默认 1：没有幅度时谈不上「错位」。
+                    0 if (magnitude and not magnitude.metric_aligned) else 1,
                     match.rule.claim_type,
                     1 if verifiable else 0,
                     # v1.1 与 docs/01 的硬约束：不可验证的主张必须标
@@ -221,11 +225,11 @@ def extract_and_store(
             "INSERT OR IGNORE INTO claim (claim_id, project_id, section_id,"
             " claim_text, subject, action, object, period_expr, period_norm,"
             " direction, magnitude_text, magnitude_value, magnitude_unit,"
-            " magnitude_bound, is_plan_target,"
+            " magnitude_bound, is_plan_target, magnitude_metric_aligned,"
             " claim_type, verifiable, background_only, confidence,"
             " source_file_id, source_page, source_text, extractor,"
             " prompt_version, status, created_at)"
-            " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             rows,
         )
         con.executemany(

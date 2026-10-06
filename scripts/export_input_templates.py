@@ -4,6 +4,7 @@
     python scripts/export_input_templates.py --export   # 生成三个 CSV
     python scripts/export_input_templates.py --check    # 只校验 CSV 有没有填错
     python scripts/export_input_templates.py --import   # 填好的 CSV 写回库
+    python scripts/export_input_templates.py --rekey    # 编号对不上时按原文重新编号
 
 生成到 `人工录入/` 目录下：
 
@@ -22,6 +23,25 @@
 CSV 里每一列的合法取值都写在表头注释里，`--check` 会逐格校验。
 写错一个值不会让它「差不多能用」——`--import` 会**整体拒绝**，
 并告诉你是哪一行哪一列。
+
+## ⚠ 编号会对不上，而且比文档里写的更容易发生
+
+`claim_id` 是 `sha1(项目|章节|句序|归一化文本)`。**文本是稳的，
+章节编号和句序不稳**：分段规则一改（比如「表格行伪装成正文」那几处过滤）、
+或者重新解析一遍年报，章节序号就会平移，**后面所有 id 跟着变**。
+
+模块 docstring 原来把这件事写成「确定性 id，防重跑」，那是对的——
+同一份数据重跑确实一样。但**跨一次解析改动就不一样了**，
+而这正好发生在「表格已经发给会计」之后：实测重建一次库，
+会计交回来的 121 行**一行都对不上**。
+
+所以有了 `--rekey`：编号虽然变了，**原文没变**。
+它按归一化后的原文把旧编号换成新编号，逐条报出换了哪些、
+哪些换不了（原文重复或找不到）。换不了的一律不猜。
+
+> 这一条是 2026-10-06 真撞出来的：为了加 `claim_match` 的几列跑了
+> `init_db.py --force`，会计填好的 121 行全部对不上。
+> 幸好原文可用，185 行全部唯一命中，才没白填。
 """
 
 from __future__ import annotations
@@ -116,6 +136,7 @@ def main() -> int:
     group.add_argument("--export", action="store_true")
     group.add_argument("--check", action="store_true")
     group.add_argument("--import", dest="do_import", action="store_true")
+    group.add_argument("--rekey", action="store_true")
     args = parser.parse_args()
 
     if not DB_PATH.exists():
@@ -126,6 +147,8 @@ def main() -> int:
     try:
         if args.export:
             return _export(con)
+        if args.rekey:
+            return _rekey(con)
         return _check_or_import(con, do_import=args.do_import)
     finally:
         con.close()
@@ -370,11 +393,23 @@ def _check_or_import(con: sqlite3.Connection, *, do_import: bool) -> int:
         known = {r[0] for r in con.execute("SELECT claim_id FROM claim")}
         orphan = [r.get("claim_id", "") for r in p_rows if r.get("claim_id") not in known]
         if orphan:
+            # ⚠ 先别急着让人重发一份。**原文是稳的，只有编号会漂**——
+            # 编号由「章节 + 句序 + 原文」哈希出来，分段规则一改、
+            # 或者重解析一遍年报，章节序号就会平移，后面所有 id 跟着变。
+            # 实测为加几列跑一次 `init_db.py --force`，会计填好的 121 行
+            # 一行都对不上，而他们交回来的原句一个字没变。
+            # 所以这里先试着按原文重新编号，能救回来就不用麻烦人。
+            salvageable = _count_rekeyable(con, p_rows)
+            hint = (
+                f"**其中 {salvageable} 行的原文在库里能唯一定位，跑一次 "
+                f"`--rekey` 就能把编号改过来，会计不用重填。**"
+                if salvageable
+                else "按原文也定位不了，只能重新 --export 一份发出去。"
+            )
             problems.append(
                 f"P_人工确认.csv：{len(orphan)}/{len(p_rows)} 条的 claim_id 在当前库里"
-                f"不存在（例：{orphan[0]}）。**这批表对不上库，填了也写不进去**——"
-                "CSV 是库的投影，重建库或重跑抽取都会让旧 CSV 作废。"
-                "请先确认库与 CSV 出自同一份数据，再重新 --export 一份发出去。"
+                f"不存在（例：{orphan[0]}）。**这批表的编号对不上库，填了也写不进去**"
+                f"——CSV 是库的投影，重建库或重跑抽取都会让旧编号作废。{hint}"
             )
 
     _audit_predictions(con, p_rows)
@@ -472,6 +507,143 @@ def _audit_predictions(con: sqlite3.Connection, p_rows: list[dict]) -> None:
             "  ⚠ 一致度 ≥90%。口径 §4.4 要的是逐条人工确认——"
             "**采信本身不是错，但请确认每一条确实看过**。"
         )
+
+
+# ---------------------------------------------------------------- 重新编号
+
+
+def _norm_text(raw: str | None) -> str:
+    """原文的归一化形式。和 `narrative._claim_id` 用的归一化保持一致——
+    两处不一致的话，同一句话会算出两个键，重编号就永远命中不了。"""
+    return " ".join((raw or "").split())
+
+
+def _text_index(con: sqlite3.Connection) -> dict[str, list[str]]:
+    """当前的 (归一化原文 → claim_id 列表)。**只收规则法**——
+    P 表的候选只从它来，把模型法也收进来会让同一句话命中两条。"""
+    by_text: dict[str, list[str]] = {}
+    for cid, text in con.execute(
+        "SELECT claim_id, claim_text FROM claim WHERE extractor LIKE 'rule:%'"
+    ):
+        by_text.setdefault(_norm_text(text), []).append(cid)
+    return by_text
+
+
+def _match_by_text(
+    by_text: dict[str, list[str]], text: str
+) -> tuple[str | None, str]:
+    """按原文找当前编号。返回 (id 或 None, 说明)。
+
+    ⚠ **只在唯一定位时才给 id。** 命中多条一律不猜——猜错的话那一行的判定
+    会挂到别的主张上，而两行的值看起来都正常。
+
+    CSV 里的原文截到 400 字，所以除了全等还要试前缀。
+    """
+    key = _norm_text(text)
+    hit = by_text.get(key, [])
+    if len(hit) == 1:
+        return hit[0], "全等"
+    if len(hit) > 1:
+        return None, f"原文在库里对应 {len(hit)} 条，不猜"
+    cands = sorted(
+        {cid for full, ids in by_text.items() if key and full.startswith(key)
+         for cid in ids}
+    )
+    if len(cands) == 1:
+        return cands[0], "前缀"
+    if len(cands) > 1:
+        return None, f"前缀命中 {len(cands)} 条，不猜"
+    return None, "库里找不到这句原文"
+
+
+def _count_rekeyable(con: sqlite3.Connection, p_rows: list[dict]) -> int:
+    """有多少行的原文在当前库里能唯一定位——**别让会计白重填一遍**。
+
+    这一步只数数，不改任何东西：`--check` 是只读的。
+    """
+    known = {r[0] for r in con.execute("SELECT claim_id FROM claim")}
+    by_text = _text_index(con)
+    n = 0
+    for row in p_rows:
+        cid = (row.get("claim_id") or "").strip()
+        if not cid or cid in known:
+            continue
+        if _match_by_text(by_text, row.get("claim_text", ""))[0]:
+            n += 1
+    return n
+
+
+def _rekey(con: sqlite3.Connection) -> int:
+    """按原文把 P 表里过期的 claim_id 换成当前的。
+
+    改的是 `人工录入/P_人工确认.csv` 本身（原地重写），改完要再跑一次 `--check`。
+    """
+    path = OUT_DIR / "P_人工确认.csv"
+    if not path.exists():
+        print(f"✗ 找不到 {path}（先跑 --export）", file=sys.stderr)
+        return 1
+
+    fieldnames, rows = _read(path)
+    known = {r[0] for r in con.execute("SELECT claim_id FROM claim")}
+    by_text = _text_index(con)
+
+    def _lookup(text: str) -> tuple[str | None, str]:
+        return _match_by_text(by_text, text)
+
+    changed, failed, skipped = [], [], 0
+    for row in rows:
+        cid = (row.get("claim_id") or "").strip()
+        if not cid or cid in known:
+            skipped += 1
+            continue
+        new_id, how = _lookup(row.get("claim_text", ""))
+        if new_id is None:
+            failed.append((cid, how))
+            continue
+        changed.append((cid, new_id, how))
+        row["claim_id"] = new_id
+
+    if not changed and not failed:
+        print(f"✓ 全部 {len(rows)} 行的编号都对得上，不用改")
+        return 0
+
+    if failed:
+        print(f"✗ {len(failed)} 行换不了，**这些行没有改动**：")
+        for cid, why in failed[:20]:
+            print(f"  · {cid}：{why}")
+        print("  换不了就请会计重判这几行，或者人工核对后手工填 claim_id。")
+        print("  **不要自己猜一个编号**——判定会挂到别的主张上，而两行看起来都正常。")
+
+    _write_preserving(path, fieldnames, rows)
+    print(f"✓ 已重编号 {len(changed)} 行（原文件原地重写）")
+    for old, new, how in changed[:10]:
+        print(f"  · {old} → {new}   （{how}）")
+    if len(changed) > 10:
+        print(f"  …还有 {len(changed) - 10} 行")
+    if skipped:
+        print(f"  另有 {skipped} 行编号本来就是对的，未改动")
+    print("  请再跑一次 --check 确认；确认无误后 --import 写回。")
+    return 1 if failed else 0
+
+
+def _write_preserving(path: Path, fieldnames: list[str], rows: list[dict]) -> None:
+    """原地重写 CSV，**保留说明行与 BOM**。
+
+    用 `_write` 会把说明行丢掉——会计下次打开会看到一列没头没脑的英文列名。
+    """
+    text = path.read_text(encoding="utf-8-sig").splitlines()
+    reader = csv.DictReader(text)
+    desc_row = next(
+        (r for r in reader if any((v or "").startswith("↑") for v in r.values())),
+        None,
+    )
+    with path.open("w", encoding="utf-8-sig", newline="") as f:
+        w = csv.writer(f)
+        w.writerow(fieldnames)
+        if desc_row:
+            w.writerow([desc_row.get(c, "") for c in fieldnames])
+        for r in rows:
+            w.writerow([r.get(c, "") for c in fieldnames])
 
 
 def _check_q2(row: dict) -> list[str]:

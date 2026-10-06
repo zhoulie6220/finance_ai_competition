@@ -420,3 +420,60 @@ def test_every_theme_declares_its_forbidden_simplifications() -> None:
 
 def test_no_theme_match_returns_none() -> None:
     assert match_theme("公司召开了第八届董事会第十次会议。") is None
+
+
+# ---------------------------------------------------------------- 数字与指标的对应
+
+
+def test_a_number_next_to_the_metric_alias_is_aligned() -> None:
+    """宝钢 2018 那一句：六个数字，靠「营业成本」这个别名取到 2,420 亿元。"""
+    text = (
+        "2018年，宝钢股份计划产铁4563万吨、产钢4737万吨、销售商品坯材4568万吨、"
+        "营业总收入2786亿元、营业成本2420亿元。"
+    )
+    m = extract_magnitude(text, ("营业成本",))
+    assert m is not None
+    assert m.value == Decimal("2420")
+    assert m.unit == "亿元"
+    assert m.metric_aligned is True
+
+
+def test_a_number_without_the_metric_alias_is_not_aligned() -> None:
+    """★ 反面，也是这一位存在的理由。
+
+    真实撞到过的原句：
+
+        2024年，公司预算安排固定资产投资资金239.2亿元，主要用于……
+
+    主题映射成 `operating_cost`，句子里的 239.2 亿元其实是**资本开支**。
+    别名「营业成本」不在句子里，于是退回取第一个带单位的数——
+    拿它和营业成本比，偏差 +280,626 百万元，按成本方向还是「未达成」。
+    **有数字、有理由、有公式，和真结论长得一模一样。**
+
+    所以「退回取数」这件事必须被记下来，一路传到判定层。
+    """
+    text = "2024年，公司预算安排固定资产投资资金239.2亿元，主要用于宝山基地项目。"
+    m = extract_magnitude(text, ("营业成本",))
+    assert m is not None
+    assert m.value == Decimal("239.2"), "退回取的是第一个带单位的数"
+    assert m.metric_aligned is False, "别名没命中，就必须标出来"
+
+
+def test_no_aliases_supplied_is_not_a_mismatch() -> None:
+    """★ **「没查」不等于「对不上」。**
+
+    一个别名都没传时我们没有依据说它错位。报 False 会让一整类主张
+    被静默降级成待核查——而调用方多半只是没拿到字典数据。
+    """
+    m = extract_magnitude("2024年公司实现营业收入3221亿元", ())
+    assert m is not None
+    assert m.metric_aligned is True
+
+
+def test_the_alias_must_be_in_the_same_clause() -> None:
+    """别名与数字之间跨分句就不算对齐——否则「营业成本同比下降，销量3000万吨」
+    会拿 3000 万吨去当营业成本的目标。"""
+    text = "公司营业成本同比下降，销量3000万吨。"
+    m = extract_magnitude(text, ("营业成本",))
+    assert m is not None
+    assert m.metric_aligned is False

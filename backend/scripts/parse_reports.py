@@ -113,15 +113,40 @@ class IngestReport:
 
 
 def register_file(con, project_id: str, pdf: Path, rel: str, year: str) -> str:
-    """登记一份 PDF。已登记过就返回原来的 file_id。"""
+    """登记一份 PDF。已登记过就返回原来的 file_id。
+
+    ⚠ **file_id 由内容算出来，不用 uuid4。**
+
+    它原来是 `f-{uuid4 前 12 位}`，后果是一条很长的静默链：
+
+        file_id 随机  →  section_id = md-{file_id}-{序号} 变
+                      →  claim_id = sha1(项目|章节|句序|原文) 变
+                      →  **会计填好的 P 表一个编号都对不上**
+
+    也就是说，任何人跑一次 `init_db.py --force` 再重新解析，
+    会计的活儿就全废了——**而文档里写的却是「确定性 id，防重跑重复靠的是它」**。
+    那句话在同一次解析内是对的，跨一次解析就是错的，两件事长得一样。
+
+    2026-10-06 实测撞上：重建一次，交回来的 121 行**一行都对不上**。
+    幸而原文可用来重新编号（见 `scripts/export_input_templates.py --rekey`），
+    才没让会计白填。
+
+    改成按**相对路径 + 文件 sha256** 算，同样的年报重新解析还是同一个 id。
+
+    > 注意这**没有**让 `claim_id` 完全稳定：解析规则一改（分段、句切分），
+    > 章节序号和句序仍会平移。所以 `--rekey` 仍然需要留着——
+    > 两者是互补的，一个防「重新解析」，一个救「改了规则」。
+    """
     row = con.execute(
         "SELECT file_id FROM file WHERE project_id=? AND period=? AND role='annual_report'",
         (project_id, year),
     ).fetchone()
     if row:
         return row["file_id"]
-    file_id = f"f-{uuid.uuid4().hex[:12]}"
     digest = hashlib.sha256(pdf.read_bytes()).hexdigest()
+    file_id = "f-" + hashlib.sha256(
+        f"{rel}\x00{digest}".encode("utf-8")
+    ).hexdigest()[:12]
     con.execute(
         "INSERT INTO file (file_id, project_id, role, period, rel_path, sha256,"
         " bytes, page_count, is_scanned, parse_status, uploaded_at)"

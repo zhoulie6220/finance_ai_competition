@@ -743,6 +743,39 @@ table.match-table td.msg {
   max-width: 320px;
 }
 
+/* 绝对量目标的换算留痕与「原始计划偏差」。
+   浅底 + 左边线，和上面那句 reason 分开——它是**同一行的另一件事**：
+   reason 说为什么不判，这一块给出唯一该给人看的那个数。 */
+.plan-variance {
+  margin-top: 6px;
+  padding: 6px 8px;
+  background: #fafafa;
+  border-left: 3px solid #d9d9d9;
+  border-radius: 2px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: #595959;
+}
+
+.plan-variance .pv-step {
+  font-variant-numeric: tabular-nums;
+}
+
+.plan-variance .pv-gap {
+  display: block;
+  font-variant-numeric: tabular-nums;
+  color: #d46b08;
+}
+
+.plan-variance .pv-muted {
+  color: #8c8c8c;
+  margin-left: 4px;
+}
+
+.plan-variance .pv-ref {
+  color: #8c8c8c;
+}
+
 .fact-links {
   display: flex;
   gap: 6px;

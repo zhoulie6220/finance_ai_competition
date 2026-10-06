@@ -273,6 +273,28 @@ export interface ClaimMatch {
   relative_deviation: string | null
   formula: string | null
   inputs: string | null
+  /**
+   * 绝对量目标的换算留痕（会计口径 8-1）。
+   *
+   * 目标原样写着「亿元」，而财务事实库存的是「百万元」——这一步换算
+   * 必须显示出来。只给一个换算过的数，用户看不出它从哪来，
+   * 而这正是本系统「计算可复算」的卖点所在。
+   */
+  target_unit: string | null
+  target_millions: string | null
+  unit_factor: string | null
+  /**
+   * 「原始计划偏差」= 实际 − 换算后的目标（百万元）。
+   *
+   * ⚠ 会计口径 8-3 第 4 条：**只作展示，不进 H 的支持/相悖判定**。
+   * 所以它非空时 `verdict` 一定是 `needs_review`。
+   */
+  plan_variance: string | null
+  /**
+   * 按 8-2 的方向算出的参考结论（「实际高于计划，属未达成」这类）。
+   * ⚠ 是**文字参考，不是判定**——判定看 `verdict`。
+   */
+  plan_reference: string | null
   claim_text: string
   claim_type: string
   source_page: number

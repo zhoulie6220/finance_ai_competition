@@ -386,6 +386,13 @@ class ClaimMatchView(BaseModel):
 
     `formula` 与 `inputs` 允许为空：不可比的主张没有算式可给，
     给一个空算式比编一个更有用。
+
+    `target_unit` / `target_millions` / `unit_factor` 只在**绝对量目标**上非空：
+    目标写「亿元」而事实库存「百万元」，页面要把这一步换算显示出来，
+    否则用户只看到一个换算过的数、看不出它从哪来（会计口径 8-1）。
+    `plan_variance` 是「原始计划偏差」，8-3 第 4 条允许展示、
+    **但不进 H 的支持/相悖判定**——它的 verdict 一定是 needs_review。
+    `plan_reference` 是按 8-2 的方向算出的参考结论，是**文字参考不是判定**。
     """
 
     model_config = ConfigDict(title="主张判定")
@@ -405,6 +412,11 @@ class ClaimMatchView(BaseModel):
     relative_deviation: str | None = None
     formula: str | None = None
     inputs: str | None = None
+    target_unit: str | None = None
+    target_millions: str | None = None
+    unit_factor: str | None = None
+    plan_variance: str | None = None
+    plan_reference: str | None = None
     claim_text: str
     claim_type: str
     source_page: int

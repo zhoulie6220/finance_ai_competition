@@ -361,3 +361,39 @@ def test_summary_reports_what_is_left():
 def test_config_rejects_negative_thresholds(threshold: str) -> None:
     with pytest.raises(ValueError):
         Q2Config(dso_gap_days=D(threshold))
+
+
+# ---------------------------------------------------------------- 缺数据的原因
+
+
+def _year(period: str, status: str) -> AgingYear:
+    return AgingYear(
+        period=period, receivable_gross=D("100"), over_one_year=D("20"),
+        revenue=D("1000"), status=status,
+    )
+
+
+def test_pending_and_unavailable_say_different_things() -> None:
+    """★ 这两个状态**必须分开说**。
+
+    `pending` 是「会计还没抄」，`unavailable_disclosure` 是「年报里没有」。
+    原先两者共用一句「未录入或年报未披露」，页面上就分不出——
+    而这是**要不同的人去做不同的事**的两种情况：前者催会计，
+    后者是披露缺口、要换口径。
+
+    合成一句话的后果不是报错，是**催错了人**；更糟的是把「没人去抄」
+    读成「这家公司没披露」——后者是一个**数据结论**。
+    """
+    pending = judge_q2(_year("2023", "pending"), _year("2024", "validated"))
+    assert pending.status == UNAVAILABLE
+    assert "尚未录入" in pending.reason
+    assert "未披露" not in pending.reason, "别把「还没抄」说成「没披露」"
+
+    absent = judge_q2(
+        _year("2023", "unavailable_disclosure"), _year("2024", "validated")
+    )
+    assert absent.status == UNAVAILABLE
+    assert "未披露" in absent.reason
+    assert "尚未录入" not in absent.reason
+
+    assert pending.reason != absent.reason, "两种原因说成了同一句话"

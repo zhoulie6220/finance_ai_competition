@@ -252,6 +252,13 @@ export interface ClaimMatch {
  * 
  * `formula` 与 `inputs` 允许为空：不可比的主张没有算式可给，
  * 给一个空算式比编一个更有用。
+ * 
+ * `target_unit` / `target_millions` / `unit_factor` 只在**绝对量目标**上非空：
+ * 目标写「亿元」而事实库存「百万元」，页面要把这一步换算显示出来，
+ * 否则用户只看到一个换算过的数、看不出它从哪来（会计口径 8-1）。
+ * `plan_variance` 是「原始计划偏差」，8-3 第 4 条允许展示、
+ * **但不进 H 的支持/相悖判定**——它的 verdict 一定是 needs_review。
+ * `plan_reference` 是按 8-2 的方向算出的参考结论，是**文字参考不是判定**。
  */
 export interface ClaimMatchView {
   match_id: string;
@@ -269,6 +276,11 @@ export interface ClaimMatchView {
   relative_deviation?: string | null;
   formula?: string | null;
   inputs?: string | null;
+  target_unit?: string | null;
+  target_millions?: string | null;
+  unit_factor?: string | null;
+  plan_variance?: string | null;
+  plan_reference?: string | null;
   claim_text: string;
   claim_type: string;
   source_page: number;
