@@ -143,7 +143,66 @@ THEMES: tuple[ThemeRule, ...] = (
             "按 v1.1 标不可验证，不用产量等代理指标硬判。"
         ),
     ),
+    ThemeRule(
+        theme="management_budget",
+        label_cn="管理层预算",
+        claim_type="management_budget",
+        primary_metric="revenue",
+        supporting=("total_revenue", "operating_cost", "steel_sales_volume"),
+        # ⚠ **触发词刻意留空。** 认这一类的判据不是「句子里出现了某个词」，
+        # 而是**它所在的位置**——在「N、20XX年经营计划」标题之下，加上指标名。
+        # 给一组触发词的话 `match_theme` 会把年报里每一句「营业收入」都收进来，
+        # 而其中绝大多数是**本年的实绩**，不是计划。
+        # 所以它只由 `match_plan_budget()` 认，`match_theme` 永远命中不了它。
+        trigger_terms=(),
+        forbidden=(
+            "计划值不是已发生的事实——拿当年的实际值去「核验」计划本身，"
+            "等于拿事实核验事实，永远判支持",
+            "只有**同一合并范围**下的公司总预算与实际总收入可比；"
+            "子公司分项不能相加后当总额",
+            "预算达成不等于预测准确，也不等于管理层可信",
+        ),
+        implementable=True,
+    ),
 )
+
+#: 预算句里认的指标名。**必须整体字面命中**，不能只看「收入」两个字——
+#: 「资金流量预算收入825.77亿元」「其中:经营收入419.35亿元」都含「收入」，
+#: 但那是资金收支预算，不是经营目标。
+_BUDGET_METRIC_TERMS: tuple[str, ...] = (
+    "营业收入", "营业总收入", "主营业务收入",
+)
+
+
+def match_plan_budget(text: str, plan_year: str | None) -> ThemeMatch | None:
+    """句子是不是「20XX 年经营计划」标题下的一条**公司总预算**。
+
+    ★ 两类句子在原文里长得一模一样，靠词表分不开：
+
+        2016年营业收入327.01亿元，同比下降11.9%。   ← 计划（上一年年报里写的）
+        2022年公司实现营业收入1181.42亿元。          ← 实绩
+
+    分开它们的是**位置**：前者在「N、20XX年经营计划」标题之下，后者在
+    「主营业务分析」里。所以这个函数必须拿到 `plan_year`——由解析层在扫段落时
+    从标题行里继承下来（见 `app/parsing/claims.py::iter_sentences`）。
+    **拿不到计划年就返回 None，绝不猜。**
+
+    ⚠ 取数时用的是 `_pick_by_metric`，它取的是主判据别名（「营业收入」）**同一分句内**
+    的下一个带单位数字——所以
+
+        2016年营业收入327.01亿元，…其中：迁钢公司137.32亿元，京唐公司178亿元…
+
+    取到的是**总额 327.01 亿**，不是子公司分项。会计口径第 6 条要的正是这个
+    （「不把子公司分项简单相加」）。
+    """
+    if not plan_year:
+        return None
+    hits = tuple(t for t in _BUDGET_METRIC_TERMS if t in text)
+    if not hits:
+        return None
+    return ThemeMatch(
+        rule=THEME_BY_KEY["management_budget"], matched_terms=hits, score=len(hits)
+    )
 
 THEME_BY_KEY = {t.theme: t for t in THEMES}
 

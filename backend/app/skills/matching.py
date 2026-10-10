@@ -126,11 +126,18 @@ def facts_index(
     return out
 
 
-def config_from_rules(con: sqlite3.Connection) -> MatchConfig:
+def config_from_rules(
+    con: sqlite3.Connection, project_id: str | None = None
+) -> MatchConfig:
     """噪声阈值从 rule_config 读。
 
     **不用代码默认值**——页面上「查看 / 修改 / 恢复默认」改的就是那张表。
     两者分叉之后，页面显示的口径和实际生效的会对不上，而且不报错。
+
+    `project_id` 用来取**该项目自己的**两个按项目声明的口径：
+    合并范围断点（`narrative.scope_break.<项目>`）与受限预算兑现度
+    （`narrative.budget_attainment.<项目>`）。不传就只取全局阈值——
+    这样老调用方拿到的行为和以前一模一样。
     """
     rows = {
         r["key"]: r["value"]
@@ -144,10 +151,20 @@ def config_from_rules(con: sqlite3.Connection) -> MatchConfig:
         "narrative.min_days_change": "min_days_change",
         "narrative.min_utilization_change": "min_utilization_change",
     }
-    kwargs: dict[str, Decimal] = {}
+    kwargs: dict[str, Any] = {}
     for key, attr in mapping.items():
         if key in rows:
             kwargs[attr] = Decimal(rows[key])
+    if project_id:
+        raw = (rows.get(f"narrative.scope_break.{project_id}") or "").strip()
+        if raw:
+            kwargs["scope_break_year"] = raw
+        # ⚠ 走 `_rule_bool` 的同一套判断，**不能写 `bool(value)`**：
+        # SQLite 里存的是文本 `'0'`，而 `bool('0')` 是 **True**——
+        # 那会让「关掉」这件事看起来生效、实际没生效。
+        on = (rows.get(f"narrative.budget_attainment.{project_id}") or "").strip()
+        if on in ("1", "true", "True", "yes"):
+            kwargs["budget_attainment"] = True
     return MatchConfig(**kwargs) if kwargs else MatchConfig()
 
 
@@ -198,6 +215,7 @@ def _claim_input(
         metric_unit_kind=r["unit_kind"],
         metric_sign=r["sign_convention"],
         target_metric_aligned=bool(r["magnitude_metric_aligned"]),
+        report_period=r["report_period"],
     )
 
 
@@ -267,7 +285,7 @@ def match_and_store(
     增量追加会在重跑之后留下上一轮的旧结论，页面上新旧混排且不报错。
     删除与写入在同一事务里，中途失败整体回滚。
     """
-    cfg = config_from_rules(con)
+    cfg = config_from_rules(con, project_id)
     facts = facts_index(con, project_id)
 
     scope, scope_params = claim_scope.scope_sql("c")
@@ -468,7 +486,7 @@ def project_index_input(
     no_fact = counters["no_fact"]
 
     from app.engine.index import IndexInput
-    quality, q2_pairs = _quality_component(con, project_id)
+    quality, q2_pairs, q2_years = _quality_component(con, project_id)
     q2_done = sum(1 for p in q2_pairs if p["done"])
 
     return (
@@ -489,6 +507,8 @@ def project_index_input(
             "skipped_no_fact": no_fact,
             "q2_pairs": q2_pairs,
             "q2_done": q2_done,
+            "q2_years_done": q2_years["years_done"],
+            "q2_years_total": q2_years["years_total"],
             "q2_total": len(q2_pairs),
         },
     )
@@ -514,7 +534,7 @@ def _scored_claims(
         (project_id, *scope_params),
     ).fetchall()
 
-    cfg = config_from_rules(con)
+    cfg = config_from_rules(con, project_id)
     out: list[dict[str, Any]] = []
     n = 0
     N = 0
@@ -753,9 +773,16 @@ def component_detail(
                 "formula": o.formula or None, "inputs": [],
                 "verdict": o.status,
             })
+        # 「逐对比较 N 个年度」里的 N **按实际配对算**。原来是写死的 9，
+        # 宝钢对得上、华菱（9 年 → 8 对）和首钢（10 年 → 9 对）都对不上——
+        # 而这句话是给人读的，说错了没人会去数。
         note = (
-            "Q = 已确认触发的项数 ÷ 已核验的适用项数。Q2 逐对比较 9 个年度，"
+            f"Q = 已确认触发的项数 ÷ 已核验的适用项数。Q2 逐对比较"
+            f" {len(q2_outcomes)} 个年度（{aging[0].period}→{aging[-1].period}），"
             "用的是会计逐条抄录的账龄数据。"
+            if q2_outcomes else
+            "Q = 已确认触发的项数 ÷ 已核验的适用项数。"
+            "Q2 需要两个相邻年度的账龄数据才能比较，当前不足两年。"
         )
 
     truncated = len(rows) > limit
@@ -789,7 +816,26 @@ _ELEMENT_CN = {
 
 
 def _load_q2_aging(con: sqlite3.Connection, project_id: str) -> list[Any]:
-    """读会计按 §2.3 抄进来的账龄数据。"""
+    """读会计按 §2.3 抄进来的账龄数据，**按项目的每个年度逐格展开**。
+
+    ⚠ **没抄的年度要补成 `pending`，不能只返回已录入的那几条。**
+    只返回已录入的话，「还没人去抄」在库里**没有痕迹**，配对时直接被跳过，
+    `q2_component` 看不到缺口，Q 就被算成「已核验」——而它其实只核了
+    少数几年。
+
+    这条和 `_load_risk_items` 是同一条规矩，只是 R 那边先踩到并修了。
+    实测首钢：库内只有 2022–2024 三行，于是 Q 只对 2022→2023、2023→2024
+    两对判了「未触发」，闸门第 4 条只报「缺 R、P」，而页面上的
+    「Q2 比较进度」显示 **2/2 已完成**——2015–2021 七年凭空消失。
+    报出的进度比真实进度好看，正是这一段要挡的东西。
+
+    > ⚠ 为什么库内会缺行：`export_input_templates.py --import` 刻意丢掉
+    > `conclusion/status` 还是 `pending` 的行（丢了不损失任何人的判定）。
+    > 那是**对**的——但代价就是这个函数必须自己把年度补回来。
+
+    年度取「项目 `fiscal_years`」与「库内已出现的年度」的并集：
+    只取前者会漏掉不声明的年度，只取后者就是这个 bug 本身。
+    """
     from decimal import Decimal, InvalidOperation
 
     from app.engine.q2 import AgingYear
@@ -801,6 +847,17 @@ def _load_q2_aging(con: sqlite3.Connection, project_id: str) -> list[Any]:
         (project_id,),
     ).fetchall()
 
+    declared = [
+        r["value"] for r in con.execute(
+            "SELECT value FROM json_each("
+            "  (SELECT fiscal_years FROM project WHERE project_id = ?))"
+            " ORDER BY value",
+            (project_id,),
+        )
+    ]
+    known = {r["period"]: r for r in rows}
+    years = sorted(set(declared) | set(known))
+
     def dec(raw: Any) -> Decimal | None:
         if raw is None:
             return None
@@ -809,8 +866,17 @@ def _load_q2_aging(con: sqlite3.Connection, project_id: str) -> list[Any]:
         except InvalidOperation:
             return None
 
-    return [
-        AgingYear(
+    out: list[Any] = []
+    for year in years:
+        r = known.get(year)
+        if r is None:
+            out.append(AgingYear(
+                period=year,
+                receivable_gross=None, over_one_year=None, revenue=None,
+                status="pending",
+            ))
+            continue
+        out.append(AgingYear(
             period=r["period"],
             receivable_gross=dec(r["receivable_gross"]),
             over_one_year=dec(r["over_one_year"]),
@@ -820,9 +886,8 @@ def _load_q2_aging(con: sqlite3.Connection, project_id: str) -> list[Any]:
             source_page=r["source_page"],
             source_text=r["source_text"],
             reviewer=r["reviewer"],
-        )
-        for r in rows
-    ]
+        ))
+    return out
 
 
 def _load_risk_items(con: sqlite3.Connection, project_id: str) -> list[Any]:
@@ -968,7 +1033,9 @@ def _template_component(con: sqlite3.Connection, project_id: str) -> Any:
     return template_component(_load_p_confirmations(con, project_id))
 
 
-def _quality_component(con: sqlite3.Connection, project_id: str) -> tuple[Any, list[dict]]:
+def _quality_component(
+    con: sqlite3.Connection, project_id: str
+) -> tuple[Any, list[dict], dict[str, int]]:
     """Q：三项固定检查的汇总（会计口径 §4.3）。
 
     Q1、Q3 由程序从财务事实算；**Q2 需要人工抄进来的账龄数据**。
@@ -977,10 +1044,16 @@ def _quality_component(con: sqlite3.Connection, project_id: str) -> tuple[Any, l
 
     三项合起来算一个比例：已确认触发的项数 / 已核验的适用项数。
 
-    返回 `(Q 分项, Q2 逐对比较的明细)`。明细是给**页面**用的：
+    返回 `(Q 分项, Q2 逐对比较的明细, 年度口径计数)`。明细是给**页面**用的：
     2026-10-06 会计答复原话「页面可以另外展示『8/9组比较已完成，
     1组因原始披露缺失待核查』」——只给一句「Q 不可算」的话，
     读的人分不出「差一对比」和「差得远」，而这两件事要做的事完全不同。
+
+    ⚠ **两个口径必须一起给。** 「组比较」是**年度对**（10 个年度 → 9 对），
+    而「已核验」是**年度**（3 个年度有账龄数据）——同一件事的两个单位。
+    只报「2/9 组比较」的话，读的人会拿它去对 10 个年度，得出「做了两成」；
+    而实际是三个年度已核验、七个还没抄。两个数放在一起才读得出来。
+    （`首钢出分问题解决方案` 第六节第 4 条点名了这件事。）
     """
     checklist, q2_outcomes, q2_comp = _quality_inputs(con, project_id)
     base = checklist.to_component()
@@ -1026,6 +1099,12 @@ def _quality_component(con: sqlite3.Connection, project_id: str) -> tuple[Any, l
         }
         for i, o in enumerate(q2_outcomes, start=1)
     ]
+    # 年度口径：有账龄数据（status 不是 pending）的年份数。
+    # ⚠ 与上面的「组比较」是两个单位，见函数 docstring。
+    year_counts = {
+        "years_done": sum(1 for a in aging if a.status != "pending"),
+        "years_total": len(aging),
+    }
 
     return RatioComponent(
         name="quality_conflict",
@@ -1034,7 +1113,7 @@ def _quality_component(con: sqlite3.Connection, project_id: str) -> tuple[Any, l
         denominator=verified_count,
         verified=base.verified and q2_ok and verified_count > 0,
         note="；".join(notes),
-    ), pairs
+    ), pairs, year_counts
 
 
 def _quality_inputs(

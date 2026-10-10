@@ -57,6 +57,7 @@ from app.db.session import connect, default_db_path  # noqa: E402
 from app.parsing import parse_document  # noqa: E402
 from app.parsing.extra import EXTRA_SECTIONS, read_section  # noqa: E402
 from app.parsing.production_sales import read_production_sales  # noqa: E402
+from app.parsing.physical_sales import read_physical_sales  # noqa: E402
 from app.parsing.mapping import LabelIndex  # noqa: E402
 from app.parsing.models import ParsedStatement  # noqa: E402
 
@@ -313,6 +314,33 @@ def collect_production_sales(
                 location="mdna_text",
             ))
     return out
+
+
+def collect_physical_sales(
+    row, company_id: str, file_id: str, report_year: int, rep: IngestReport,
+) -> list[Observation]:
+    """行业聚合销量的 `销售量` 行 → 一条观测，落 `industry_sales_volume`。
+
+    ⚠ **不查字段字典。** `销售量` 这个别名在字典里同时挂在三个指标上
+    （钢材销量 / 商品煤销量 / 行业聚合销量），`LabelIndex` 冲突时留先来的那一个
+    ——留的是 `steel_sales_volume`，**正是会计点名不许的那个**。
+    所以口径写成显式代码：这张表的 `销售量` 行只落 `industry_sales_volume`。
+    理由与会计答复原文见 `app/parsing/physical_sales.py` 的模块 docstring。
+    """
+    rep.rows_total += 1
+    rep.mapped += 1
+    label = f"销售量（{row.industry}）" if row.industry else "销售量"
+    return [Observation(
+        company_id=company_id, metric_key="industry_sales_volume",
+        period=row.period, period_kind="current",
+        scope="consolidated", value_raw=str(row.raw_value), raw_unit=row.raw_unit,
+        value_millions=row.tons,
+        file_id=file_id, source_page=row.page_no,
+        source_table="公司实物销售收入是否大于劳务收入",
+        source_text=row.source_text,
+        report_year=report_year, label=label,
+        location="mdna_text",
+    )]
 
 
 def insert_observation(con, project_id: str, o: Observation) -> str:
@@ -639,6 +667,16 @@ def main() -> int:
                     )
                 else:
                     for o in collect_production_sales(ps, cid, file_id, int(year), rep):
+                        insert_observation(con, pid, o)
+                        rep.observations += 1
+
+                # ---- 行业聚合销量（华菱 / 首钢那张表）---------------------
+                # 与上面互斥：宝钢走产销量表、另两家走实物销售表，一家只会命中一张。
+                # 两条都落不着的年份**不出声**——这张表不是每家每年都有，
+                # 记进 rep.failed 会把这个数字刷成几十条噪音，把真失败淹掉。
+                phys = read_physical_sales(doc, year)
+                if phys is not None:
+                    for o in collect_physical_sales(phys, cid, file_id, int(year), rep):
                         insert_observation(con, pid, o)
                         rep.observations += 1
 

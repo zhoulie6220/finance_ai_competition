@@ -140,6 +140,27 @@ class MatchConfig:
     min_days_change: Decimal = Decimal("3")
     min_utilization_change: Decimal = Decimal("0.01")
 
+    #: **合并范围断点年**：跨过这一年前后的同指标同比不可比。
+    #:
+    #: 来自 `rule_config` 的 `narrative.scope_break.<项目>`（会计口径，
+    #: tier='hard'）。为空表示这个项目没有声明过断点——**默认不启用**，
+    #: 所以没声明的项目（宝钢、华菱）一行判定都不会因此改变。
+    #:
+    #: 首钢 2015：2015 年报未合并京唐钢铁，2016-04-30 起按同一控制下
+    #: 企业合并并入，2016 年报的 2015 上期比较数是追溯调整后的口径。
+    #: 收入 178.43 亿 → 363.44 亿、资产总计 665 亿 → 1,228 亿，不是重述，
+    #: 是两个范围。见会计 2026-10-09 答复。
+    scope_break_year: str | None = None
+
+    #: **受限历史计划兑现度**是否启用。
+    #:
+    #: 来自 `rule_config` 的 `narrative.budget_attainment.<项目>`（会计口径，
+    #: tier='hard'）。为空表示这个项目没有声明过——**默认关闭**，
+    #: 所以没声明的项目（宝钢、华菱）一行判定都不会因此改变。
+    #:
+    #: 见 `_judge_budget_attainment` 与 `app/engine/claim_rules.match_plan_budget`。
+    budget_attainment: bool = False
+
     def __post_init__(self) -> None:
         for name in (
             "min_rel_change", "min_ratio_change", "min_days_change",
@@ -185,6 +206,14 @@ class ClaimInput:
     #: 所以这一位不只是个布尔：它决定判定理由里必须多出一段披露，
     #: **没有那段披露，这条判定看上去和用钢材销量判出来的一模一样。**
     metric_substituted: bool = False
+
+    #: **主张是从哪一年的年报里抽出来的**（不是它指向哪一年）。
+    #:
+    #: 受限预算兑现度要靠它挡住过渡年：首钢 2015 年报里的 2016 年预算，
+    #: 是在合并范围断点**之前**编的，与 2016 年实际的合并范围不是同一个。
+    #: 没有这一位就只能拿 `period_norm` 推，而那是**目标年**，
+    #: 推不出「这份预算是谁编的」。
+    report_period: str | None = None
 
 
 @dataclass(frozen=True)
@@ -388,6 +417,18 @@ def judge(
             f"（判据指标是 {metric}）",
             confidence=0.0,
         )
+    # ---- ★ 受限历史计划兑现度（会计口径，**按项目声明**）-------------------
+    #
+    # 口径见《首钢出分问题解决方案》第二节，实现见 `_judge_budget_attainment`。
+    #
+    # ⚠ **必须在下面那套同比逻辑之前判。** 它比的不是「本年对上一年」，
+    # 而是「上一年年报里写的计划数 vs 目标年的实际数」——走同比那条路，
+    # 首钢 2016 目标年会被「合并范围断点」判成不可比，而那件事的口径
+    # 不是断点，是**过渡年排除**（2015 年报编预算时还没并京唐）。
+    # 两句话都说得通，但只有后者是对的，而且理由要让人看得见。
+    if cfg.budget_attainment and claim.claim_type == "management_budget":
+        return _judge_budget_attainment(claim, current, metric, cfg)
+
     if current is None:
         return _out(
             claim, metric, "unverifiable",
@@ -405,6 +446,32 @@ def judge(
                 f"（{value.incomparable_reason or '未注明原因'}），"
                 f"按规则不参与判定、也不扣分。",
                 confidence=0.0, fact_period=value.period,
+            )
+
+    # ---- 2.5 跨合并范围断点 ----------------------------------------------
+    #
+    # 会计 2026-10-09 答复（首钢十年材料）：
+    #
+    # > 仅将**同期间、同指标、同范围**的数据用于主张验证；不符合条件的条目
+    # > 标记「待核验」或「不可验证」，**不硬判冲突**。
+    #
+    # 断点由 `rule_config` 的 `narrative.scope_break.<项目>` 声明，不在代码里
+    # 猜——「哪一年并了谁」是会计口径，不是解析细节。
+    #
+    # ⚠ 判据必须是**跨过**（`base.period <= 断点 < current.period`），
+    #   不是「两个年度落在断点两侧的任意组合」。2014→2015 同在断点之前，
+    #   两年是同一套范围编出来的，照常判；只有 2015→2016 这种一头在断点
+    #   前、一头在断点后的，同比才没有意义。
+    if cfg.scope_break_year and base is not None:
+        if base.period <= cfg.scope_break_year < current.period:
+            return _out(
+                claim, metric, "incomparable",
+                f"{base.period} 与 {current.period} 之间是 {metric} 的"
+                f"**合并范围断点**（{cfg.scope_break_year}）："
+                f"{base.period} 是按断点前的范围编的，{current.period} 含"
+                f"此后并入的主体，两个数不同范围，**同比没有意义**。"
+                f"按会计口径标为不可比，不参与判定、也不扣分。",
+                confidence=0.0, fact_period=current.period,
             )
 
     kind = metric_kind(metric)
@@ -732,6 +799,168 @@ def _judge_absolute_target(
             f"目标 {target} {unit} × {factor} = {target_millions} 百万元"
             f"（计划{label}此数）；实际 {current.period} = {current.value} 百万元；"
             f"原始计划偏差 = 实际 − 目标 = {variance:+} 百万元"
+        ),
+        inputs=(current.fact_id,),
+    )
+
+
+#: 受限预算兑现度的披露语。**每一条**都带上它——没有这一段，
+#: 这一条判定看上去和用普通绝对量目标判出来的**一模一样**：
+#: 都是「目标 X、实际 Y、偏差 Z」，而两者进 H 的资格完全不同。
+_BUDGET_ATTAINMENT_NOTE = (
+    " ⚠ 本条按会计口径《首钢出分问题解决方案》第二节的**受限历史计划兑现度**判定："
+    "只比**同一合并范围下**公司总预算与实际总收入，不把子公司分项相加；"
+    "它表示**目标达成度**，**不等同于预测准确率，也不等同于管理层可信**。"
+)
+
+
+def _judge_budget_attainment(
+    claim: ClaimInput,
+    current: ActualValue | None,
+    metric: str,
+    cfg: MatchConfig,
+) -> MatchOutcome:
+    """受限的**历史计划兑现度**（会计口径，按项目声明，首钢专用）。
+
+    ★ 它和 `_judge_absolute_target` 是**两回事**，别合并：
+
+    | | 绝对量目标（8-1/8-2/8-3） | 受限预算兑现度（本节） |
+    |---|---|---|
+    | 比什么 | 计划的**营业成本/成本类** | **公司总营业收入** |
+    | 出什么结论 | 一律 `needs_review`，**绝不进 H** | `supported` / `contradicted`，**进 H** |
+    | 为什么 | 只有总额、没有成本结构与产品组合，<br>做不了同口径调整（8-3 第 3 条） | 收入的总预算对总实际，<br>不需要成本结构假设 |
+
+    8-3 第 4 条把「未经调整的总额差异」挡在 H 之外，理由是**成本**那一类比不了。
+    收入不是同一件事，所以会计为首钢单独开了一条**受限**口径——六个条件缺一不可，
+    其中两条最容易漏：
+
+      · **过渡年排除**：报告年不在断点之后 → 那份预算是在合并范围**还没变**的时候
+        编的，与目标年的实际不是同一个口径。首钢 2015 年报里的 2016 年预算就属此列。
+      · **不套噪声带**：明确数值目标不许用统一容差（v1.1）。实际比预算低 0.3%
+        也是未达成——「差得少」不等于达标。这一条会判出错觉上很严的结论，
+        所以理由里必须把偏差原样写出来给人看。
+
+    ⚠ **没有 `narrative.budget_attainment.<项目>` 声明的项目根本走不到这里**
+    （`judge()` 上的那个开关），所以宝钢、华菱一行判定都不变。
+    """
+    raw = claim.magnitude_raw or (
+        str(claim.magnitude_value) if claim.magnitude_value is not None else ""
+    )
+    unit = claim.magnitude_unit or ""
+    report = claim.report_period
+
+    # ---- 条件 1：这是个有明确数值的目标 ---------------------------------
+    if claim.magnitude_value is None:
+        return _out(
+            claim, metric, "needs_review",
+            f"预算主张「{(claim.claim_text or '')[:60]}」里没有可识别的数值目标，"
+            f"无法与实际数比。转人工复核。",
+            confidence=0.0,
+        )
+    # ---- 条件 1 之先：这个数是不是这个指标的数 ---------------------------
+    # 与 `_judge_absolute_target` 同一道闸门，理由同源：抽取找不到主判据别名时
+    # 会退回取「第一个带单位的数」，那个数很可能不是营业收入。
+    if not claim.target_metric_aligned:
+        return _out(
+            claim, metric, "needs_review",
+            f"预算目标「{raw}」在原文里**没有和主判据 {metric} 的别名相邻**，"
+            f"是抽取时退回取的「第一个带单位的数」。两者很可能不是同一件事，"
+            f"**连偏差都不算**，转人工复核。",
+            confidence=0.0, magnitude_target=raw,
+        )
+
+    # ---- 条件 4：过渡年（合并范围断点之前编的预算）------------------------
+    if cfg.scope_break_year and report and report <= cfg.scope_break_year:
+        return _out(
+            claim, metric, "needs_review",
+            f"这份预算是 **{report} 年报**里披露的，而该年份位于**合并范围断点"
+            f"（{cfg.scope_break_year}）不晚于**的位置——编制时合并范围还没变，"
+            f"与目标年 {claim.period_norm} 的实际数不是同一个口径，"
+            f"**两者不可比**。按会计口径把过渡年排除，本条**不进 H**。"
+            f"（首钢的具体情形：京唐钢铁 2016-04-30 起按同一控制下企业合并并入，"
+            f"2015 年报编预算时尚未并入。）"
+            f"{_BUDGET_ATTAINMENT_NOTE}",
+            confidence=0.0, magnitude_target=raw,
+            fact_period=claim.period_norm,
+        )
+
+    # ---- 条件 3 / 5：目标年的实际数在不在 --------------------------------
+    if current is None:
+        return _out(
+            claim, metric, "unverifiable",
+            f"目标年度 {claim.period_norm} 的实际 {metric} 还没有数据"
+            f"（计划尚未到期，或这一年的年报未采集）。"
+            f"**未到验证期的计划不进覆盖率分母、也不判冲突**——"
+            f"用 0 或「未达成」代替会是一条凭空的冲突。"
+            f"{_BUDGET_ATTAINMENT_NOTE}",
+            confidence=0.0, magnitude_target=raw,
+            fact_period=claim.period_norm,
+        )
+
+    # ---- 条件 6 之先：量纲与单位 -----------------------------------------
+    unit_kind = _UNIT_KIND.get(unit)
+    if claim.metric_unit_kind and unit_kind and unit_kind != claim.metric_unit_kind:
+        return _out(
+            claim, metric, "needs_review",
+            f"预算目标「{raw}」的量纲是{_UNIT_KIND_CN.get(unit_kind, unit_kind)}，"
+            f"而主判据 {metric} 是"
+            f"{_UNIT_KIND_CN.get(claim.metric_unit_kind, claim.metric_unit_kind)}——"
+            f"**两者不能相减**。转人工复核。",
+            confidence=0.0, magnitude_target=raw, fact_period=current.period,
+        )
+    factor = _MILLION_FACTOR.get(unit)
+    if factor is None:
+        return _out(
+            claim, metric, "needs_review",
+            f"预算目标「{raw}」的单位「{unit or '（无）'}」没有会计口径认可的"
+            f"换算依据（8-1 只给了金额类）。**不猜一个看起来合理的换算**，转人工复核。",
+            confidence=0.0, magnitude_target=raw, target_unit=unit or None,
+            fact_period=current.period,
+        )
+
+    target_millions = claim.magnitude_value * factor
+    variance = current.value - target_millions
+    variance_ratio = variance / target_millions if target_millions != 0 else None
+    met = variance >= 0
+    verdict: Verdict = "supported" if met else "contradicted"
+
+    scope_line = (
+        f"合并范围：{report} 年报编的预算 vs {current.period} 年报的实际，"
+        f"两者都在断点 {cfg.scope_break_year} 之后，**同范围**。"
+        if cfg.scope_break_year
+        else f"合并范围：{report} 年报编的预算 vs {current.period} 年报的实际（已按同范围核对）。"
+    )
+    reason = (
+        f"受限历史计划兑现度：{report} 年报披露的目标年 {claim.period_norm} 公司总预算"
+        f"「{raw}」→ 换算 {target_millions} 百万元；实际 {current.value} 百万元，"
+        f"**偏差 {variance:+} 百万元"
+        + (f"（{variance_ratio:+.2%}）" if variance_ratio is not None else "")
+        + f"**，判为**{'达成' if met else '未达成'}**。"
+        f"⚠ 明确数值目标**不套噪声带**——差得少不等于达标（v1.1）。"
+        f"{scope_line}预算与实际比的都是**公司总额**，子公司分项不相加。"
+        f"{_BUDGET_ATTAINMENT_NOTE}"
+    )
+    return _out(
+        claim, metric, verdict, reason, confidence=0.8,
+        magnitude_target=raw,
+        magnitude_actual=str(current.value),
+        relative_deviation=(
+            variance_ratio.quantize(Decimal("0.000001"))
+            if variance_ratio is not None else None
+        ),
+        fact_period=current.period,
+        target_unit=unit or None,
+        target_millions=target_millions,
+        unit_factor=factor,
+        # ⚠ `plan_variance` **不能填**：它的 CHECK 要求 `verdict = needs_review`，
+        # 而这一条正是要判 supported / contradicted。偏差金额放在上面的理由
+        # 与下面的公式里，两处都完整。
+        plan_reference=f"受限预算兑现度：{'达成' if met else '未达成'}",
+        formula=(
+            f"预算 {claim.magnitude_value} {unit} × {factor} = {target_millions} 百万元"
+            f"（{report} 年报披露）；实际 {current.period} = {current.value} 百万元"
+            f"（{current.period} 年报合并利润表）；"
+            f"偏差 = 实际 − 预算 = {variance:+} 百万元"
         ),
         inputs=(current.fact_id,),
     )

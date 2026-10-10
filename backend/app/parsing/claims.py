@@ -73,6 +73,80 @@ class Sentence:
     #: 它**不进 `claim_id` 的哈希**（那里只有 项目|章节|句序|原文），
     #: 所以加这个字段不会让会计填好的表作废。
     context: str = ""
+    #: 这一句所在的**经营计划标题**里的目标年度，如「3、2018年经营计划」→ `2018`。
+    #:
+    #: ⚠ 为什么必须从**标题**继承。2017 年报起，首钢的财务预算句写成：
+    #:
+    #:     (2)财务指标预算安排
+    #:     营业收入614.77亿元，同比增长2.03%。
+    #:
+    #: 句子本身**一个年份都没有**，只有「同比」；年份写在上一行的标题里。
+    #: 只看句子的话会被锚到**报告年 2017**，于是一条 2018 年的计划被当成
+    #: 2017 年的事实——`bucket` 判成 `c` 而不是 `h`，它就这样进了「当期一致性」，
+    #: 而且不报错。
+    #:
+    #: ⚠ 标题行本身会被 `iter_sentences` 丢掉（见下），所以这个值只能在扫行的
+    #: 过程中往下传，事后从 `text` 里找是找不到的。
+    #:
+    #: 它**不进 `claim_id` 的哈希**，同 `context`。
+    plan_year: str | None = None
+
+
+#: 经营计划标题：「3、2018年经营计划」「(二)2021年度经营计划」。
+#: 只认这一种形态——**别的都不认**，认错的代价是给一批句子锚错年份。
+_PLAN_HEADING_RE = re.compile(
+    r"^\s*(?:\d+[、.]|[（(]?[一二三四五六七八九十]+[）)、.])"
+    r"\s*(20\d{2})\s*年[^。！？；，：]{0,8}经营计划"
+)
+
+#: **顶层**标题：`一、`…`十、`，或 `1、` / `1.`。⚠ **不含 `(1)` 与 `①`**——
+#: 那是子标题，出现在计划标题**之下**，不能让它把计划年清掉。
+#:
+#: 末尾那几个标点是收口用的：正文里以数字开头的句子很多
+#: （「1.5亿元，同比…」），不要求「整行像标题」会把它们误判成标题。
+_TOP_HEADING_RE = re.compile(
+    r"^\s*(?:[一二三四五六七八九十]+[、.]|\d+[、.])[^。！？；，：]{0,40}$"
+)
+
+
+def _advance_plan_year(line: str, current: str | None) -> str | None:
+    """扫过一行之后，当前生效的计划年是什么。
+
+    三种情况：
+
+      · 这一行是经营计划标题        → 换成它的年份
+      · 这一行是**别的顶层标题**    → 清空（「4、可能面对的风险」之后就不再是计划段）
+      · 其余（正文、子标题、空行）  → 不变
+    """
+    m = _PLAN_HEADING_RE.match(line)
+    if m:
+        return m.group(1)
+    if _TOP_HEADING_RE.match(line):
+        return None
+    return current
+
+
+def _track_plan_year(
+    joined: str, initial: str | None
+) -> tuple[list[str | None], str | None]:
+    """逐行推进计划年状态。
+
+    返回 `(每一行生效的计划年, 扫完之后的计划年)`。第二个值供**跨 section 延续**：
+    首钢 2015 年报的标题在物理 p17、对应的预算句在 p18，是按页切成两个 section 的。
+    """
+    per_line: list[str | None] = []
+    current = initial
+    for raw in joined.split("\n"):
+        line = raw.strip()
+        if line:
+            current = _advance_plan_year(line, current)
+        per_line.append(current)
+    return per_line, current
+
+
+def plan_year_state(text: str, initial: str | None = None) -> str | None:
+    """这一段扫完之后计划年是什么。调用方拿它传给下一段的 `iter_sentences`。"""
+    return _track_plan_year(join_wrapped_lines(text), initial)[1]
 
 
 def join_wrapped_lines(text: str) -> str:
@@ -320,19 +394,27 @@ def _looks_like_label_glued_to_number(cells: list[str], stripped: str) -> bool:
     return not stripped.endswith(("。", "！", "？"))
 
 
-def iter_sentences(text: str, *, min_length: int = 8) -> tuple[Sentence, ...]:
+def iter_sentences(
+    text: str, *, min_length: int = 8, plan_year: str | None = None
+) -> tuple[Sentence, ...]:
     """把一段正文切成候选句子。
 
     `min_length` 以下的不收——「其中：」「合计」这类碎片没有主张价值，
     但会污染主题词的命中率。
+
+    `plan_year` 是**上一段结束时的计划年**（`plan_year_state` 给的值），
+    用来把「N、20XX年经营计划」的目标年度跨页传下去。见 `Sentence.plan_year`。
     """
     if not text:
         return ()
 
     joined = join_wrapped_lines(text)
+    # ⚠ **先把整段的计划年状态算出来，再切句。** 标题行在下面会被丢掉，
+    #   所以那个年份只能在这一步留下——事后回 `text` 里找是找不到的。
+    per_line, _ = _track_plan_year(joined, plan_year)
     out: list[Sentence] = []
     cursor = 0
-    for raw_line in joined.split("\n"):
+    for i, raw_line in enumerate(joined.split("\n")):
         line = raw_line.strip()
         if not line:
             cursor += len(raw_line) + 1
@@ -351,6 +433,7 @@ def iter_sentences(text: str, *, min_length: int = 8) -> tuple[Sentence, ...]:
                         index=len(out),
                         offset=base,
                         context=line,     # 整段，供口径判断用（见 Sentence.context）
+                        plan_year=per_line[i],
                     )
                 )
             base += len(piece)

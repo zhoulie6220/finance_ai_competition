@@ -423,16 +423,38 @@ def _q2_progress(diag: dict[str, Any]) -> dict[str, Any] | None:
     措辞不硬写死：**待核查的原因取自每条 outcome 自己的 reason**，
     因为「还没人去抄」「年报没披露」「口径是净额」这三种在数据上长得一样，
     只有 reason 分得开——写死一句话就等于又把它们混回去了。
+
+    ⚠ **两个口径要一起报。** 「组比较」的单位是**年度对**（10 个年度 → 9 对），
+    「已核验」的单位是**年度**。只报「2/9 组比较」的话，读的人拿它去对 10 个年度，
+    读出来是「做了两成」；而实际是三个年度已核验、七个还没开始抄。
+    两个数一起给才没有歧义，《首钢出分问题解决方案》第六节第 4 条点的就是这件事
+    （「若系统使用 9 个比较年度，则明确显示 2/9，两者不能混用」）。
+
+    ⚠ 它**不参与闸门判定**：Q 仍是不完整、指数照样不出分。
+    这一行回答的是「做到哪一步了」，闸门回答的是「能不能出正式分数」。
     """
     pairs = diag.get("q2_pairs") or []
     if not pairs:
         return None
     done = diag.get("q2_done", 0)
     total = diag.get("q2_total", len(pairs))
-    if done == total:
-        line = f"{done}/{total} 组比较已完成"
+    years_done = diag.get("q2_years_done")
+    years_total = diag.get("q2_years_total")
+
+    pair_clause = (
+        f"{done}/{total} 组比较已完成"
+        if done == total
+        else f"{done}/{total} 组比较已完成，{total - done} 组待核查"
+    )
+    if years_total:
+        # 年度口径放前面：它是「还有多少活要干」，比「判了几对」更直接
+        line = (
+            f"{years_done}/{years_total} 个年度已核验"
+            + (f"，{years_total - years_done} 个年度待填" if years_done < years_total else "")
+            + f"；{pair_clause}"
+        )
     else:
-        line = f"{done}/{total} 组比较已完成，{total - done} 组待核查"
+        line = pair_clause
     return {"done": done, "total": total, "line": line, "pairs": pairs}
 
 

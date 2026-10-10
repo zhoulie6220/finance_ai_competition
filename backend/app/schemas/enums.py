@@ -228,7 +228,11 @@ class ClaimDirection(StrEnum):
 
 @cn_enum("主张主题")
 class ClaimType(StrEnum):
-    """MD&A 主张的主题。对应大框架里的四类叙事信号。"""
+    """MD&A 主张的主题。对应大框架里的四类叙事信号。
+
+    ⚠ **取值表与 `schema.sql` 的 CHECK、最新版 `claim_extract` 提示词三方同源**，
+    由 `tests/unit/agents/test_prompt_vocabulary.py` 盯着。
+    """
 
     DEMAND = "demand"
     ORDER = "order"
@@ -239,6 +243,16 @@ class ClaimType(StrEnum):
     RISK = "risk"
     MACRO = "macro"
     OTHER = "other"
+    #: 管理层在年报里公开的经营计划/财务预算（「20XX年营业收入 XXX 亿元」）。
+    #:
+    #: 它**不属于**上面那几类经营主题：那些说的是「我们做了什么、做得怎么样」，
+    #: 这一类说的是「我们打算做到多少」。所以抽取时它不会命中任何主题触发词，
+    #: 原先整句被丢弃——不是判不出，是**根本没进表**。
+    #:
+    #: 它的唯一用途是受限的历史计划兑现观测（会计口径，按项目声明），
+    #: 见 `claim_match._judge_budget_attainment` 与
+    #: `app/skills/matching.py` 里的 `narrative.budget_attainment.<项目>` 开关。
+    MANAGEMENT_BUDGET = "management_budget"
 
 
 @cn_enum("主张—事实匹配结论")

@@ -1,0 +1,7 @@
+{
+  "cassette_id": "4658c7e1bf8d477d0d6c6ad541b92e7a",
+  "model_version": "deepseek-flash",
+  "text": "{\n  \"judgements\": [\n    {\n      \"claim_id\": \"cl-0d0c0e6e089b\",\n      \"is_substantive\": false,\n      \"is_template\": false,\n      \"missing_elements\": [\"object\", \"metric\", \"result\", \"owner\"],\n      \"reason\": \"主语是「钢铁行业」而非本公司，讲的是行业整体运行态势与行业效益，属于行业综述；虽提到「挖潜增效」「原燃料价格高位运行」，但未落到这家公司具体做了什么、做成了什么，故判非实质经营表述。\"\n    },\n    {\n      \"claim_id\": \"cl-28ce7b139bce\",\n      \"is_substantive\": true,\n      \"is_template\": false,\n      \"missing_elements\": [\"metric\", \"result\"],\n      \"reason\": \"前半句「钢铁行业产能过剩……严峻形势」是行业背景，但后半句明确以「公司」为主语，说了「加强管理、深入挖潜增效、优化产品结构、提高市场营销能力」等具体动作，属于公司自身经营表述；只是没有指标和结果，故 missing_elements 标 metric、result。\"\n    },\n    {\n      \"claim_id\": \"cl-c60d245b320e\",\n      \"is_substantive\": true,\n      \"is_template\": false,\n      \"missing_elements\": [\"metric\", \"result\"],\n      \"reason\": \"「面对环保加严，采暖季限产」是外部形势，但「公司按照稳中求进……实现稳产顺产、增产增效」以公司为主语，说了公司采取的原则与达成的经营状态，属实质经营表述；「稳产顺产、增产增效」偏定性、无具体指标数值，故标 metric、result 缺失。\"\n    }\n  ]\n}",
+  "tokens_in": 1051,
+  "tokens_out": 384
+}

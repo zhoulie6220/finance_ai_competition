@@ -543,6 +543,76 @@ def test_incomparable_is_not_contradicted() -> None:
     assert out.in_denominator is False
 
 
+def test_a_cross_scope_break_comparison_is_incomparable() -> None:
+    """★ 跨合并范围断点的同比不能硬判。
+
+    首钢 2015 年报未合并京唐钢铁，2016-04-30 起按同一控制下企业合并并入。
+    同一个 2015 年，2015 年报记营业收入 178.43 亿元，2016 年报的上期比较数
+    记 363.44 亿元——**不是重述，是两个合并范围**。
+
+    不挡的话，2016 年那句「销量同比」会拿 2015 年报口径的基数去比，
+    算出 +105.9% 而真值是 +1.89%，于是把一条正常的主张判成「相悖」，
+    理由写得完全像模像样。
+
+    会计 2026-10-09 答复：「仅将同期间、同指标、同范围的数据用于主张验证；
+    不符合条件的条目标记『待核验』或『不可验证』，**不硬判冲突**。」
+    """
+    cfg = MatchConfig(scope_break_year="2015")
+    out = judge(
+        claim(direction="up", period_norm="2016", primary_metric="revenue"),
+        current=actual("revenue", "2016", "41850"),
+        base=actual("revenue", "2015", "17843"),
+        cfg=cfg,
+    )
+    assert out.verdict == "incomparable"
+    assert "合并范围断点" in out.reason
+    assert out.in_denominator is False, "不可比不进分母、也不扣分"
+
+
+def test_a_comparison_inside_one_basis_is_still_judged() -> None:
+    """★ 断点只挡**跨过**它的那一对，不挡同一侧的两对。
+
+    2014→2015 两年都出自 2015 年报口径（京唐还没并进来），同比是成立的。
+    按「断点两侧」而不是「跨过断点」来挡的话，这一对会被误伤——
+    而误伤不报错，只是页面上少一条观测。
+
+    「跨过」的判据是 `基期 ≤ 断点 < 本期`。
+    """
+    cfg = MatchConfig(scope_break_year="2015")
+
+    inside = judge(
+        claim(direction="down", period_norm="2015", primary_metric="revenue"),
+        current=actual("revenue", "2015", "17843"),
+        base=actual("revenue", "2014", "23985"),
+        cfg=cfg,
+    )
+    assert inside.verdict != "incomparable", "2014→2015 同在断点之前，口径一致"
+
+    after = judge(
+        claim(direction="up", period_norm="2017", primary_metric="revenue"),
+        current=actual("revenue", "2017", "60250"),
+        base=actual("revenue", "2016", "41850"),
+        cfg=cfg,
+    )
+    assert after.verdict != "incomparable", "2016→2017 同在断点之后"
+
+
+def test_no_declared_break_changes_nothing() -> None:
+    """★ 没声明断点的项目一行判定都不变。
+
+    宝钢与华菱没有 `narrative.scope_break.*`，`scope_break_year` 为 None。
+    这条盯着「默认关闭」——默认值写反了会静默改掉两家的分数。
+    """
+    assert MatchConfig().scope_break_year is None
+    out = judge(
+        claim(direction="up", period_norm="2016", primary_metric="revenue"),
+        current=actual("revenue", "2016", "41850"),
+        base=actual("revenue", "2015", "17843"),
+        cfg=MatchConfig(),
+    )
+    assert out.verdict == "supported"
+
+
 def test_needs_review_stays_in_the_denominator() -> None:
     """★ 待核查留在覆盖率分母。
 

@@ -69,9 +69,14 @@ PROMPT_KEY = "claim_extract"
 #: 模型能返回的 claim_type。**必须与 schema.sql 的 CHECK 一致**——
 #: 对不上时 INSERT 会被拒，而且拒绝发生在整批写入的中途。
 #: 有测试盯着这个列表与提示词、数据库三方同源。
+#:
+#: ⚠ **这个集合不在那条测试的覆盖里**（测试比的是 schema ↔ 提示词）。
+#: 漏加一个值的后果是 `normalize_claim_type` 把它**静默**归一成 `other`——
+#: 主张照样落库、照样进判定，只是主题语义丢了，页面上看不出来。
 ALLOWED_CLAIM_TYPES = {
     "demand", "order", "capacity", "collection",
     "product_mix", "cost", "risk", "macro", "other",
+    "management_budget",
 }
 
 #: 模型返回的 direction，必须与 `claim.direction` 的 CHECK 一致

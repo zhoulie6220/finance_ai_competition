@@ -44,10 +44,11 @@ from app.engine.claim_rules import (
     extract_period_expr,
     industry_scope,
     is_pending,
+    match_plan_budget,
     match_theme,
     resolve_period,
 )
-from app.parsing.claims import iter_sentences
+from app.parsing.claims import iter_sentences, plan_year_state
 
 EXTRACTOR = "rule:claim_v1"
 # 规则法没有提示词，但这一列 NOT NULL——如实写「无」，
@@ -133,6 +134,11 @@ def extract_and_store(
     # 取一次、整批复用——字段字典在抽取期间不会变。
     aliases_by_metric = metric_aliases(con)
 
+    # 受限历史计划兑现度是否启用（`narrative.budget_attainment.<项目>`）。
+    # ⚠ **默认关**：它是一条例外口径，只为声明过的项目开——首钢的 H 靠它才有数据源。
+    # 没声明的项目一个字段都不变，与 `narrative.scope_break.<项目>` 同源。
+    budget_on = _rule_bool(con, f"narrative.budget_attainment.{project_id}")
+
     sections = con.execute(
         """
         SELECT m.section_id, m.text, m.page_from, m.file_id, f.period
@@ -147,11 +153,31 @@ def extract_and_store(
     rows: list[tuple[Any, ...]] = []
     indicators: list[tuple[Any, ...]] = []
 
+    #: 当前生效的**经营计划目标年度**，跨 section（同一份年报的相邻页）延续。
+    #: 见 `Sentence.plan_year`——首钢 2015 年报的标题在 p17、预算句在 p18，
+    #: 而章节是按页切的，不带过去就拿不到年份。
+    plan_year: str | None = None
+    last_file: str | None = None
+
     for section in sections:
         summary.sections_scanned += 1
-        for sentence in iter_sentences(section["text"] or ""):
+        if section["file_id"] != last_file:
+            # 换一份年报就清空——上一份的计划年套到下一份上，
+            # 会给一整批句子锚错年份，而且不报错。
+            plan_year = None
+            last_file = section["file_id"]
+        text = section["text"] or ""
+        for sentence in iter_sentences(text, plan_year=plan_year):
             summary.sentences_scanned += 1
-            match = match_theme(sentence.text)
+            # ★ **预算句先判。** 它不是「句子里出现了某个触发词」那一类，
+            # 而是「在一个经营计划标题之下、说的是营业收入」——所以要用
+            # `Sentence.plan_year` 这个位置信息，`match_theme` 认不出它。
+            budget = (
+                match_plan_budget(sentence.text, sentence.plan_year)
+                if budget_on
+                else None
+            )
+            match = budget or match_theme(sentence.text)
             if match is None:
                 continue
 
@@ -186,16 +212,21 @@ def extract_and_store(
             #   主语，「钢材产量14.00亿吨」单独看一个整体口径词都没有。
             scope_note = industry_scope(sentence.context or sentence.text)
 
-            period = (
-                None
-                if scope_note is not None
-                else resolve_period(
+            if budget is not None:
+                # 预算句的期间是**标题里那个目标年度**，不是报告年。
+                # 拿 `resolve_period` 去解是解不出来的：2017 年报起这些句子
+                # 只写「同比」，一个年份都没有——解出来会是报告年 2017，
+                # 于是一条 2018 年的计划进了「当期一致性」，而且不报错。
+                period = sentence.plan_year
+            elif scope_note is not None:
+                period = None
+            else:
+                period = resolve_period(
                     sentence.text,
                     section["period"],
                     # 取自 rule_config，这里给默认值；调用方可以覆盖
                     forward_verifies_next_year=True,
                 )
-            )
             if is_pending(period, known_periods):
                 summary.pending += 1
 
@@ -258,6 +289,11 @@ def extract_and_store(
             summary.by_theme[match.rule.label_cn] = (
                 summary.by_theme.get(match.rule.label_cn, 0) + 1
             )
+
+        # 把这一段结束时的计划年传给下一页。无条件推进——
+        # 开关关着的时候 `match_plan_budget` 根本不会被调用，
+        # 所以算它不影响任何结果。
+        plan_year = plan_year_state(text, plan_year)
 
     if not rows:
         summary.warnings.append(
@@ -430,6 +466,24 @@ def _claim_id(
         )
     ).hexdigest()
     return "cl-" + digest[:12]
+
+
+def _rule_bool(con: sqlite3.Connection, key: str, *, default: bool = False) -> bool:
+    """读一个布尔型的 `rule_config`。
+
+    ⚠ **不能写 `bool(value)`。** SQLite 里存的是文本 `'0'`，而 `bool('0')`
+    是 **True**——于是「把开关关掉」这件事看起来生效、实际没生效，
+    而没有任何地方会报错。与 `narrative_consistency._rule_bool` 同一套判据。
+
+    ⚠ 必须带上 `industry = ''`：`rule_config` 的主键是 `(key, industry)`，
+    不带的话按行业分组的同名参数会被随机取到一条。
+    """
+    row = con.execute(
+        "SELECT value FROM rule_config WHERE key = ? AND industry = ''", (key,)
+    ).fetchone()
+    if row is None:
+        return default
+    return str(row[0]).strip() in ("1", "true", "True", "yes")
 
 
 def _confidence(

@@ -365,12 +365,29 @@ def _marker(p: dict | None) -> str:
 
 
 def _read(path: Path) -> tuple[list[str], list[dict]]:
-    """读 CSV，跳过第二行的说明行。"""
-    text = path.read_text(encoding="utf-8-sig").splitlines()
-    reader = csv.DictReader(text)
-    rows = list(reader)
-    # 第二行是说明行（每格以 ↑ 开头），丢掉
-    return list(reader.fieldnames or []), [
+    """读 CSV，跳过第二行的说明行。
+
+    ⚠ **必须先 `splitlines()` 再喂给 DictReader 是个静默数据损坏的 bug**
+    （2026-10-10 修）。CSV 允许**引号字段里带换行**，而 `splitlines()`
+    会把它切成两行——`DictReader` 于是把一条记录看成两条，
+    **后面所有列整体错位**：
+
+        p-000959,2015,demand_price,1,钢材下游需求…,"（风险章节「产品价格风险」p18）鉴于钢铁行业产能过剩、
+        同质化竞争严重…",…,pending,,
+                         ↑ 被切成两行，从 evidence 起全错位
+
+    表现出来的样子是 `conclusion` 读成空串、校验报「取值 '' 不合法」，
+    或者更糟——把 evidence 的半句当成 `mitigation` 写回库，
+    **而它看起来就是一条填得好好的记录**。
+
+    `io.StringIO` 交给 csv 自己按 RFC 4180 解析，引号内的换行才被正确对待。
+    出处：R 的证据片段是从 PDF 正文里剪的，**天然带硬换行**。
+    """
+    import io
+
+    text = path.read_text(encoding="utf-8-sig")
+    rows = list(csv.DictReader(io.StringIO(text)))
+    return list(rows[0].keys() if rows else []), [
         r for r in rows if not any((v or "").startswith("↑") for v in r.values())
     ]
 

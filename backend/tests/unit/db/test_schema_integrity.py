@@ -276,6 +276,49 @@ def test_verified_view_hides_unvalidated(con):
     assert ids == ["ok"]
 
 
+# ---------------------------------------------------------------- claim_type 的取值
+
+
+def _insert_claim_with_type(con: sqlite3.Connection, claim_type: str) -> None:
+    con.execute(
+        "INSERT INTO mdna_section (section_id, file_id, heading, kind, page_from,"
+        " page_to, text) VALUES (?,?,?,?,?,?,?)",
+        ("md-f1-0", "f1", "四、主营业务分析", "mdna", 10, 12, "正文"),
+    )
+    con.execute(
+        "INSERT INTO claim (claim_id, project_id, section_id, claim_text,"
+        " claim_type, verifiable, confidence, source_file_id, source_page,"
+        " source_text, extractor, prompt_version, status, created_at)"
+        " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        ("cl-t", "p1", "md-f1-0", "营业收入614.77亿元，同比增长2.03%。", claim_type,
+         1, 0.8, "f1", 23, "营业收入614.77亿元，同比增长2.03%。",
+         "rule:claim_v1", "rule:none", "validated", "2026-10-10T00:00:00"),
+    )
+
+
+def test_management_budget_is_an_allowed_claim_type(con):
+    """`management_budget` 必须能插进去——它是首钢 H 的唯一合法观测来源。
+
+    会计口径《首钢出分问题解决方案》第二节。取值表三方同源（schema / 枚举 /
+    提示词），由 `tests/unit/agents/test_prompt_vocabulary.py` 比对
+    schema ↔ 最新版提示词，这里补的是**数据库真的收它**这一面。
+    """
+    _insert_claim_with_type(con, "management_budget")
+    assert con.execute(
+        "SELECT claim_type FROM claim WHERE claim_id = 'cl-t'"
+    ).fetchone()[0] == "management_budget"
+
+
+def test_a_made_up_claim_type_is_still_rejected(con):
+    """★ 反例是刻意的：只断言「新值能插」的话，**CHECK 被整条删掉**也会通过。
+
+    `claim_type` 决定这条主张进哪个主题、有没有主判据、在页面上叫什么。
+    自造的值不会报错，只会让它悄无声息地落进「无主判据」、不参与任何判定。
+    """
+    with pytest.raises(sqlite3.IntegrityError):
+        _insert_claim_with_type(con, "自造的假类型")
+
+
 # ---------------------------------------------------------------- 计划偏差不许计分
 
 

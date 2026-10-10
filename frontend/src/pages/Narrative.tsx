@@ -649,7 +649,14 @@ function ThemeBars({ stats }: { stats: ClaimsResponse['stats'] | null }) {
   )
 }
 
-/** 主题的中文名。后端给的是键，页面要给人看。 */
+/**
+ * 主题的中文名。后端给的是键，页面要给人看。
+ *
+ * ⚠ **后端加一个 `claim_type` 值，这里不加就静默显示英文。**
+ * `?? type` 那处的回退不会报错，页面上只是冒出一个 `management_budget`，
+ * 而没有任何地方会提醒你漏了一项。`contract.ts` 里的联合类型能兜住
+ * 拼错，但**兜不住漏写**——它是个 `Record<string, string>`。
+ */
 const CLAIM_TYPE_LABELS: Record<string, string> = {
   demand: '需求与产销',
   order: '订单',
@@ -659,6 +666,9 @@ const CLAIM_TYPE_LABELS: Record<string, string> = {
   cost: '降本增效',
   risk: '风险与环保',
   macro: '宏观与行业',
+  // 管理层在年报里公开的经营计划/预算目标值（「20XX年营业收入 XXX 亿元」）。
+  // 它不是「我们做了什么」，是「我们打算做到多少」——所以单列一类。
+  management_budget: '管理层预算',
   other: '其他',
 }
 

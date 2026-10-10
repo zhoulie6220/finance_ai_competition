@@ -975,7 +975,7 @@
       "type": "string"
     },
     "ClaimType": {
-      "description": "MD&A 主张的主题。对应大框架里的四类叙事信号。",
+      "description": "MD&A 主张的主题。对应大框架里的四类叙事信号。\n\n⚠ **取值表与 `schema.sql` 的 CHECK、最新版 `claim_extract` 提示词三方同源**，\n由 `tests/unit/agents/test_prompt_vocabulary.py` 盯着。",
       "enum": [
         "demand",
         "order",
@@ -985,7 +985,8 @@
         "cost",
         "risk",
         "macro",
-        "other"
+        "other",
+        "management_budget"
       ],
       "title": "主张主题",
       "type": "string"

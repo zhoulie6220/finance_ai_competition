@@ -296,8 +296,13 @@ export interface ClaimStatsView {
   by_type?: Record<string, number>;
 }
 
-/** MD&A 主张的主题。对应大框架里的四类叙事信号。 */
-export type ClaimType = "demand" | "order" | "capacity" | "collection" | "product_mix" | "cost" | "risk" | "macro" | "other";
+/**
+ * MD&A 主张的主题。对应大框架里的四类叙事信号。
+ * 
+ * ⚠ **取值表与 `schema.sql` 的 CHECK、最新版 `claim_extract` 提示词三方同源**，
+ * 由 `tests/unit/agents/test_prompt_vocabulary.py` 盯着。
+ */
+export type ClaimType = "demand" | "order" | "capacity" | "collection" | "product_mix" | "cost" | "risk" | "macro" | "other" | "management_budget";
 
 /**
  * 一条主张（MD&A 里的一句话结构化之后）。

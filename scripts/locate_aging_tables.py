@@ -75,6 +75,12 @@ AGING_HEADERS = (
     "按账龄披露", "按账龄列示", "账龄情况", "账龄列示",
     "应收账款的账龄", "应收账款账龄如下", "应收账款按账龄",
     "按账龄分析法计提坏账准备的应收账款", "账龄如下",
+    # ★ **新金融工具准则那几年换了个名字。**
+    # 实测首钢 2019：应收账款那一节的标题从「(1)按账龄披露」变成了
+    # 「(1)应收账款分类披露」，账龄区间藏在它下面的「按组合计提坏账准备」
+    # 表里。不认这一条的话，那一年的**合并表在整份年报里都找不到**，
+    # 而它明明有——会计会据此记 `unavailable_disclosure`。
+    "应收账款分类披露",
 )
 
 
@@ -153,16 +159,36 @@ def _locate(con) -> list[dict]:
         # 最近的章节名才算数。
         anchor = _aging_header_pos(text)
         if anchor is None:
-            continue
-        before = text[max(0, anchor - 220) : anchor].replace(" ", "")
+            # ★ **表头在上一页末尾，本页是它的续表。**
+            #
+            # 实测首钢 2017（表头在 p99 末、账龄区间在 p100）与
+            # 2019（p106 → p107）：这一页通篇只有
+            # `账龄 | 期末余额 | 应收账款 | 坏账准备 | 计提比例` 加几行区间，
+            # **章节名与表头都在上一页**，本页一个 `AGING_HEADERS` 词都没有。
+            # 不认这一条的话，这两年只报得出**母公司**那一张，
+            # 合并那张在整份年报里「找不到」——而会计要的正是合并口径。
+            #
+            # 与下面「表头在本页开头、章节名在上一页」是同一件事的两个方向。
+            prev_tail = _previous_tail(con, r["file_id"], r["page_no"])
+            if _aging_header_pos(prev_tail) is None:
+                continue
+            before = prev_tail
+            header_text = ""
+        else:
+            before = text[max(0, anchor - 220) : anchor].replace(" ", "")
 
-        # ★ **表头在页面最开头时，章节名在上一页。**
-        # 实测 2015/2017 两份就是这样：表头出现在第 0–4 个字符，
-        # 而「应收账款」在上一页末尾。不往前接一段的话，
-        # 这两份会被判成「年报未披露账龄表」——**漏报比误报更糟**，
-        # 会计会据此记 unavailable_disclosure 而实际有表。
-        if len(before) < 40:
-            before = _previous_tail(con, r["file_id"], r["page_no"]) + before
+            # ★ **表头在页面最开头时，章节名在上一页。**
+            # 实测 2015/2017 两份就是这样：表头出现在第 0–4 个字符，
+            # 而「应收账款」在上一页末尾。不往前接一段的话，
+            # 这两份会被判成「年报未披露账龄表」——**漏报比误报更糟**，
+            # 会计会据此记 unavailable_disclosure 而实际有表。
+            if len(before) < 40:
+                before = _previous_tail(con, r["file_id"], r["page_no"]) + before
+
+            # ★ 表头**自己**也要算。
+            # 实测 2015/2017 两份的表头是「按账龄分析法计提坏账准备的应收账款」——
+            # 「应收账款」就在表头里，而我只在表头**前面**找，于是漏掉。
+            header_text = text[anchor : anchor + 50].replace(" ", "")
 
         # ★ **排除词必须紧贴表头才算。**
         # 原来用「谁离得更近谁赢」，结果 首钢 2022 那页里
@@ -172,10 +198,6 @@ def _locate(con) -> list[dict]:
         ex = max((before.rfind(m) for m in EXCLUDE_MARKERS), default=-1)
         if ex >= 0 and len(before) - ex < 20:
             continue
-        # ★ 表头**自己**也要算。
-        # 实测 2015/2017 两份的表头是「按账龄分析法计提坏账准备的应收账款」——
-        # 「应收账款」就在表头里，而我只在表头**前面**找，于是漏掉。
-        header_text = text[anchor : anchor + 50].replace(" ", "")
         if "应收账款" not in before and "应收账款" not in header_text:
             continue
 

@@ -480,9 +480,15 @@ CREATE TABLE claim (
   -- 判定那一步手上只有这一行，无权再去看原文找别名。
   magnitude_metric_aligned INTEGER NOT NULL DEFAULT 1
                   CHECK (magnitude_metric_aligned IN (0,1)),
+  -- ⚠ 取值表与 `app/schemas/enums.py::ClaimType`、最新版 `claim_extract` 提示词
+  -- 三方同源，`tests/unit/agents/test_prompt_vocabulary.py` 拿 schema 逐字比对提示词。
+  -- 加值必须**新出一版提示词**（不能改已发布的那一版的正文——它的哈希是
+  -- `llm_call` 的证据链），并同步 `narrative_llm.ALLOWED_CLAIM_TYPES`
+  -- （不加那里会**静默**把新值归一成 other）。
   claim_type      TEXT NOT NULL
                   CHECK (claim_type IN ('demand','order','capacity','collection',
-                                        'product_mix','cost','risk','macro','other')),
+                                        'product_mix','cost','risk','macro','other',
+                                        'management_budget')),
   -- 0 表示无法识别期间/对象，仅作背景展示，不进入一致性评分
   verifiable      INTEGER NOT NULL CHECK (verifiable IN (0,1)),
   background_only INTEGER NOT NULL DEFAULT 0 CHECK (background_only IN (0,1)),

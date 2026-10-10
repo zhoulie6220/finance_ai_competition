@@ -1,0 +1,7 @@
+{
+  "cassette_id": "f34fbc085cc5115becf8f29de6b4f794",
+  "model_version": "deepseek-flash",
+  "text": "{\n  \"judgements\": [\n    {\n      \"claim_id\": \"cl-f36c12235af3\",\n      \"is_substantive\": false,\n      \"is_template\": false,\n      \"missing_elements\": [\"object\", \"period\", \"metric\", \"result\", \"owner\"],\n      \"reason\": \"这段文字是投资者关系活动记录表的表格内容（机构名单、日期、地点、沟通方式等），属于表格行标签与栏目信息，不是公司在陈述自己干了什么，故判非实质表述；因是表格碎片，五要素均无从谈起。\"\n    },\n    {\n      \"claim_id\": \"cl-781d40432c81\",\n      \"is_substantive\": false,\n      \"is_template\": false,\n      \"missing_elements\": [\"object\", \"period\", \"metric\", \"result\", \"owner\"],\n      \"reason\": \"同样是投资者活动记录表的表格碎片（机构名称、'电工钢生产情况、未来供需形势，汽车板产量情况等'、日期、'电话沟通'等栏目），属于表格行标签与数字/栏目信息，不是公司对自身经营的陈述。\"\n    },\n    {\n      \"claim_id\": \"cl-0cca6e3c4f26\",\n      \"is_substantive\": false,\n      \"is_template\": false,\n      \"missing_elements\": [\"object\", \"period\", \"metric\", \"result\", \"owner\"],\n      \"reason\": \"与上一条几乎相同的表格碎片，内容为机构名单、'电工钢生产情况、未来供需形势，汽车板产量情况等'及日期、沟通方式等栏目文字，属表格行标签，不构成公司实质经营表述。\"\n    }\n  ]\n}",
+  "tokens_in": 1288,
+  "tokens_out": 358
+}
