@@ -6,6 +6,10 @@
     python scripts/export_input_templates.py --import   # 填好的 CSV 写回库
     python scripts/export_input_templates.py --rekey    # 编号对不上时按原文重新编号
 
+    # 只发/只收**一家**的表时必须加 --project，理由见下面「只处理一家」那一段
+    python scripts/export_input_templates.py --export --project p-000959
+    python scripts/export_input_templates.py --import --project p-000959
+
 生成到 `人工录入/` 目录下：
 
     Q2_账龄.csv          每个公司每个年度一行
@@ -42,6 +46,19 @@ CSV 里每一列的合法取值都写在表头注释里，`--check` 会逐格校
 > 这一条是 2026-10-06 真撞出来的：为了加 `claim_match` 的几列跑了
 > `init_db.py --force`，会计填好的 121 行全部对不上。
 > 幸好原文可用，185 行全部唯一命中，才没白填。
+
+## ⚠ 只处理一家：`--project`
+
+三张表平时是**三家混在一个 CSV 里**的，而 `--import` 会把**每一行**都写进去
+（包括还是 `pending` 的新行）。所以给会计发「只有首钢」的那一份、
+收回来直接 `--import`，会**把已经出分的宝钢和华菱一起踢出分**——
+它们各有 1 条新主张还没人判，导进去 P 就不完整了。
+
+2026-10-09 实测撞过。当时的做法是手工把 CSV 换成只含一家的再导，
+但那**靠人记得还原**：漏一步就是两家的分没了，而且不报错。
+
+所以做成开关：**发出去带 `--project`，收回来也必须带同一个**。
+不带时它会照旧处理全部行——那是历史行为，别改。
 """
 
 from __future__ import annotations
@@ -145,6 +162,11 @@ def main() -> int:
     group.add_argument("--check", action="store_true")
     group.add_argument("--import", dest="do_import", action="store_true")
     group.add_argument("--rekey", action="store_true")
+    parser.add_argument(
+        "--project", default=None,
+        help="只处理这一个项目（如 p-000959）。**发出去/收回来只有一家的表时必须加**，"
+             "见下面那段说明。",
+    )
     args = parser.parse_args()
 
     if not DB_PATH.exists():
@@ -154,10 +176,12 @@ def main() -> int:
     con = connect(DB_PATH)
     try:
         if args.export:
-            return _export(con)
+            return _export(con, only_project=args.project)
         if args.rekey:
             return _rekey(con)
-        return _check_or_import(con, do_import=args.do_import)
+        return _check_or_import(
+            con, do_import=args.do_import, only_project=args.project
+        )
     finally:
         con.close()
 
@@ -165,19 +189,30 @@ def main() -> int:
 # ---------------------------------------------------------------- 导出
 
 
-def _export(con: sqlite3.Connection) -> int:
+def _export(con: sqlite3.Connection, *, only_project: str | None = None) -> int:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
-    _export_q2(con)
-    _export_r(con)
-    _export_p(con)
+    _export_q2(con, only_project=only_project)
+    _export_r(con, only_project=only_project)
+    _export_p(con, only_project=only_project)
     print()
     print(f"已生成到 {OUT_DIR}")
     print("把三个 CSV 发给会计同学，填好后用 --check 校验、--import 写回。")
+    if only_project:
+        print(
+            f"⚠ 这一份**只含 {only_project}**。收回来的那份导入时也要带 "
+            f"`--project {only_project}`——不带的话会把另外两家的候选行一起写进去，"
+            f"而那两家已经出分了。"
+        )
     return 0
 
 
-def _write(path: Path, columns: tuple, rows: list[dict]) -> None:
+def _write(
+    path: Path, columns: tuple, rows: list[dict], *,
+    only_project: str | None = None,
+) -> None:
     """写 CSV。第二行是**说明行**——Excel 打开就能看到每一列该怎么填。"""
+    if only_project:
+        rows = [r for r in rows if r.get("project_id") == only_project]
     with path.open("w", encoding="utf-8-sig", newline="") as f:
         w = csv.writer(f)
         w.writerow([c for c, _ in columns])
@@ -187,7 +222,7 @@ def _write(path: Path, columns: tuple, rows: list[dict]) -> None:
     print(f"  {path.name:<24} {len(rows)} 行")
 
 
-def _export_q2(con: sqlite3.Connection) -> None:
+def _export_q2(con: sqlite3.Connection, *, only_project: str | None = None) -> None:
     """Q2：每个公司每个年度一行，先把已有记录带出来，没有的留空。"""
     rows = []
     existing = {
@@ -220,10 +255,11 @@ def _export_q2(con: sqlite3.Connection) -> None:
                 "reviewer": r["reviewer"] if r else "",
             }
         )
-    _write(OUT_DIR / "Q2_账龄.csv", Q2_COLUMNS, rows)
+    _write(OUT_DIR / "Q2_账龄.csv", Q2_COLUMNS, rows,
+           only_project=only_project)
 
 
-def _export_r(con: sqlite3.Connection) -> None:
+def _export_r(con: sqlite3.Connection, *, only_project: str | None = None) -> None:
     """R：每个公司每个年度 × 四项。"""
     rows = []
     existing = {
@@ -253,10 +289,14 @@ def _export_r(con: sqlite3.Connection) -> None:
                     "reviewer": r["reviewer"] if r else "",
                 }
             )
-    _write(OUT_DIR / "R_风险检查.csv", R_COLUMNS, rows)
+    _write(OUT_DIR / "R_风险检查.csv", R_COLUMNS, rows,
+           only_project=only_project)
 
 
-def _export_p(con: sqlite3.Connection, limit: int = 400) -> None:
+def _export_p(
+    con: sqlite3.Connection, limit: int = 400, *,
+    only_project: str | None = None,
+) -> None:
     """P：候选主张清单。
 
     ⚠ **候选来源只有一个出口**：`app/skills/claim_scope.py`。那里同时管着
@@ -333,7 +373,9 @@ def _export_p(con: sqlite3.Connection, limit: int = 400) -> None:
                 "预判理由": (p["reason"] or "") if p else "",
             }
         )
-    _write(OUT_DIR / "P_人工确认.csv", P_COLUMNS, rows)
+    _write(
+        OUT_DIR / "P_人工确认.csv", P_COLUMNS, rows, only_project=only_project
+    )
 
 
 def _load_predictions(con: sqlite3.Connection) -> dict[str, dict]:
@@ -392,7 +434,22 @@ def _read(path: Path) -> tuple[list[str], list[dict]]:
     ]
 
 
-def _check_or_import(con: sqlite3.Connection, *, do_import: bool) -> int:
+def _check_or_import(
+    con: sqlite3.Connection, *, do_import: bool, only_project: str | None = None
+) -> int:
+    """校验并（可选）写回。
+
+    ## `only_project`：只处理一家
+
+    ⚠ **发出去只有一家的表时，收回来也必须只导那一家。** 三张表平时是三家混在
+    一个 CSV 里的，而 `--import` 会把**每一行**都写进去（包括还是 `pending` 的新行）。
+    所以直接导一份含三家的 CSV，**会把已经出分的宝钢和华菱一起踢出分**——
+    它们的候选集里各有 1 条新主张还没人判，导进去 P 就不完整了。
+
+    实测撞过一次（2026-10-09）：金标准做法是手工把 CSV 换成只含一家的再导，
+    但那是**靠人记得还原**——漏一步就是两家的分没了，而且不报错。
+    所以做成开关：`--project p-000959` 只处理该项目的行。
+    """
     problems: list[str] = []
     parsed: dict[str, list[dict]] = {}
 
@@ -406,6 +463,13 @@ def _check_or_import(con: sqlite3.Connection, *, do_import: bool) -> int:
             problems.append(f"{name}：文件不存在（先跑 --export）")
             continue
         _, rows = _read(path)
+        total = len(rows)
+        if only_project:
+            rows = [r for r in rows if (r.get("project_id") or "").strip() == only_project]
+            print(
+                f"  {name}：{total} 行 → 只取 {only_project} 的 {len(rows)} 行"
+                f"（其余的**一律不碰**）"
+            )
         parsed[name] = rows
         for i, row in enumerate(rows, start=3):     # 表头 1 行 + 说明 1 行
             problems.extend(f"{name} 第 {i} 行：{p}" for p in checker(row))

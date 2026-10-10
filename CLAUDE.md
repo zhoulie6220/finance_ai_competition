@@ -394,6 +394,19 @@ python scripts/export_input_templates.py --rekey    # 编号对不上时按原�
 python scripts/export_input_templates.py --import   # 校验过了再写回库
 ```
 
+⚠ **发出去的只有一家、收回来时必须带 `--project`：**
+
+```bash
+python scripts/export_input_templates.py --export --project p-000959
+python scripts/export_input_templates.py --import --project p-000959
+```
+
+不带它会把 CSV 里**每一行**都写进去（含还是 `pending` 的新行）——
+宝钢、华菱的候选集里各有 1 条新主张还没人判，导进去 P 就不完整，
+**两家一起被踢出分**，而且不报错。2026-10-09 实测撞过一次，
+当时的解法是手工换文件——那靠人记得还原，所以做成了开关。
+测试：`tests/unit/scripts/test_only_project.py`。
+
 > `--check` 是**只读的**，而且会把两件事一起报出来：哪里填错了、
 > 以及**有多少行的编号能按原文救回来**。编号漂了先跑 `--rekey`，
 > **别急着让会计重填**——见「重建库会不会让会计填的表作废」那一节。
@@ -1249,9 +1262,17 @@ v1.1 那条链路的文件职责：
 
 **导进去，宝钢和华菱就一起变成「证据不足」。** 三家的分都没了。
 
-所以：**只导入首钢那几行**（`build_accounting_pack_*.py` 生成的
-`03_要填的表/*.csv` 就是首钢-only 的）。真要动宝钢华菱的行，
-先确认那两行也已经有 conclusion。
+所以：**只导入首钢那几行**。做法是加 `--project`：
+
+```bash
+python scripts/export_input_templates.py --import --project p-000959
+```
+
+（2026-10-10 之前得手工把 CSV 换成只含一家的再导——那靠人记得还原，
+所以做成了开关。测试 `tests/unit/scripts/test_only_project.py` 钉着它：
+三家混在一起的 CSV 上只导首钢，宝钢华菱的分数逐字不变。）
+
+真要动宝钢华菱的行，先确认那两行也已经有 conclusion。
 
 > 这一条不是「--import 有 bug」——新主张冒出来本来就应该有人判。
 > 踩的是「导出过的模板没导回库，两份东西看起来一样、其实差几行」。
